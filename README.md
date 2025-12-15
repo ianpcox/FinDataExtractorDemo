@@ -143,8 +143,23 @@ See `.env.example` for required environment variables. Key settings:
 ## Documentation
 
 - [Getting Started Guide](docs/GETTING_STARTED.md)
-- [API Reference](docs/API_REFERENCE.md)
+- [Azure Setup Guide](docs/AZURE_SETUP.md) - **Important: Read this for Azure resource decisions**
 - [Architecture Overview](docs/ARCHITECTURE.md)
+- [Repository Relationship](docs/REPOSITORY_RELATIONSHIP.md)
+- [Branch Strategy](docs/BRANCH_STRATEGY.md)
+
+## Development
+
+This project uses a `main`/`dev` branch strategy:
+- **`main`** - Production-ready, stable code
+- **`dev`** - Active development branch
+
+For development work, use the `dev` branch:
+```bash
+git checkout dev
+```
+
+See [Branch Strategy](docs/BRANCH_STRATEGY.md) for details.
 
 ## License
 
