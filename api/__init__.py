@@ -1,0 +1,2 @@
+"""API module - simplified version"""
+

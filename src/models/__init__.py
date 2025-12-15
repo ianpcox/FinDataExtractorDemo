@@ -1,0 +1,2 @@
+"""Models module - simplified version"""
+
