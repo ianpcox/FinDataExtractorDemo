@@ -2,6 +2,7 @@
 
 from fastapi import APIRouter, HTTPException, Depends, Path
 from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 import logging
 
 from src.extraction.extraction_service import ExtractionService
@@ -77,16 +78,24 @@ async def extract_invoice(
                 }
             )
         
+        # Ensure all fields are JSON serializable
+        invoice_payload = jsonable_encoder(result.get("invoice"))
+        extraction_ts = result.get("extraction_timestamp")
+        if extraction_ts and not isinstance(extraction_ts, str):
+            extraction_ts = extraction_ts.isoformat()
+
+        content = {
+            "message": "Extraction completed successfully",
+            "invoice_id": result.get("invoice_id"),
+            "status": result.get("status"),
+            "invoice": invoice_payload,
+            "confidence": result.get("confidence"),
+            "extraction_timestamp": extraction_ts
+        }
+
         return JSONResponse(
             status_code=200,
-            content={
-                "message": "Extraction completed successfully",
-                "invoice_id": result["invoice_id"],
-                "status": result["status"],
-                "invoice": result["invoice"],
-                "confidence": result["confidence"],
-                "extraction_timestamp": result["extraction_timestamp"].isoformat()
-            }
+            content=jsonable_encoder(content)
         )
         
     except HTTPException:

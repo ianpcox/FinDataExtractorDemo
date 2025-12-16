@@ -1,7 +1,8 @@
-"""Simplified database setup"""
+"""Simplified async database setup"""
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import declarative_base
+from typing import AsyncGenerator
 from src.config import settings
 
 # Create async engine
@@ -22,8 +23,8 @@ AsyncSessionLocal = async_sessionmaker(
 Base = declarative_base()
 
 
-async def get_db() -> AsyncSession:
-    """Get database session"""
+async def get_db() -> AsyncGenerator[AsyncSession, None]:
+    """Get database session (dependency for FastAPI)"""
     async with AsyncSessionLocal() as session:
         try:
             yield session

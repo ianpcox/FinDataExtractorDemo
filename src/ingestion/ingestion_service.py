@@ -1,17 +1,20 @@
-"""Simplified ingestion service"""
+"""Simplified ingestion service with database integration"""
 
 from typing import Dict, Any, Optional
 from datetime import datetime
+from uuid import uuid4
 import logging
 
 from .file_handler import FileHandler
 from .pdf_processor import PDFProcessor
+from src.models.invoice import Invoice
+from src.services.db_service import DatabaseService
 
 logger = logging.getLogger(__name__)
 
 
 class IngestionService:
-    """Simplified service for ingesting invoice PDFs"""
+    """Service for ingesting invoice PDFs"""
     
     def __init__(
         self,
@@ -68,18 +71,33 @@ class IngestionService:
                 file_name=file_name
             )
             
-            # Generate invoice ID (use stored name or generate UUID)
-            from uuid import uuid4
+            # Generate invoice ID
             invoice_id = str(uuid4())
+            upload_date = upload_result["upload_date"]
+            
+            # Step 4: Create initial invoice record in database
+            file_path = upload_result.get("file_path") or upload_result.get("blob_name") or upload_result.get("stored_name")
+            
+            invoice = Invoice(
+                id=invoice_id,
+                file_path=file_path,
+                file_name=file_name,
+                upload_date=upload_date,
+                status="processing"
+            )
+            
+            # Save to database
+            # Note: DatabaseService.save_invoice will get its own session if db is None
+            await DatabaseService.save_invoice(invoice)
             
             result = {
                 "invoice_id": invoice_id,
                 "status": "uploaded",
                 "file_name": file_name,
-                "file_path": upload_result.get("file_path") or upload_result.get("blob_name"),
+                "file_path": file_path,
                 "file_size": upload_result["size"],
                 "page_count": pdf_info.get("page_count", 0),
-                "upload_date": upload_result["upload_date"],
+                "upload_date": upload_date,
                 "errors": []
             }
             

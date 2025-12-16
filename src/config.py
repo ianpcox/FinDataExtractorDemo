@@ -28,9 +28,18 @@ class Settings(BaseSettings):
     AZURE_STORAGE_CONNECTION_STRING: Optional[str] = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
     AZURE_STORAGE_CONTAINER_RAW: str = os.getenv("AZURE_STORAGE_CONTAINER_RAW", "invoices-raw")
     AZURE_STORAGE_CONTAINER_PROCESSED: str = os.getenv("AZURE_STORAGE_CONTAINER_PROCESSED", "invoices-processed")
+    # Force SDK for blob URLs (avoid public HTTP fetch); if true, blob URLs will be fetched via SDK first
+    USE_BLOB_SDK_FOR_URLS: bool = os.getenv("USE_BLOB_SDK_FOR_URLS", "False").lower() == "true"
     
     # Database
     DATABASE_URL: Optional[str] = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./findataextractor.db")
+
+    # LLM Fallback (optional)
+    USE_LLM_FALLBACK: bool = os.getenv("USE_LLM_FALLBACK", "False").lower() == "true"
+    AOAI_ENDPOINT: Optional[str] = os.getenv("AOAI_ENDPOINT")
+    AOAI_API_KEY: Optional[str] = os.getenv("AOAI_API_KEY")
+    AOAI_DEPLOYMENT_NAME: Optional[str] = os.getenv("AOAI_DEPLOYMENT_NAME")
+    AOAI_API_VERSION: str = os.getenv("AOAI_API_VERSION", "2024-02-15-preview")
     
     # File Processing
     MAX_FILE_SIZE_MB: int = int(os.getenv("MAX_FILE_SIZE_MB", "50"))
@@ -47,6 +56,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = True
+        extra = "ignore"  # Ignore extra fields from .env that aren't in this model
 
 
 # Global settings instance

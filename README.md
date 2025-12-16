@@ -161,6 +161,100 @@ git checkout dev
 
 See [Branch Strategy](docs/BRANCH_STRATEGY.md) for details.
 
+## Testing
+
+The project includes a comprehensive test suite:
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=src --cov-report=html
+
+# Run specific test categories
+pytest tests/unit -v          # Unit tests only
+pytest tests/integration -v  # Integration tests only
+```
+
+See [Testing Guide](docs/TESTING.md) for detailed testing documentation.
+
+## Streamlit HITL Interface
+
+A web-based interface for reviewing and validating extracted invoice data:
+
+```bash
+# Start the API server first
+uvicorn api.main:app --reload
+
+# Then start Streamlit (in a new terminal)
+streamlit run streamlit_app.py
+```
+
+The interface provides:
+- Field-level confidence scores with visual indicators
+- PDF viewer for original invoices
+- Line item review with confidence scores
+- Validation submission workflow
+
+See [Streamlit HITL Guide](docs/STREAMLIT_HITL.md) for detailed instructions.
+
+## Azure Blob Storage Integration
+
+The application can process invoices directly from Azure Blob Storage:
+
+```bash
+# Process a single invoice from Azure
+python scripts/process_azure_invoices.py \
+  --container invoices-raw \
+  --blob-path "RAW Basic/invoice.pdf"
+
+# Process batch from a specific path
+python scripts/process_azure_invoices.py \
+  --container invoices-raw \
+  --prefix "RAW Basic/" \
+  --max-files 10
+```
+
+**Features:**
+- ✅ Browse containers and blobs
+- ✅ Filter by path prefix (e.g., "RAW Basic/")
+- ✅ Download and process files
+- ✅ Complete end-to-end workflow
+
+See [Azure Blob Processing Guide](docs/AZURE_BLOB_PROCESSING.md) for details.
+
+## Demos
+
+Interactive demos are available to showcase all features:
+
+```bash
+# Start the API server first
+uvicorn api.main:app --reload
+
+# Then run demos (in a new terminal)
+cd demos
+python demo_all_features.py  # Run complete workflow
+# Or run individual demos:
+python demo_01_ingestion.py    # Upload invoices
+python demo_02_extraction.py   # Extract data
+python demo_03_po_matching.py  # Match to PO
+python demo_04_pdf_overlay.py # Generate overlay
+python demo_05_hitl_review.py # Review & validate
+python demo_06_erp_staging.py # Stage for ERP
+```
+
+See [Demo Guide](demos/DEMO_GUIDE.md) for detailed instructions and presentation tips.
+
+## Planned Enhancements
+
+See [GitHub Issues](.github/ISSUES.md) for planned enhancements:
+- **Document Type Recognition** - Automatic document classification and routing
+- **PO Data Integration** - Access PO data from separate storage for overlay
+- **Approver List Integration** - Integrate approver registry for overlay display
+
+For details, see [Overlay Enhancements](docs/OVERLAY_ENHANCEMENTS.md).
+
 ## License
 
 [To be determined]

@@ -179,23 +179,81 @@ class FileHandler:
         Returns:
             File content as bytes
         """
+        # If identifier is a URL, optionally force SDK first (for private blobs), else HTTP then SDK fallback
+        if isinstance(file_identifier, str) and file_identifier.lower().startswith(("http://", "https://")):
+            def download_via_sdk() -> bytes:
+                from urllib.parse import urlsplit
+                from azure.storage.blob import BlobServiceClient
+                split = urlsplit(file_identifier)
+                parts = split.path.lstrip("/").split("/", 1)
+                if len(parts) == 2:
+                    container, blob_name = parts
+                    if settings.AZURE_STORAGE_CONNECTION_STRING:
+                        svc = BlobServiceClient.from_connection_string(settings.AZURE_STORAGE_CONNECTION_STRING)
+                        blob_client = svc.get_blob_client(container=container, blob=blob_name)
+                        return blob_client.download_blob().readall()
+                    elif settings.AZURE_STORAGE_ACCOUNT_NAME and settings.AZURE_STORAGE_ACCOUNT_KEY:
+                        from azure.core.credentials import AzureNamedKeyCredential
+                        credential = AzureNamedKeyCredential(settings.AZURE_STORAGE_ACCOUNT_NAME, settings.AZURE_STORAGE_ACCOUNT_KEY)
+                        account_url = f"https://{settings.AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
+                        svc = BlobServiceClient(account_url=account_url, credential=credential)
+                        blob_client = svc.get_blob_client(container=container, blob=blob_name)
+                        return blob_client.download_blob().readall()
+                raise ValueError("Could not parse container/blob from URL")
+
+            if getattr(settings, "USE_BLOB_SDK_FOR_URLS", False):
+                try:
+                    return download_via_sdk()
+                except Exception as e:
+                    logger.warning(f"SDK download failed for URL, falling back to HTTP: {e}")
+
+            try:
+                import requests
+                resp = requests.get(file_identifier, timeout=30)
+                resp.raise_for_status()
+                return resp.content
+            except Exception as e:
+                logger.warning(f"HTTP download failed, trying blob SDK: {e}")
+                try:
+                    return download_via_sdk()
+                except Exception as e2:
+                    logger.error(f"Failed to download file via Azure SDK: {e2}")
+                # If both fail, re-raise original
+                raise
+
         if self.use_azure:
             blob_client = self.container_client.get_blob_client(file_identifier)
             return blob_client.download_blob().readall()
         else:
             file_path = Path(file_identifier)
-            if not file_path.is_absolute():
-                file_path = self.raw_path / file_identifier
+            if file_path.is_absolute():
+                return file_path.read_bytes()
+            
+            # Handle paths that already include storage/raw/ prefix
+            if file_identifier.startswith("storage/raw/") or file_identifier.startswith("storage\\raw\\"):
+                # Remove the prefix and use just the filename
+                file_identifier = file_identifier.replace("storage/raw/", "").replace("storage\\raw\\", "")
+            
+            file_path = self.raw_path / file_identifier
             return file_path.read_bytes()
     
     def get_file_path(self, file_identifier: str) -> str:
         """Get full file path/URL"""
+        if isinstance(file_identifier, str) and file_identifier.lower().startswith(("http://", "https://")):
+            return file_identifier
         if self.use_azure:
             blob_client = self.container_client.get_blob_client(file_identifier)
             return blob_client.url
         else:
             file_path = Path(file_identifier)
-            if not file_path.is_absolute():
-                file_path = self.raw_path / file_identifier
+            if file_path.is_absolute():
+                return str(file_path)
+            
+            # Handle paths that already include storage/raw/ prefix
+            if file_identifier.startswith("storage/raw/") or file_identifier.startswith("storage\\raw\\"):
+                # Remove the prefix and use just the filename
+                file_identifier = file_identifier.replace("storage/raw/", "").replace("storage\\raw\\", "")
+            
+            file_path = self.raw_path / file_identifier
             return str(file_path)
 

@@ -64,12 +64,10 @@ class DocumentIntelligenceClient:
             Dictionary with extracted invoice data
         """
         try:
-            from io import BytesIO
-            
-            # Analyze document
+            # Analyze document - Document Intelligence handles bytes directly
             poller = self.client.begin_analyze_document(
                 model_id=self.model_id,
-                document=BytesIO(file_content)
+                document=file_content
             )
             result = poller.result()
             
@@ -80,70 +78,117 @@ class DocumentIntelligenceClient:
             return invoice_data
             
         except AzureError as e:
-            logger.error(f"Azure Document Intelligence error: {e}")
-            return {"error": str(e)}
+            logger.error(f"Azure Document Intelligence error: {e}", exc_info=True)
+            return {"error": str(e), "confidence": 0.0}
         except Exception as e:
-            logger.error(f"Error analyzing invoice: {e}")
-            return {"error": str(e)}
+            logger.error(f"Error analyzing invoice: {e}", exc_info=True)
+            return {"error": str(e), "confidence": 0.0}
     
     def _extract_invoice_fields(self, result) -> Dict[str, Any]:
-        """Extract invoice fields from Document Intelligence result"""
-        invoice_data = {}
+        """Extract invoice fields from Document Intelligence result with field-level confidence"""
+        if not result.documents:
+            return {
+                "confidence": 0.0,
+                "error": "No invoice document found in result"
+            }
         
-        # Get document fields
-        if hasattr(result, 'documents') and result.documents:
-            doc = result.documents[0]
-            fields = doc.fields
-            
-            # Extract basic fields
-            invoice_data["invoice_id"] = self._get_field_value(fields.get("InvoiceId"))
-            invoice_data["invoice_date"] = self._get_field_value(fields.get("InvoiceDate"))
-            invoice_data["due_date"] = self._get_field_value(fields.get("DueDate"))
-            invoice_data["vendor_name"] = self._get_field_value(fields.get("VendorName"))
-            invoice_data["vendor_address"] = self._get_address(fields.get("VendorAddress"))
-            invoice_data["customer_name"] = self._get_field_value(fields.get("CustomerName"))
-            invoice_data["customer_id"] = self._get_field_value(fields.get("CustomerId"))
-            invoice_data["customer_address"] = self._get_address(fields.get("BillingAddress"))
-            invoice_data["subtotal"] = self._get_field_value(fields.get("SubTotal"))
-            invoice_data["total_tax"] = self._get_field_value(fields.get("TotalTax"))
-            invoice_data["invoice_total"] = self._get_field_value(fields.get("InvoiceTotal"))
-            invoice_data["payment_term"] = self._get_field_value(fields.get("PaymentTerms"))
-            invoice_data["purchase_order"] = self._get_field_value(fields.get("PurchaseOrder"))
-            
-            # Extract line items
-            items = []
-            if fields.get("Items"):
-                for item in fields.get("Items").value:
-                    item_data = {
-                        "description": self._get_field_value(item.get("Description")),
-                        "quantity": self._get_field_value(item.get("Quantity")),
-                        "unit_price": self._get_field_value(item.get("UnitPrice")),
-                        "amount": self._get_field_value(item.get("Amount")),
-                    }
-                    items.append(item_data)
-            invoice_data["items"] = items
+        # Get first document (invoice)
+        invoice_doc = result.documents[0]
+        fields = invoice_doc.fields
+        
+        # Extract fields with confidence scores
+        invoice_data = {
+            "confidence": invoice_doc.confidence or 0.0,
+            "invoice_id": self._get_field_value(fields, "InvoiceId"),
+            "invoice_date": self._get_field_value(fields, "InvoiceDate"),
+            "due_date": self._get_field_value(fields, "DueDate"),
+            "invoice_total": self._get_field_value(fields, "InvoiceTotal"),
+            "subtotal": self._get_field_value(fields, "SubTotal"),
+            "total_tax": self._get_field_value(fields, "TotalTax"),
+            "vendor_name": self._get_field_value(fields, "VendorName"),
+            "vendor_address": self._get_address(fields, "VendorAddress"),
+            "vendor_phone": self._get_field_value(fields, "VendorPhoneNumber") or self._get_field_value(fields, "VendorPhone"),
+            "customer_name": self._get_field_value(fields, "CustomerName"),
+            "customer_id": self._get_field_value(fields, "CustomerId"),
+            "customer_address": self._get_address(fields, "CustomerAddress"),
+            "remit_to_address": self._get_address(fields, "RemitToAddress") or self._get_address(fields, "RemittanceAddress"),
+            "remit_to_name": self._get_field_value(fields, "RemitToName"),
+            "payment_term": self._get_field_value(fields, "PaymentTerm"),
+            "purchase_order": self._get_field_value(fields, "PurchaseOrder"),
+            "standing_offer_number": self._get_field_value(fields, "ContractId") or self._get_field_value(fields, "StandingOfferNumber"),
+            "acceptance_percentage": self._get_field_value(fields, "AcceptancePercentage"),
+            "tax_registration_number": self._get_field_value(fields, "TaxRegistrationNumber") or self._get_field_value(fields, "SalesTaxNumber"),
+            "service_start_date": self._get_field_value(fields, "ServiceStartDate"),
+            "service_end_date": self._get_field_value(fields, "ServiceEndDate"),
+            "currency": self._get_field_value(fields, "CurrencyCode") or self._get_field_value(fields, "Currency"),
+            "items": self._extract_items(fields.get("Items")),
+            "field_confidence": self._extract_field_confidences(fields)
+        }
         
         return invoice_data
     
-    def _get_field_value(self, field) -> Optional[Any]:
-        """Extract value from Document Intelligence field"""
-        if field is None:
-            return None
-        if hasattr(field, 'value'):
+    def _get_field_value(self, fields: Dict, field_name: str) -> Optional[Any]:
+        """Get field value with error handling"""
+        field = fields.get(field_name)
+        if field and hasattr(field, 'value'):
             return field.value
-        return field
+        return None
     
-    def _get_address(self, address_field) -> Optional[Dict[str, Any]]:
-        """Extract address from Document Intelligence field"""
-        if not address_field or not hasattr(address_field, 'value'):
+    def _get_address(self, fields: Dict, field_name: str) -> Optional[Dict]:
+        """Extract address field"""
+        field = fields.get(field_name)
+        if not field or not hasattr(field, 'value'):
             return None
         
-        address = address_field.value
-        return {
-            "street": getattr(address, 'street_address', None),
-            "city": getattr(address, 'city', None),
-            "state": getattr(address, 'state', None),
-            "postal_code": getattr(address, 'postal_code', None),
-            "country": getattr(address, 'country_region', None),
-        }
+        address_value = field.value
+        if isinstance(address_value, dict):
+            return {
+                "street_address": address_value.get("streetAddress"),
+                "city": address_value.get("city"),
+                "state": address_value.get("state"),
+                "postal_code": address_value.get("postalCode"),
+                "country_region": address_value.get("countryRegion"),
+                "house_number": address_value.get("houseNumber"),
+                "road": address_value.get("road"),
+            }
+        return None
+    
+    def _extract_items(self, items_field) -> list:
+        """Extract line items from invoice"""
+        items = []
+        
+        if not items_field or not hasattr(items_field, 'value'):
+            return items
+        
+        for item in items_field.value:
+            if hasattr(item, 'value') and isinstance(item.value, dict):
+                item_dict = item.value
+                items.append({
+                    "amount": self._get_nested_value(item_dict, "Amount"),
+                    "date": self._get_nested_value(item_dict, "Date"),
+                    "description": self._get_nested_value(item_dict, "Description"),
+                    "product_code": self._get_nested_value(item_dict, "ProductCode"),
+                    "quantity": self._get_nested_value(item_dict, "Quantity"),
+                    "tax": self._get_nested_value(item_dict, "Tax"),
+                    "unit": self._get_nested_value(item_dict, "Unit"),
+                    "unit_price": self._get_nested_value(item_dict, "UnitPrice"),
+                    "confidence": item.confidence if hasattr(item, 'confidence') else 0.0
+                })
+        
+        return items
+    
+    def _get_nested_value(self, dict_obj: Dict, key: str) -> Optional[Any]:
+        """Get value from nested dictionary"""
+        field = dict_obj.get(key)
+        if field and hasattr(field, 'value'):
+            return field.value
+        return None
+    
+    def _extract_field_confidences(self, fields: Dict) -> Dict[str, float]:
+        """Extract confidence scores for each field"""
+        confidences = {}
+        for field_name, field in fields.items():
+            if hasattr(field, 'confidence'):
+                confidences[field_name] = field.confidence or 0.0
+        return confidences
 

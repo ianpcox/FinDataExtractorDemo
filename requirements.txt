@@ -8,6 +8,7 @@ PyPDF2>=3.0.0
 pdfplumber>=0.10.0
 pymupdf>=1.23.0
 Pillow>=10.0.0
+reportlab>=4.0.0  # For PDF overlay rendering
 
 # Azure Services (Core only)
 azure-ai-formrecognizer>=3.3.0  # Azure Document Intelligence
@@ -32,6 +33,11 @@ openpyxl>=3.1.0  # Excel export
 # Utilities
 python-dateutil>=2.8.0
 pytz>=2023.3
+requests>=2.31.0  # For demo scripts
+openai>=1.13.0  # Azure OpenAI client
+
+# Streamlit HITL UI
+streamlit>=1.28.0
 
 # Testing
 pytest>=7.4.0
