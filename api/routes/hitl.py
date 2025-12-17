@@ -10,11 +10,15 @@ from decimal import Decimal
 import logging
 import json
 from pathlib import Path
+from typing import List
 
 from src.services.db_service import DatabaseService
 from src.models.database import get_db
 from src.models.invoice import Invoice, LineItem, Address
 from sqlalchemy.ext.asyncio import AsyncSession
+from src.extraction.extraction_service import ExtractionService
+from src.extraction.document_intelligence_client import DocumentIntelligenceClient
+from src.ingestion.file_handler import FileHandler
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +59,16 @@ class InvoiceValidationResponse(BaseModel):
     invoice_id: str
     validation_status: str
     message: str
+    review_history: Optional[list] = None
+
+
+def _get_extraction_service() -> ExtractionService:
+    doc_client = DocumentIntelligenceClient()
+    file_handler = FileHandler()
+    return ExtractionService(
+        doc_intelligence_client=doc_client,
+        file_handler=file_handler
+    )
 
 
 @router.get("/invoice/{invoice_id}")
@@ -443,6 +457,23 @@ async def validate_invoice(
         invoice.reviewer = request.reviewer
         invoice.review_timestamp = datetime.utcnow()
         invoice.review_notes = request.validation_notes
+        # Append to review history (stored in review_notes JSON list for simplicity)
+        history_entry = {
+            "status": request.overall_validation_status,
+            "reviewer": request.reviewer,
+            "notes": request.validation_notes,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        existing_history = []
+        try:
+            if invoice.review_notes:
+                existing_history = json.loads(invoice.review_notes)
+                if not isinstance(existing_history, list):
+                    existing_history = []
+        except Exception:
+            existing_history = []
+        existing_history.append(history_entry)
+        invoice.review_notes = json.dumps(existing_history)
         
         # Update status based on validation
         if request.overall_validation_status == "validated":
@@ -469,7 +500,8 @@ async def validate_invoice(
             success=True,
             invoice_id=request.invoice_id,
             validation_status=request.overall_validation_status,
-            message="Invoice validation completed successfully"
+            message="Invoice validation completed successfully",
+            review_history=existing_history
         )
         
     except HTTPException:
@@ -480,6 +512,62 @@ async def validate_invoice(
             status_code=500,
             detail=f"Internal server error: {str(e)}"
         )
+
+
+@router.get("/invoice/{invoice_id}/history")
+async def get_invoice_history(
+    invoice_id: str,
+    db: AsyncSession = Depends(get_db)
+) -> List[dict]:
+    """Return review/validation history for an invoice."""
+    invoice = await DatabaseService.get_invoice(invoice_id, db=db)
+    if not invoice:
+        raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
+    try:
+        if invoice.review_notes:
+            parsed = json.loads(invoice.review_notes)
+            if isinstance(parsed, list):
+                return parsed
+    except Exception:
+        pass
+    return []
+
+
+@router.post("/invoice/{invoice_id}/reextract")
+async def reextract_invoice(
+    invoice_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Re-run extraction for an invoice using stored file info.
+    Overwrites fields/line_items/field_confidence and returns updated invoice (HITL view shape).
+    """
+    try:
+        invoice = await DatabaseService.get_invoice(invoice_id, db=db)
+        if not invoice:
+            raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
+        if not invoice.file_path:
+            raise HTTPException(status_code=400, detail="Missing file_path for invoice")
+
+        extraction_service = _get_extraction_service()
+        from datetime import datetime
+        result = await extraction_service.extract_invoice(
+            invoice_id=invoice_id,
+            file_identifier=invoice.file_path,
+            file_name=invoice.file_name or "invoice.pdf",
+            upload_date=invoice.upload_date or datetime.utcnow(),
+            db=db,
+        )
+        if result.get("status") not in ["extracted"]:
+            raise HTTPException(status_code=500, detail="Re-extraction failed")
+
+        # Return the same shape as GET invoice (reuse existing handler)
+        return await get_invoice_for_validation(invoice_id=invoice_id, db=db)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error re-extracting invoice {invoice_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.get("/invoice/{invoice_id}/pdf")
