@@ -31,9 +31,10 @@ class TestPDFProcessor:
         assert err == "File is empty"
 
     def test_validate_rejects_oversize(self):
-        # Max 1 byte to force oversize path
-        proc = PDFProcessor(max_file_size_mb=0)
-        ok, err = proc.validate_file(b"x", "invoice.pdf")
+        # Force a tiny max size (constructor treats 0 as "use default")
+        proc = PDFProcessor(max_file_size_mb=1)
+        proc.max_file_size_bytes = 1
+        ok, err = proc.validate_file(b"xx", "invoice.pdf")
         assert ok is False
         assert "exceeds maximum allowed size" in err
 
