@@ -23,28 +23,27 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 LLM_SYSTEM_PROMPT = """
-You are an accounts payable quality-control assistant for a Canadian federal AR/AP pipeline governed by FAA Sections 32, 33, and 34.
+You are a specialized invoice extraction QA assistant for CATSA.
 
 You receive:
-1) The raw invoice text and extracted fields from an OCR/Document Intelligence model.
-2) A list of low-confidence fields that may need correction.
+- A JSON object `di_payload` that contains the extracted invoice fields and their values, using the canonical field names expected by downstream systems.
+- A JSON object `field_confidence` with per-field confidence scores from the upstream extractor.
+- A JSON array `low_conf_fields` listing the subset of fields that the upstream model is uncertain about.
+- Optionally, a short OCR text snippet from the invoice PDF.
 
-Your job:
-- ONLY propose corrections for the listed low-confidence fields.
-- Never invent data that is not clearly present in the invoice text.
-- Maintain totals, tax logic, and currency consistency.
-- If you are not confident you can improve a field, OMIT it from your output.
+Your task:
+1. For each field in `low_conf_fields`, decide whether the value in `di_payload` is correct.
+2. If it is clearly wrong or missing, infer a corrected value using ONLY the provided JSON and OCR snippet.
+3. NEVER invent fields, change field names, or guess values that are not strongly supported by the data.
+4. If you cannot reliably correct a field, set it to null.
+5. Output ONLY a single JSON object whose keys are exactly the field names from `low_conf_fields`, with their corrected (or null) values.
+6. Do NOT include explanations, comments, or extra properties.
 
 Formatting rules:
 - Dates must be ISO 8601 date strings: "YYYY-MM-DD".
 - Monetary amounts must be numeric, using "." as the decimal separator. Keep the original magnitude and currency implied by the invoice.
 - Trim whitespace and normalize casing where appropriate, but do not rewrite vendor names beyond obvious OCR fixes.
-- For address fields (vendor_address, bill_to_address, remit_to_address), return an object with keys: street, city, province, postal_code, country. Leave subfields blank or omit the address field if not confident.
-
-Output format:
-- Return ONLY one JSON object (no explanations, comments, or code fences).
-- Keys MUST be canonical field names or `line_item[i].field_name` entries.
-- Values MUST be plain strings or numbers (or address objects as noted above). Do not return prose.
+- For address fields (vendor_address, bill_to_address, remit_to_address), return an object with keys: street, city, province, postal_code, country. Use null or empty for unknown subfields.
 """
 
 
@@ -357,8 +356,22 @@ class ExtractionService:
                     if field == "purchase_order":
                         target_field = "po_number"
 
-                    if target_field in ["subtotal", "tax_amount", "total_amount", "acceptance_percentage"]:
-                        parsed = self.field_extractor._parse_decimal(data[field])
+                    new_val_raw = data[field]
+
+                    # Allow explicit null to clear a low-confidence field
+                    if new_val_raw is None:
+                        old_val = getattr(invoice, target_field, None)
+                        if old_val is not None:
+                            logger.info(
+                                "LLM cleared %s for invoice %s: %r -> None",
+                                target_field,
+                                invoice.id,
+                                old_val,
+                            )
+                        setattr(invoice, target_field, None)
+
+                    elif target_field in ["subtotal", "tax_amount", "total_amount", "acceptance_percentage"]:
+                        parsed = self.field_extractor._parse_decimal(new_val_raw)
                         old_val = getattr(invoice, target_field, None)
                         if old_val != parsed:
                             logger.info(
@@ -369,6 +382,7 @@ class ExtractionService:
                                 parsed,
                             )
                         setattr(invoice, target_field, parsed)
+
                     elif target_field in [
                         "invoice_date",
                         "due_date",
@@ -379,7 +393,7 @@ class ExtractionService:
                     ]:
                         from dateutil.parser import parse
 
-                        new_val = parse(data[field]).date()
+                        new_val = parse(new_val_raw).date()
                         old_val = getattr(invoice, target_field, None)
                         if old_val != new_val:
                             logger.info(
@@ -390,8 +404,9 @@ class ExtractionService:
                                 new_val,
                             )
                         setattr(invoice, target_field, new_val)
+
                     elif target_field in ["vendor_address", "bill_to_address", "remit_to_address"]:
-                        addr = data[field]
+                        addr = new_val_raw
                         if isinstance(addr, dict):
                             from src.models.invoice import Address
 
@@ -406,8 +421,20 @@ class ExtractionService:
                                     new_val,
                                 )
                             setattr(invoice, target_field, new_val)
+                        else:
+                            # If not dict (e.g., null or unexpected), clear it to be safe
+                            old_val = getattr(invoice, target_field, None)
+                            if old_val is not None:
+                                logger.info(
+                                    "LLM cleared %s for invoice %s: %r -> None",
+                                    target_field,
+                                    invoice.id,
+                                    old_val,
+                                )
+                            setattr(invoice, target_field, None)
+
                     else:
-                        new_val = data[field]
+                        new_val = new_val_raw
                         old_val = getattr(invoice, target_field, None)
                         if old_val != new_val:
                             logger.info(
