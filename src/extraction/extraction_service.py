@@ -6,6 +6,8 @@ from decimal import Decimal
 import logging
 import json
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from .document_intelligence_client import DocumentIntelligenceClient
 from .field_extractor import FieldExtractor
 from src.ingestion.file_handler import FileHandler
@@ -48,7 +50,8 @@ class ExtractionService:
         invoice_id: str,
         file_identifier: str,
         file_name: str,
-        upload_date: datetime
+        upload_date: datetime,
+        db: Optional[AsyncSession] = None,
     ) -> Dict[str, Any]:
         """
         Extract data from an invoice PDF
@@ -58,6 +61,7 @@ class ExtractionService:
             file_identifier: File path (local) or blob name (Azure)
             file_name: Original file name
             upload_date: Upload timestamp
+            db: Optional async DB session (uses default if not provided)
             
         Returns:
             Dictionary with extraction result
@@ -114,7 +118,7 @@ class ExtractionService:
             
             # Step 5: Save to database
             logger.info(f"Saving extracted invoice to database: {invoice_id}")
-            await DatabaseService.save_invoice(invoice)
+            await DatabaseService.save_invoice(invoice, db=db)
             
             # Prepare JSON-serializable payload
             invoice_dict = invoice.model_dump(mode="json")
@@ -133,7 +137,7 @@ class ExtractionService:
                 self._run_low_confidence_fallback(invoice, low_conf_fields, doc_intelligence_data)
                 # re-save after potential adjustments
                 invoice_dict = invoice.model_dump(mode="json")
-                await DatabaseService.save_invoice(invoice)
+                await DatabaseService.save_invoice(invoice, db=db)
             
             result = {
                 "invoice_id": invoice_id,

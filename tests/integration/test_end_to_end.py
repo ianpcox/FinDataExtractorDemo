@@ -33,7 +33,8 @@ class TestEndToEndWorkflow:
         
         ingest_result = await ingestion_service.ingest_invoice(
             file_content=sample_pdf_content,
-            file_name="test_invoice.pdf"
+            file_name="test_invoice.pdf",
+            db=db_session,
         )
         
         assert ingest_result["status"] == "uploaded"
@@ -66,7 +67,8 @@ class TestEndToEndWorkflow:
             invoice_id=invoice_id,
             file_identifier=ingest_result["file_path"],
             file_name="test_invoice.pdf",
-            upload_date=datetime.utcnow()
+            upload_date=datetime.utcnow(),
+            db=db_session,
         )
         
         assert extract_result["status"] == "extracted"

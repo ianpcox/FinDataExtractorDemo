@@ -16,6 +16,7 @@ class TestIngestionService:
     @pytest.mark.asyncio
     async def test_ingest_invoice_success(
         self,
+        db_session,
         sample_pdf_content,
         mock_file_handler,
         mock_pdf_processor
@@ -28,7 +29,8 @@ class TestIngestionService:
         
         result = await service.ingest_invoice(
             file_content=sample_pdf_content,
-            file_name="test_invoice.pdf"
+            file_name="test_invoice.pdf",
+            db=db_session,
         )
         
         assert result["status"] == "uploaded"

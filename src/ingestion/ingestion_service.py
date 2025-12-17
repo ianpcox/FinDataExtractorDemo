@@ -5,6 +5,8 @@ from datetime import datetime
 from uuid import uuid4
 import logging
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from .file_handler import FileHandler
 from .pdf_processor import PDFProcessor
 from src.models.invoice import Invoice
@@ -34,7 +36,8 @@ class IngestionService:
     async def ingest_invoice(
         self,
         file_content: bytes,
-        file_name: str
+        file_name: str,
+        db: Optional[AsyncSession] = None,
     ) -> Dict[str, Any]:
         """
         Ingest an invoice PDF
@@ -42,6 +45,7 @@ class IngestionService:
         Args:
             file_content: PDF file content as bytes
             file_name: Original file name
+            db: Optional async DB session (uses default if not provided)
             
         Returns:
             Dictionary with ingestion result
@@ -87,8 +91,7 @@ class IngestionService:
             )
             
             # Save to database
-            # Note: DatabaseService.save_invoice will get its own session if db is None
-            await DatabaseService.save_invoice(invoice)
+            await DatabaseService.save_invoice(invoice, db=db)
             
             result = {
                 "invoice_id": invoice_id,
