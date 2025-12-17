@@ -154,7 +154,7 @@ class ExtractionService:
             extraction_ts = invoice.extraction_timestamp.isoformat() if invoice.extraction_timestamp else None
 
             # Low-confidence fallback: include missing/unknown required fields
-        low_conf_threshold = 1.1  # TEMP: force all REQUIRED fields through fallback for testing
+            low_conf_threshold = 1.1  # TEMP: force all REQUIRED fields through fallback for testing
             low_conf_fields: List[str] = []
 
             REQUIRED = ["invoice_number", "invoice_date", "vendor_name", "total_amount"]
