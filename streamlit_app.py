@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 import io
 import base64
+from pathlib import Path
 
 # Configuration
 API_BASE_URL = "http://localhost:8000"
@@ -22,30 +23,64 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS
-st.markdown("""
+# Theming (colors/fonts inspired by CATSA palette)
+PRIMARY = "#c8102e"  # red accent
+ACCENT = "#3f5359"   # dark teal/grey for headers
+TEXT_COLOR = "#1f1f1f"
+BG_COLOR = "#ffffff"
+CARD_BG = "#ffffff"
+FONT_FAMILY = "Arial, 'Helvetica Neue', sans-serif"
+
+st.markdown(
+    f"""
 <style>
-    .confidence-high {
-        color: #28a745;
-        font-weight: bold;
-    }
-    .confidence-medium {
-        color: #ffc107;
-        font-weight: bold;
-    }
-    .confidence-low {
-        color: #dc3545;
-        font-weight: bold;
-    }
-    .field-label {
+    html, body, [class*="css"]  {{
+        font-family: {FONT_FAMILY};
+        color: {TEXT_COLOR};
+        background-color: {BG_COLOR};
+    }}
+    .confidence-high {{
+        color: #1e8a3c;
         font-weight: 600;
-        color: #495057;
-    }
-    .stButton>button {
+    }}
+    .confidence-medium {{
+        color: #e2a400;
+        font-weight: 600;
+    }}
+    .confidence-low {{
+        color: {PRIMARY};
+        font-weight: 600;
+    }}
+    .field-label {{
+        font-weight: 600;
+        color: {ACCENT};
+    }}
+    .stButton>button {{
         width: 100%;
-    }
+        border-radius: 6px;
+        border: 1px solid {ACCENT};
+        background-color: {PRIMARY};
+        color: white;
+        font-weight: 600;
+    }}
+    .stButton>button:hover {{
+        background-color: #a20d24;
+        border-color: #a20d24;
+    }}
+    /* Section header underline */
+    .section-title {{
+        border-bottom: 3px solid {PRIMARY};
+        padding-bottom: 4px;
+        color: {ACCENT};
+    }}
+    /* Metric styling */
+    .css-1ht1j8u, .css-12w0qpk {{
+        color: {ACCENT} !important;
+    }}
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
 
 def get_confidence_color(confidence: float) -> str:
@@ -159,6 +194,19 @@ def submit_validation(invoice_id: str, field_validations: list, line_item_valida
 def main():
     """Main Streamlit app"""
     
+    # Optional logo if available (place file at ./assets/catsa_logo.png)
+    logo_path = Path(__file__).parent / "assets" / "catsa_logo.png"
+    col_logo, col_title = st.columns([1, 4])
+    with col_logo:
+        if logo_path.exists():
+            st.image(str(logo_path), width=140)
+    with col_title:
+        st.title("Invoice Review & Validation")
+        st.markdown(
+            f'<div class="section-title">Human-in-the-Loop interface for reviewing extracted invoice data</div>',
+            unsafe_allow_html=True,
+        )
+    
     # Sidebar
     with st.sidebar:
         st.title("Invoice Review")
@@ -228,9 +276,8 @@ def main():
                     st.error(f"Error during upload/extract: {e}")
     
     # Main content
-    st.title("Invoice Review & Validation")
-    st.markdown("Human-in-the-Loop interface for reviewing extracted invoice data")
-    
+    st.markdown("")
+
     # Load invoice list
     filter_status = None if status_filter == "All" else status_filter
     invoices = load_invoice_list(filter_status)
