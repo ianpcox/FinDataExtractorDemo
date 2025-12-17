@@ -33,7 +33,7 @@ class FakeAzureOpenAI:
 
     @property
     def chat(self):
-        return FakeChat(json.dumps({"vendor_name": "LLM Vendor", "invoice_total": 234.56}))
+        return FakeChat(json.dumps({"vendor_name": "LLM Vendor", "total_amount": "$1,234.56"}))
 
 
 class FakeFileHandler:
@@ -52,10 +52,8 @@ class FakeDIClient:
             "due_date": "2024-02-01",
             "invoice_total": "100.00",
             "vendor_name": "Old Vendor",
-            "field_confidence": {
-                "InvoiceTotal": 0.5,
-                "VendorName": 0.4,
-            },
+            # simulate missing confidences to force fallback by required fields
+            "field_confidence": {},
         }
 
 
@@ -95,7 +93,11 @@ async def test_llm_fallback_applies_and_persists(monkeypatch):
 
     inv = captured["invoice"]
     assert inv.vendor_name == "LLM Vendor"
-    assert inv.total_amount == Decimal("234.56")
+    assert inv.total_amount == Decimal("1234.56")
     assert inv.field_confidence.get("total_amount") == 0.9
+    # ensure low-confidence path triggered even with empty confidence
+    assert "total_amount" in (inv.field_confidence or {})
+    assert result["low_confidence_triggered"] is True
+    assert "invoice_number" in result["low_confidence_fields"]
     assert result["status"] == "extracted"
 

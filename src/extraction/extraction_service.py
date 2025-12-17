@@ -1,10 +1,11 @@
 """Simplified extraction service with field extractor and database integration"""
 
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime, date
 from decimal import Decimal
 import logging
 import json
+import hashlib
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,6 +45,8 @@ class ExtractionService:
         )
         self.file_handler = file_handler or FileHandler()
         self.field_extractor = field_extractor or FieldExtractor()
+        # Simple in-memory cache to avoid re-spending tokens for identical requests
+        self._llm_cache: Dict[Tuple[str, Tuple[str, ...], str, str], str] = {}
     
     async def extract_invoice(
         self,
@@ -124,14 +127,24 @@ class ExtractionService:
             invoice_dict = invoice.model_dump(mode="json")
             extraction_ts = invoice.extraction_timestamp.isoformat() if invoice.extraction_timestamp else None
 
-            # Low-confidence fallback stub: capture fields below threshold (0.75)
+            # Low-confidence fallback: include missing/unknown required fields
             low_conf_threshold = 0.75
-            low_conf_fields = []
-            if invoice.field_confidence:
-                low_conf_fields = [
-                    name for name, conf in invoice.field_confidence.items()
-                    if conf is not None and conf < low_conf_threshold
-                ]
+            low_conf_fields: List[str] = []
+
+            REQUIRED = ["invoice_number", "invoice_date", "vendor_name", "total_amount"]
+            fc = invoice.field_confidence or {}
+
+            # required fields: trigger LLM if missing value OR missing confidence OR low confidence
+            for f in REQUIRED:
+                val = getattr(invoice, f, None)
+                conf = fc.get(f)
+                if val is None or conf is None or conf < low_conf_threshold:
+                    low_conf_fields.append(f)
+
+            # also include any other explicitly low-confidence fields
+            for name, conf in (fc or {}).items():
+                if conf is not None and conf < low_conf_threshold and name not in low_conf_fields:
+                    low_conf_fields.append(name)
             # Placeholder for future multimodal correction hook
             if low_conf_fields:
                 self._run_low_confidence_fallback(invoice, low_conf_fields, doc_intelligence_data)
@@ -200,30 +213,61 @@ class ExtractionService:
             if not prompt:
                 return
 
-            resp = client.chat.completions.create(
-                model=settings.AOAI_DEPLOYMENT_NAME,
-                temperature=0.0,
-                messages=[
-                    {"role": "system", "content": "You are an assistant that fixes invoice extraction results. Return JSON only."},
-                    {"role": "user", "content": prompt},
-                ],
+            cache_key = (
+                settings.AOAI_DEPLOYMENT_NAME or "",
+                tuple(sorted(low_conf_fields)),
+                invoice.id or "",
+                hashlib.sha256(prompt.encode("utf-8", "ignore")).hexdigest(),
             )
-            if not resp.choices:
-                logger.warning("LLM fallback returned no choices")
-                return
-            suggestion_text = resp.choices[0].message.content if resp.choices else None
-            if suggestion_text:
-                self._apply_llm_suggestions(invoice, suggestion_text, low_conf_fields)
-            else:
-                logger.warning("LLM fallback returned empty content")
+
+            suggestion_text = self._llm_cache.get(cache_key)
+            if suggestion_text is None:
+                resp = client.chat.completions.create(
+                    model=settings.AOAI_DEPLOYMENT_NAME,
+                    temperature=0.0,
+                    messages=[
+                        {"role": "system", "content": "You are an assistant that fixes invoice extraction results. Return JSON only."},
+                        {"role": "user", "content": prompt},
+                    ],
+                )
+                if not resp.choices:
+                    logger.warning("LLM fallback returned no choices")
+                    return
+                suggestion_text = resp.choices[0].message.content if resp.choices else None
+                if suggestion_text:
+                    self._llm_cache[cache_key] = suggestion_text
+                else:
+                    logger.warning("LLM fallback returned empty content")
+                    return
+
+            self._apply_llm_suggestions(invoice, suggestion_text, low_conf_fields)
         except Exception as e:
             logger.error(f"LLM fallback failed: {e}", exc_info=True)
 
     def _build_llm_prompt(self, di_payload: Dict[str, Any], low_conf_fields: List[str]) -> Optional[str]:
         """Build prompt using canonical field names and DI content as evidence."""
         try:
-            minimal = {k: v for k, v in di_payload.items() if k in low_conf_fields or k == "items"}
-            content_snippet = di_payload.get("content", "")
+            # Only send the low-confidence fields to keep the LLM call surgical/cheap
+            minimal = {k: v for k, v in di_payload.items() if k in low_conf_fields}
+
+            # Keep evidence small: only low-conf fields + limited text
+            content_snippet = ""
+            pages = di_payload.get("pages")
+            if isinstance(pages, list) and pages:
+                first_page = str(pages[0])
+                last_page = str(pages[-1]) if len(pages) > 1 else ""
+                head = first_page[:1200]
+                tail = last_page[-800:] if last_page else ""
+                content_snippet = head + ("\n...\n" + tail if tail else "")
+            else:
+                raw_content = str(di_payload.get("content", ""))
+                if len(raw_content) > 2000:
+                    head = raw_content[:1200]
+                    tail = raw_content[-800:]
+                    content_snippet = head + "\n...\n" + tail
+                else:
+                    content_snippet = raw_content
+
             sanitized = self._sanitize_for_json(minimal)
             parts = [
                 "Given this invoice extraction (JSON), improve only the listed low-confidence fields using the evidence text.",
@@ -249,7 +293,6 @@ class ExtractionService:
         for field in low_conf_fields:
             if field in data:
                 try:
-                    # alias legacy names to canonical
                     target_field = field
                     if field == "payment_term":
                         target_field = "payment_terms"
@@ -259,21 +302,42 @@ class ExtractionService:
                         target_field = "po_number"
 
                     if target_field in ["subtotal", "tax_amount", "total_amount", "acceptance_percentage"]:
-                        setattr(invoice, target_field, Decimal(str(data[field])))
-                    elif target_field in ["invoice_date", "due_date", "service_start_date", "service_end_date", "period_start", "period_end"]:
+                        parsed = self.field_extractor._parse_decimal(data[field])
+                        setattr(invoice, target_field, parsed)
+                    elif target_field in [
+                        "invoice_date",
+                        "due_date",
+                        "service_start_date",
+                        "service_end_date",
+                        "period_start",
+                        "period_end",
+                    ]:
                         from dateutil.parser import parse
+
                         setattr(invoice, target_field, parse(data[field]).date())
                     elif target_field in ["vendor_address", "bill_to_address", "remit_to_address"]:
                         addr = data[field]
                         if isinstance(addr, dict):
                             from src.models.invoice import Address
+
                             setattr(invoice, target_field, Address(**addr))
                     else:
                         setattr(invoice, target_field, data[field])
-                    if invoice.field_confidence is not None:
-                        invoice.field_confidence[target_field] = 0.9
+
+                    if invoice.field_confidence is None:
+                        invoice.field_confidence = {}
+                    invoice.field_confidence[target_field] = 0.9
                 except Exception as e:
                     logger.warning(f"Could not apply LLM suggestion for {field}: {e}")
+
+        # Recompute overall confidence after applying suggestions
+        try:
+            if invoice.field_confidence:
+                invoice.extraction_confidence = self.field_extractor._calculate_overall_confidence(
+                    invoice.field_confidence
+                )
+        except Exception:
+            pass
 
     def _sanitize_for_json(self, obj):
         """Recursively convert payload objects to JSON-serializable primitives."""

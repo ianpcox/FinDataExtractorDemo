@@ -58,7 +58,7 @@ def _sample_invoice():
         acceptance_percentage=Decimal("12.5"),
         tax_registration_number="TX-123",
         payment_terms="Net 30",
-        field_confidence={"invoice_total": 0.8, "vendor_name": 0.9},
+        field_confidence={"total_amount": 0.8, "vendor_name": 0.9, "tax_amount": 0.75},
         created_at=datetime(2024, 1, 1, 10, 0, 0),
         updated_at=datetime(2024, 1, 1, 10, 0, 0),
     )
@@ -89,7 +89,7 @@ async def test_db_service_save_invoice_patch_semantics(db_session):
     inv_updated = _sample_invoice()
     inv_updated.vendor_name = None  # should remain "Acme"
     inv_updated.total_amount = Decimal("125.00")  # should update
-    inv_updated.field_confidence = {"invoice_total": 0.6}
+    inv_updated.field_confidence = {"total_amount": 0.6}
 
     saved2 = await DatabaseService.save_invoice(inv_updated, db=db_session)
     assert saved2.vendor_name == "Acme"
