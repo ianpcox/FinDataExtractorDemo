@@ -157,7 +157,15 @@ class ExtractionService:
             low_conf_threshold = 1.1  # TEMP: force all REQUIRED fields through fallback for testing
             low_conf_fields: List[str] = []
 
-            REQUIRED = ["invoice_number", "invoice_date", "vendor_name", "total_amount"]
+            REQUIRED = [
+                "invoice_number",
+                "invoice_date",
+                "vendor_name",
+                "total_amount",
+                "bill_to_address",
+                "remit_to_address",
+                "vendor_address",
+            ]
             fc = invoice.field_confidence or {}
 
             # required fields: trigger LLM if missing value OR missing confidence OR low confidence
