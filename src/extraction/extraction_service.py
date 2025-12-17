@@ -261,6 +261,8 @@ class ExtractionService:
                 hashlib.sha256(prompt.encode("utf-8", "ignore")).hexdigest(),
             )
 
+            logger.info("LLM fallback: low_conf_fields=%s", low_conf_fields)
+
             suggestion_text = self._llm_cache.get(cache_key)
             if suggestion_text is None:
                 resp = client.chat.completions.create(
@@ -327,125 +329,64 @@ class ExtractionService:
 
     def _apply_llm_suggestions(self, invoice: Invoice, suggestion_text: str, low_conf_fields: List[str]):
         try:
-            data = json.loads(suggestion_text)
+            llm_suggestions = json.loads(suggestion_text)
         except Exception as e:
             logger.warning(f"Could not parse LLM suggestions as JSON: {e}")
             return
 
-        logger.info(
-            "LLM suggestions for invoice %s (fields=%s): %s",
-            invoice.id,
-            ", ".join(low_conf_fields),
-            suggestion_text,
-        )
+        logger.info("LLM suggestions: %s", llm_suggestions)
 
-        # Map known fields
-        for field in low_conf_fields:
-            if field in data:
-                try:
-                    target_field = field
-                    if field == "payment_term":
-                        target_field = "payment_terms"
-                    if field == "invoice_total":
-                        target_field = "total_amount"
-                    if field == "purchase_order":
-                        target_field = "po_number"
+        before = invoice.model_dump()
+        for field, value in llm_suggestions.items():
+            try:
+                target_field = field
+                if field == "payment_term":
+                    target_field = "payment_terms"
+                if field == "invoice_total":
+                    target_field = "total_amount"
+                if field == "purchase_order":
+                    target_field = "po_number"
 
-                    new_val_raw = data[field]
+                # Allow explicit null to clear a low-confidence field
+                if value is None:
+                    setattr(invoice, target_field, None)
+                elif target_field in ["subtotal", "tax_amount", "total_amount", "acceptance_percentage"]:
+                    parsed = self.field_extractor._parse_decimal(value)
+                    setattr(invoice, target_field, parsed)
+                elif target_field in [
+                    "invoice_date",
+                    "due_date",
+                    "service_start_date",
+                    "service_end_date",
+                    "period_start",
+                    "period_end",
+                ]:
+                    from dateutil.parser import parse
 
-                    # Allow explicit null to clear a low-confidence field
-                    if new_val_raw is None:
-                        old_val = getattr(invoice, target_field, None)
-                        if old_val is not None:
-                            logger.info(
-                                "LLM cleared %s for invoice %s: %r -> None",
-                                target_field,
-                                invoice.id,
-                                old_val,
-                            )
-                        setattr(invoice, target_field, None)
+                    setattr(invoice, target_field, parse(value).date())
+                elif target_field in ["vendor_address", "bill_to_address", "remit_to_address"]:
+                    if isinstance(value, dict):
+                        from src.models.invoice import Address
 
-                    elif target_field in ["subtotal", "tax_amount", "total_amount", "acceptance_percentage"]:
-                        parsed = self.field_extractor._parse_decimal(new_val_raw)
-                        old_val = getattr(invoice, target_field, None)
-                        if old_val != parsed:
-                            logger.info(
-                                "LLM updated %s for invoice %s: %r -> %r",
-                                target_field,
-                                invoice.id,
-                                old_val,
-                                parsed,
-                            )
-                        setattr(invoice, target_field, parsed)
-
-                    elif target_field in [
-                        "invoice_date",
-                        "due_date",
-                        "service_start_date",
-                        "service_end_date",
-                        "period_start",
-                        "period_end",
-                    ]:
-                        from dateutil.parser import parse
-
-                        new_val = parse(new_val_raw).date()
-                        old_val = getattr(invoice, target_field, None)
-                        if old_val != new_val:
-                            logger.info(
-                                "LLM updated %s for invoice %s: %r -> %r",
-                                target_field,
-                                invoice.id,
-                                old_val,
-                                new_val,
-                            )
-                        setattr(invoice, target_field, new_val)
-
-                    elif target_field in ["vendor_address", "bill_to_address", "remit_to_address"]:
-                        addr = new_val_raw
-                        if isinstance(addr, dict):
-                            from src.models.invoice import Address
-
-                            new_val = Address(**addr)
-                            old_val = getattr(invoice, target_field, None)
-                            if old_val != new_val:
-                                logger.info(
-                                    "LLM updated %s for invoice %s: %r -> %r",
-                                    target_field,
-                                    invoice.id,
-                                    old_val,
-                                    new_val,
-                                )
-                            setattr(invoice, target_field, new_val)
-                        else:
-                            # If not dict (e.g., null or unexpected), clear it to be safe
-                            old_val = getattr(invoice, target_field, None)
-                            if old_val is not None:
-                                logger.info(
-                                    "LLM cleared %s for invoice %s: %r -> None",
-                                    target_field,
-                                    invoice.id,
-                                    old_val,
-                                )
-                            setattr(invoice, target_field, None)
-
+                        setattr(invoice, target_field, Address(**value))
                     else:
-                        new_val = new_val_raw
-                        old_val = getattr(invoice, target_field, None)
-                        if old_val != new_val:
-                            logger.info(
-                                "LLM updated %s for invoice %s: %r -> %r",
-                                target_field,
-                                invoice.id,
-                                old_val,
-                                new_val,
-                            )
-                        setattr(invoice, target_field, new_val)
+                        setattr(invoice, target_field, None)
+                else:
+                    setattr(invoice, target_field, value)
 
-                    if invoice.field_confidence is None:
-                        invoice.field_confidence = {}
-                    invoice.field_confidence[target_field] = max(invoice.field_confidence.get(target_field, 0.0), 0.9)
-                except Exception as e:
-                    logger.warning(f"Could not apply LLM suggestion for {field}: {e}")
+                if invoice.field_confidence is None:
+                    invoice.field_confidence = {}
+                invoice.field_confidence[target_field] = max(invoice.field_confidence.get(target_field, 0.0), 0.9)
+            except Exception as e:
+                logger.warning(f"Could not apply LLM suggestion for {field}: {e}")
+
+        after = invoice.model_dump()
+        diff = {
+            k: {"before": before.get(k), "after": after.get(k)}
+            for k in llm_suggestions.keys()
+            if before.get(k) != after.get(k)
+        }
+        logger.info("LLM applied diff: %s", diff)
 
         # Recompute overall confidence after applying suggestions
         try:
