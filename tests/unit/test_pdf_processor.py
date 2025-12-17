@@ -50,3 +50,9 @@ class TestPDFProcessor:
         assert info["page_count"] == 1
         assert info["is_encrypted"] is False
 
+    def test_validate_rejects_malformed_pdf(self):
+        proc = PDFProcessor(max_file_size_mb=1)
+        ok, err = proc.validate_file(b"%PDF-1.4 not-a-real-pdf", "invoice.pdf")
+        assert ok is False
+        assert err is not None
+

@@ -255,5 +255,6 @@ class FileHandler:
                 file_identifier = file_identifier.replace("storage/raw/", "").replace("storage\\raw\\", "")
             
             file_path = self.raw_path / file_identifier
-            return str(file_path)
+            # Return a consistent posix-style path so tests behave the same across platforms
+            return file_path.as_posix()
 

@@ -73,6 +73,16 @@ class DocumentIntelligenceClient:
             
             # Extract invoice data
             invoice_data = self._extract_invoice_fields(result)
+            # include raw content for downstream subtype/LLM context if available
+            try:
+                if hasattr(result, "content") and result.content:
+                    invoice_data["content"] = result.content
+                elif hasattr(result, "pages") and result.pages:
+                    page_text = " ".join([p.content for p in result.pages if getattr(p, "content", None)])
+                    if page_text:
+                        invoice_data["content"] = page_text
+            except Exception:
+                pass
             
             logger.info("Document Intelligence analysis completed successfully")
             return invoice_data

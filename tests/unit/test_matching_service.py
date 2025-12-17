@@ -1,3 +1,43 @@
+"""Unit tests for MatchingService."""
+
+import pytest
+from unittest.mock import AsyncMock, patch
+
+from src.matching.matching_service import MatchingService, MatchStrategy
+
+
+@pytest.mark.unit
+class TestMatchingService:
+    @pytest.mark.asyncio
+    async def test_match_invoice_to_po_with_po_data(self, sample_invoice, sample_po_data):
+        service = MatchingService()
+        with patch("src.matching.matching_service.DatabaseService.get_invoice", new=AsyncMock(return_value=sample_invoice)):
+            results = await service.match_invoice_to_po(invoice_id=sample_invoice.id, po_data=sample_po_data)
+
+        assert len(results) == 1
+        result = results[0]
+        assert result.confidence >= service.criteria.min_confidence
+        assert result.match_strategy in {MatchStrategy.EXACT, MatchStrategy.HYBRID}
+        assert result.match_details["po_number_match"] is True
+
+    def test_match_invoice_po_data_exact_match(self, sample_invoice, sample_po_data):
+        service = MatchingService()
+        result = service._match_invoice_po_data(sample_invoice, sample_po_data)
+
+        assert result is not None
+        assert result.match_strategy == MatchStrategy.EXACT
+        assert result.confidence > 0.7
+        assert result.match_details["vendor_match"] is True
+
+    def test_match_invoice_po_by_number(self, sample_invoice):
+        service = MatchingService()
+        result = service._match_invoice_po_by_number(sample_invoice, sample_invoice.po_number)
+        assert result is not None
+        assert result.match_strategy == MatchStrategy.EXACT
+        assert result.confidence == 0.85
+
+        # Mismatch should return None
+        assert service._match_invoice_po_by_number(sample_invoice, "PO-OTHER") is None
 """Unit tests for MatchingService"""
 
 import pytest

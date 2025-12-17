@@ -111,7 +111,7 @@ class ExtractionService:
                 file_path=file_path,
                 file_name=file_name,
                 upload_date=upload_date,
-                invoice_text=invoice_text
+                invoice_text=doc_intelligence_data.get("content") or invoice_text
             )
             invoice.id = invoice_id
             invoice.status = "extracted"
@@ -191,7 +191,12 @@ class ExtractionService:
                 api_version=settings.AOAI_API_VERSION,
             )
 
-            prompt = self._build_llm_prompt(di_payload, low_conf_fields)
+            try:
+                canonical_di = self.field_extractor.normalize_di_data(di_payload or {})
+            except Exception:
+                canonical_di = di_payload or {}
+
+            prompt = self._build_llm_prompt(canonical_di, low_conf_fields)
             if not prompt:
                 return
 
@@ -215,15 +220,20 @@ class ExtractionService:
             logger.error(f"LLM fallback failed: {e}", exc_info=True)
 
     def _build_llm_prompt(self, di_payload: Dict[str, Any], low_conf_fields: List[str]) -> Optional[str]:
+        """Build prompt using canonical field names and DI content as evidence."""
         try:
             minimal = {k: v for k, v in di_payload.items() if k in low_conf_fields or k == "items"}
+            content_snippet = di_payload.get("content", "")
             sanitized = self._sanitize_for_json(minimal)
-            return (
-                "Given this invoice extraction (JSON), improve only the listed low-confidence fields. "
-                "Return JSON with just those fields corrected. If unknown, omit the field. "
-                f"Low-confidence fields: {', '.join(low_conf_fields)}\n"
-                f"Data:\n{json.dumps(sanitized, default=str)[:8000]}"
-            )
+            parts = [
+                "Given this invoice extraction (JSON), improve only the listed low-confidence fields using the evidence text.",
+                "Return JSON with just those fields corrected. If unknown, omit the field.",
+                f"Low-confidence fields (canonical): {', '.join(low_conf_fields)}",
+                f"Data:\n{json.dumps(sanitized, default=str)[:6000]}",
+            ]
+            if content_snippet:
+                parts.append(f"Evidence text (may be truncated):\n{content_snippet[:2000]}")
+            return "\n\n".join(parts)
         except Exception as e:
             logger.error(f"Failed to build LLM prompt: {e}", exc_info=True)
             return None
@@ -239,25 +249,28 @@ class ExtractionService:
         for field in low_conf_fields:
             if field in data:
                 try:
-                    # alias single -> plural for payment terms
+                    # alias legacy names to canonical
                     target_field = field
                     if field == "payment_term":
                         target_field = "payment_terms"
+                    if field == "invoice_total":
+                        target_field = "total_amount"
+                    if field == "purchase_order":
+                        target_field = "po_number"
 
                     if target_field in ["subtotal", "tax_amount", "total_amount", "acceptance_percentage"]:
                         setattr(invoice, target_field, Decimal(str(data[field])))
                     elif target_field in ["invoice_date", "due_date", "service_start_date", "service_end_date", "period_start", "period_end"]:
                         from dateutil.parser import parse
                         setattr(invoice, target_field, parse(data[field]).date())
-                    elif target_field in ["vendor_address", "customer_address", "remit_to_address"]:
-                        # Expect dict with street/city/province/postal_code/country
+                    elif target_field in ["vendor_address", "bill_to_address", "remit_to_address"]:
                         addr = data[field]
                         if isinstance(addr, dict):
                             from src.models.invoice import Address
                             setattr(invoice, target_field, Address(**addr))
                     else:
                         setattr(invoice, target_field, data[field])
-                    if invoice.field_confidence:
+                    if invoice.field_confidence is not None:
                         invoice.field_confidence[target_field] = 0.9
                 except Exception as e:
                     logger.warning(f"Could not apply LLM suggestion for {field}: {e}")

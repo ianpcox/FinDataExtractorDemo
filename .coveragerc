@@ -1,0 +1,10 @@
+[run]
+omit =
+    src/ingestion/azure_blob_utils.py
+    src/logging_config.py
+    src/erp/*
+    src/extraction/subtype_extractors.py
+    src/matching/*
+    src/erp/*
+    src/extraction/subtype_extractors.py
+

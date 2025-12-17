@@ -23,11 +23,88 @@ logger = logging.getLogger(__name__)
 
 class FieldExtractor:
     """Extracts and maps fields from Document Intelligence to Invoice model"""
-    
+
+    DI_TO_CANONICAL = {
+        "InvoiceId": "invoice_number",
+        "InvoiceDate": "invoice_date",
+        "DueDate": "due_date",
+        "VendorName": "vendor_name",
+        "VendorId": "vendor_id",
+        "VendorPhoneNumber": "vendor_phone",
+        "VendorPhone": "vendor_phone",
+        "VendorAddress": "vendor_address",
+        "CustomerName": "customer_name",
+        "CustomerId": "customer_id",
+        "CustomerAddress": "bill_to_address",
+        "BillToAddress": "bill_to_address",
+        "RemitToAddress": "remit_to_address",
+        "RemittanceAddress": "remit_to_address",
+        "RemitToName": "remit_to_name",
+        "Entity": "entity",
+        "ContractId": "contract_id",
+        "StandingOfferNumber": "standing_offer_number",
+        "PurchaseOrder": "po_number",
+        "PONumber": "po_number",
+        "ServiceStartDate": "period_start",
+        "ServiceEndDate": "period_end",
+        "SubTotal": "subtotal",
+        "TotalTax": "tax_amount",
+        "InvoiceTotal": "total_amount",
+        "CurrencyCode": "currency",
+        "Currency": "currency",
+        "PaymentTerm": "payment_terms",
+        "PaymentTerms": "payment_terms",
+        "AcceptancePercentage": "acceptance_percentage",
+        "TaxRegistrationNumber": "tax_registration_number",
+        "SalesTaxNumber": "tax_registration_number",
+    }
+
     def __init__(self):
         """Initialize field extractor with subtype extractors"""
         self.shift_service_extractor = ShiftServiceExtractor()
         self.per_diem_travel_extractor = PerDiemTravelExtractor()
+
+    def normalize_di_data(self, di_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Normalize DI payload to canonical invoice field names."""
+        canonical: Dict[str, Any] = {}
+        if not di_data:
+            return canonical
+
+        # Map known DI fields to canonical
+        for di_key, canon_key in self.DI_TO_CANONICAL.items():
+            if di_key in di_data:
+                canonical[canon_key] = di_data.get(di_key)
+
+        # Keep items/content if present
+        if "items" in di_data:
+            canonical["items"] = di_data["items"]
+        if "content" in di_data:
+            canonical["content"] = di_data["content"]
+
+        # Allow already canonical keys in the input to pass through
+        for key in [
+            "invoice_number", "invoice_date", "due_date", "vendor_name", "vendor_id",
+            "vendor_phone", "vendor_address", "customer_name", "customer_id",
+            "bill_to_address", "remit_to_address", "remit_to_name", "entity",
+            "contract_id", "standing_offer_number", "po_number", "period_start",
+            "period_end", "subtotal", "tax_breakdown", "tax_amount", "total_amount",
+            "currency", "acceptance_percentage", "tax_registration_number",
+            "payment_terms", "items", "content"
+        ]:
+            if key in di_data and key not in canonical:
+                canonical[key] = di_data[key]
+
+        # Map field_confidence if present
+        if "field_confidence" in di_data:
+            di_fc = di_data["field_confidence"] or {}
+            fc_canonical = {}
+            for di_key, val in di_fc.items():
+                canon_key = self.DI_TO_CANONICAL.get(di_key, None)
+                if canon_key:
+                    fc_canonical[canon_key] = val
+            canonical["field_confidence"] = fc_canonical
+
+        return canonical
     
     def extract_invoice(
         self,
@@ -50,6 +127,8 @@ class FieldExtractor:
         Returns:
             Invoice model instance
         """
+        canonical_data = self.normalize_di_data(doc_intelligence_data)
+
         # Extract basic invoice
         invoice = Invoice(
             id=None,  # Will be set by caller
@@ -62,89 +141,89 @@ class FieldExtractor:
         self._current_invoice = invoice
         
         # Extract field-level confidence
-        field_confidence = self._extract_field_confidence(doc_intelligence_data)
+        field_confidence = canonical_data.get("field_confidence", {})
         invoice.field_confidence = field_confidence
         
         # Map Document Intelligence fields to Invoice model - Header
         invoice.invoice_number = self._get_field_value(
-            doc_intelligence_data.get("invoice_id"), field_confidence.get("invoice_id")
+            canonical_data.get("invoice_number"), field_confidence.get("invoice_number")
         )
         invoice.invoice_date = self._parse_date(
-            doc_intelligence_data.get("invoice_date"), field_confidence.get("invoice_date")
+            canonical_data.get("invoice_date"), field_confidence.get("invoice_date")
         )
         invoice.due_date = self._parse_date(
-            doc_intelligence_data.get("due_date"), field_confidence.get("due_date")
+            canonical_data.get("due_date"), field_confidence.get("due_date")
         )
         
         # Vendor information
         invoice.vendor_name = self._get_field_value(
-            doc_intelligence_data.get("vendor_name"), field_confidence.get("vendor_name")
+            canonical_data.get("vendor_name"), field_confidence.get("vendor_name")
         )
         invoice.vendor_id = self._get_field_value(
-            doc_intelligence_data.get("vendor_id"), field_confidence.get("vendor_id")
+            canonical_data.get("vendor_id"), field_confidence.get("vendor_id")
         )
-        vendor_address = doc_intelligence_data.get("vendor_address")
+        vendor_address = canonical_data.get("vendor_address")
         if vendor_address:
             invoice.vendor_address = self._map_address(vendor_address)
         
         # Customer information
         invoice.customer_name = self._get_field_value(
-            doc_intelligence_data.get("customer_name"), field_confidence.get("customer_name")
+            canonical_data.get("customer_name"), field_confidence.get("customer_name")
         )
         invoice.customer_id = self._get_field_value(
-            doc_intelligence_data.get("customer_id"), field_confidence.get("customer_id")
+            canonical_data.get("customer_id"), field_confidence.get("customer_id")
         )
         invoice.entity = self._get_field_value(
-            doc_intelligence_data.get("entity"), field_confidence.get("entity")
+            canonical_data.get("entity"), field_confidence.get("entity")
         )
-        customer_address = doc_intelligence_data.get("customer_address")
+        customer_address = canonical_data.get("bill_to_address")
         if customer_address:
             invoice.bill_to_address = self._map_address(customer_address)
         
         # Contract and PO
         invoice.contract_id = self._get_field_value(
-            doc_intelligence_data.get("contract_id"), field_confidence.get("contract_id")
+            canonical_data.get("contract_id"), field_confidence.get("contract_id")
         )
         invoice.standing_offer_number = self._get_field_value(
-            doc_intelligence_data.get("standing_offer_number"), field_confidence.get("standing_offer_number")
+            canonical_data.get("standing_offer_number"), field_confidence.get("standing_offer_number")
         )
         invoice.po_number = self._get_field_value(
-            doc_intelligence_data.get("purchase_order"), field_confidence.get("purchase_order")
+            canonical_data.get("po_number"), field_confidence.get("po_number")
         )
         
         # Period covered
         invoice.period_start = self._parse_date(
-            doc_intelligence_data.get("service_start_date"), field_confidence.get("service_start_date")
+            canonical_data.get("period_start"), field_confidence.get("period_start")
         )
         invoice.period_end = self._parse_date(
-            doc_intelligence_data.get("service_end_date"), field_confidence.get("service_end_date")
+            canonical_data.get("period_end"), field_confidence.get("period_end")
         )
         
         # Financial fields
         invoice.subtotal = self._parse_decimal(
-            doc_intelligence_data.get("subtotal"), field_confidence.get("subtotal")
+            canonical_data.get("subtotal"), field_confidence.get("subtotal")
         )
         invoice.tax_amount = self._parse_decimal(
-            doc_intelligence_data.get("total_tax"), field_confidence.get("total_tax")
+            canonical_data.get("tax_amount"), field_confidence.get("tax_amount")
         )
         invoice.total_amount = self._parse_decimal(
-            doc_intelligence_data.get("invoice_total"), field_confidence.get("invoice_total")
+            canonical_data.get("total_amount"), field_confidence.get("total_amount")
         )
         
         # Tax breakdown (by tax type)
-        invoice.tax_breakdown = self._extract_tax_breakdown(doc_intelligence_data)
+        invoice.tax_breakdown = self._extract_tax_breakdown(canonical_data)
         
         # Currency
-        currency = doc_intelligence_data.get("currency")
+        currency = canonical_data.get("currency")
         invoice.currency = self._normalize_currency(currency) if currency else "CAD"
         
         # Payment terms
         invoice.payment_terms = self._get_field_value(
-            doc_intelligence_data.get("payment_term"), field_confidence.get("payment_term")
+            canonical_data.get("payment_terms"), field_confidence.get("payment_terms")
         )
         
         # Line items
-        items_data = doc_intelligence_data.get("items", [])
+        items_data = canonical_data.get("items", [])
         invoice.line_items = self._extract_line_items(items_data, field_confidence)
         # Derive totals if missing
         if invoice.line_items:
@@ -158,19 +237,19 @@ class FieldExtractor:
             if invoice.tax_amount is None and invoice.total_amount is not None and invoice.subtotal is not None:
                 invoice.tax_amount = invoice.total_amount - invoice.subtotal
         invoice.acceptance_percentage = self._parse_decimal(
-            doc_intelligence_data.get("acceptance_percentage"), field_confidence.get("acceptance_percentage")
+            canonical_data.get("acceptance_percentage"), field_confidence.get("acceptance_percentage")
         )
         invoice.tax_registration_number = self._get_field_value(
-            doc_intelligence_data.get("tax_registration_number"), field_confidence.get("tax_registration_number")
+            canonical_data.get("tax_registration_number"), field_confidence.get("tax_registration_number")
         )
         invoice.vendor_phone = self._get_field_value(
-            doc_intelligence_data.get("vendor_phone"), field_confidence.get("vendor_phone")
+            canonical_data.get("vendor_phone"), field_confidence.get("vendor_phone")
         )
-        remit_addr = doc_intelligence_data.get("remit_to_address")
+        remit_addr = canonical_data.get("remit_to_address")
         if remit_addr:
             invoice.remit_to_address = self._map_address(remit_addr)
         invoice.remit_to_name = self._get_field_value(
-            doc_intelligence_data.get("remit_to_name"), field_confidence.get("remit_to_name")
+            canonical_data.get("remit_to_name"), field_confidence.get("remit_to_name")
         )
         
         # Calculate overall confidence
@@ -179,7 +258,7 @@ class FieldExtractor:
         
         # Detect and extract subtype
         invoice.invoice_subtype, invoice.extensions = self._detect_and_extract_subtype(
-            doc_intelligence_data, invoice, invoice_text
+            canonical_data, invoice, invoice_text
         )
         
         return invoice
