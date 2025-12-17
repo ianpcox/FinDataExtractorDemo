@@ -303,7 +303,8 @@ class ExtractionService:
                 "low_conf_subset": subset,
                 "ocr_snippet": content_snippet,
             }
-            return json.dumps(payload, ensure_ascii=False)
+            sanitized = self._sanitize_for_json(payload)
+            return json.dumps(sanitized, ensure_ascii=False)
         except Exception as e:
             logger.error(f"Failed to build LLM prompt: {e}", exc_info=True)
             return None
