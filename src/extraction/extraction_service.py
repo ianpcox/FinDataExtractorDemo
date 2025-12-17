@@ -111,7 +111,7 @@ class ExtractionService:
                 file_path=file_path,
                 file_name=file_name,
                 upload_date=upload_date,
-                invoice_text=invoice_text
+                invoice_text=doc_intelligence_data.get("content") or invoice_text
             )
             invoice.id = invoice_id
             invoice.status = "extracted"
@@ -239,10 +239,12 @@ class ExtractionService:
         for field in low_conf_fields:
             if field in data:
                 try:
-                    # alias single -> plural for payment terms
+                    # alias single -> plural for payment terms, and map invoice_total -> total_amount
                     target_field = field
                     if field == "payment_term":
                         target_field = "payment_terms"
+                    if field == "invoice_total":
+                        target_field = "total_amount"
 
                     if target_field in ["subtotal", "tax_amount", "total_amount", "acceptance_percentage"]:
                         setattr(invoice, target_field, Decimal(str(data[field])))

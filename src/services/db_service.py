@@ -47,15 +47,18 @@ class DatabaseService:
             existing_invoice = result.scalar_one_or_none()
             
             if existing_invoice:
-                # Update existing invoice
+                # Update existing invoice with patch semantics (skip None, keep created_at)
                 logger.info(f"Updating existing invoice: {invoice.id}")
                 db_invoice = pydantic_to_db_invoice(invoice)
-                
-                # Update fields
+
                 for key, value in db_invoice.__dict__.items():
-                    if not key.startswith('_') and key != 'id':
-                        setattr(existing_invoice, key, value)
-                
+                    if key.startswith("_") or key in ["id", "created_at"]:
+                        continue
+                    # Skip None to avoid overwriting existing populated fields
+                    if value is None:
+                        continue
+                    setattr(existing_invoice, key, value)
+
                 existing_invoice.updated_at = datetime.utcnow()
                 db_invoice = existing_invoice
             else:

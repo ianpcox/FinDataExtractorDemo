@@ -173,6 +173,7 @@ def main():
         
         # Refresh button
         if st.button("Refresh Invoice List"):
+            st.cache_data.clear()
             st.rerun()
         
         st.markdown("---")
@@ -216,6 +217,7 @@ def main():
                         )
                         if extract_resp.status_code == 200:
                             st.success("Extraction completed. Loading invoice...")
+                            st.cache_data.clear()
                             st.session_state["selected_invoice_id"] = invoice_id
                             st.experimental_rerun()
                         else:
@@ -456,7 +458,9 @@ def main():
                             timeout=180,
                         )
                         if resp.status_code == 200:
-                            st.success("Extraction re-run completed. Refresh to view updates.")
+                            st.success("Extraction re-run completed. Refreshing...")
+                            st.cache_data.clear()
+                            st.experimental_rerun()
                         else:
                             st.error(f"Extraction re-run failed: {resp.status_code} {resp.text}")
                 except Exception as e:

@@ -3,6 +3,8 @@
 import pytest
 from unittest.mock import Mock, MagicMock, patch, AsyncMock
 from datetime import datetime
+import json
+from decimal import Decimal
 
 from src.extraction.extraction_service import ExtractionService
 from src.extraction.document_intelligence_client import DocumentIntelligenceClient
@@ -103,4 +105,44 @@ class TestExtractionService:
         
         assert result["status"] == "extraction_failed"
         assert len(result["errors"]) > 0
+
+    def test_build_llm_prompt_sanitizes_payload(self, sample_document_intelligence_data):
+        service = ExtractionService(
+            doc_intelligence_client=MagicMock(),
+            file_handler=MagicMock(),
+            field_extractor=MagicMock()
+        )
+        prompt = service._build_llm_prompt(sample_document_intelligence_data, ["payment_term", "vendor_address"])
+        assert prompt is not None
+        assert "Low-confidence fields" in prompt
+        assert "payment_term" in prompt
+
+    def test_apply_llm_suggestions_sets_fields_and_confidence(self, sample_invoice):
+        service = ExtractionService(
+            doc_intelligence_client=MagicMock(),
+            file_handler=MagicMock(),
+            field_extractor=MagicMock()
+        )
+        # ensure field_confidence exists
+        sample_invoice.field_confidence = sample_invoice.field_confidence or {}
+        suggestion = json.dumps({
+            "payment_term": "Net 45",
+            "vendor_name": "Updated Vendor"
+        })
+
+        service._apply_llm_suggestions(sample_invoice, suggestion, ["payment_term", "vendor_name"])
+
+        assert getattr(sample_invoice, "payment_terms") == "Net 45"
+        assert sample_invoice.vendor_name == "Updated Vendor"
+        assert sample_invoice.field_confidence["payment_terms"] == 0.9
+        assert sample_invoice.field_confidence["vendor_name"] == 0.9
+
+    def test_run_low_confidence_fallback_no_llm(self, sample_invoice):
+        service = ExtractionService(
+            doc_intelligence_client=MagicMock(),
+            file_handler=MagicMock(),
+            field_extractor=MagicMock()
+        )
+        # With USE_LLM_FALLBACK default False, this should no-op without error
+        service._run_low_confidence_fallback(sample_invoice, ["vendor_name"], {"vendor_name": "x"})
 

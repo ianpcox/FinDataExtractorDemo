@@ -513,7 +513,7 @@ async def get_invoice_pdf(
                 if resp.status_code == 200:
                     pdf_content = resp.content
                 else:
-                    logger.error(f"Failed to download PDF from URL: {url_path} status={resp.status_code}")
+                    logger.warning(f"HTTP download failed for PDF {url_path} status={resp.status_code}; will try SDK/local fallback")
             except Exception as e:
                 logger.error(f"Error downloading PDF from URL: {e}", exc_info=True)
 
