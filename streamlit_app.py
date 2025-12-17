@@ -11,6 +11,7 @@ from typing import Dict, Any, Optional
 import io
 import base64
 from pathlib import Path
+from copy import deepcopy
 
 # Configuration
 API_BASE_URL = "http://localhost:8000"
@@ -162,6 +163,35 @@ def get_invoice_pdf(invoice_id: str) -> Optional[bytes]:
         return None
 
 
+def load_validation_history(invoice_id: str) -> list:
+    """Fetch validation/review history."""
+    try:
+        resp = requests.get(f"{API_BASE_URL}/api/hitl/invoice/{invoice_id}/history", timeout=15)
+        if resp.status_code == 200:
+            return resp.json() or []
+        return []
+    except Exception:
+        return []
+
+
+def reset_invoice_state(invoice_id: str, invoice_data: dict):
+    """Reset edit buffers and validation history for the given invoice."""
+    st.session_state["current_invoice_id"] = invoice_id
+    st.session_state["edited_fields"] = invoice_data.get("fields", {}) or {}
+    st.session_state["edited_addresses"] = invoice_data.get("addresses", {}) or {}
+    st.session_state["edited_line_items"] = invoice_data.get("line_items", []) or []
+    st.session_state["validation_history"] = load_validation_history(invoice_id)
+
+    # Clear per-field widgets for this invoice
+    for key in list(st.session_state.keys()):
+        if key.startswith("field_"):
+            del st.session_state[key]
+        elif key.startswith(f"item_{invoice_id}_"):
+            del st.session_state[key]
+        elif key.startswith(f"{invoice_id}_"):
+            del st.session_state[key]
+
+
 def submit_validation(invoice_id: str, field_validations: list, line_item_validations: list,
                      overall_status: str, reviewer: str, notes: str) -> bool:
     """Submit invoice validation"""
@@ -303,10 +333,14 @@ def main():
     # Load invoice details
     with st.spinner("Loading invoice..."):
         invoice_data = load_invoice(selected_invoice_id)
-    
     if not invoice_data:
         st.error("Could not load invoice details.")
         return
+    # Initialize session state for the currently selected invoice (edit buffers and history)
+    if st.session_state.get("current_invoice_id") != selected_invoice_id or "edited_line_items" not in st.session_state:
+        reset_invoice_state(selected_invoice_id, invoice_data)
+    elif "validation_history" not in st.session_state:
+        st.session_state["validation_history"] = load_validation_history(selected_invoice_id)
     
     # Display invoice information
     st.markdown("---")
@@ -357,167 +391,153 @@ def main():
             st.warning("Could not inline-load the PDF. Use the link above to open/download.")
 
     with col_main:
-        tab1, tab2, tab4 = st.tabs(["Fields", "Line Items", "Validation"])
+        with st.form("invoice_review_form"):
+            tab1, tab2, tab4 = st.tabs(["Fields", "Line Items", "Validation"])
 
         # Tab 1: Fields
-        with tab1:
-            st.subheader("Extracted Fields")
-            
-            fields = invoice_data.get("fields", {})
-            
-            # Group fields into sections
-            header_fields = ["invoice_number", "invoice_date", "due_date", "po_number", "standing_offer_number"]
-            vendor_fields = ["vendor_name", "vendor_id", "vendor_phone"]
-            customer_fields = ["customer_name", "customer_id"]
-            financial_fields = ["subtotal", "tax_amount", "total_amount", "currency", "payment_terms", "acceptance_percentage", "tax_registration_number"]
-            
-            # Header Information
-            st.markdown("#### Header Information")
-            header_cols = st.columns(3)
-            
-            for i, field_name in enumerate(header_fields):
-                if field_name in fields:
-                    field_data = fields[field_name]
-                    value = field_data.get("value")
-                    confidence = field_data.get("confidence", 0.0)
-                    
-                    with header_cols[i % 3]:
-                        icon = get_confidence_icon(confidence)
-                        conf_class = get_confidence_color(confidence)
+            with tab1:
+                st.subheader("Extracted Fields")
+                
+                fields = invoice_data.get("fields", {})
+                
+                # Group fields into sections
+                header_fields = ["invoice_number", "invoice_date", "due_date", "po_number", "standing_offer_number"]
+                vendor_fields = ["vendor_name", "vendor_id", "vendor_phone"]
+                customer_fields = ["customer_name", "customer_id"]
+                financial_fields = ["subtotal", "tax_amount", "total_amount", "currency", "payment_terms", "acceptance_percentage", "tax_registration_number"]
+                
+                # Header Information
+                st.markdown("#### Header Information")
+                header_cols = st.columns(3)
+                
+                for i, field_name in enumerate(header_fields):
+                    if field_name in fields:
+                        field_data = fields[field_name]
+                        value = field_data.get("value")
+                        confidence = field_data.get("confidence", 0.0)
                         
-                        label = field_name.replace("_", " ").title()
-                        st.text_input(
-                            label,
-                            value=str(value) if value else "",
-                            key=f"field_{field_name}",
-                            help=f"Confidence: {format_confidence(confidence)}"
-                        )
-                        st.markdown(f'<span class="{conf_class}">{icon} {format_confidence(confidence)}</span>', 
-                                  unsafe_allow_html=True)
-            
-            # Vendor Information
-            st.markdown("#### Vendor Information")
-            vendor_cols = st.columns(2)
-            
-            for i, field_name in enumerate(vendor_fields):
-                if field_name in fields:
-                    field_data = fields[field_name]
-                    value = field_data.get("value")
-                    confidence = field_data.get("confidence", 0.0)
-                    
-                    with vendor_cols[i % 2]:
-                        icon = get_confidence_icon(confidence)
-                        conf_class = get_confidence_color(confidence)
-                        
-                        label = field_name.replace("_", " ").title()
-                        st.text_input(
-                            label,
-                            value=str(value) if value else "",
-                            key=f"field_{field_name}",
-                            help=f"Confidence: {format_confidence(confidence)}"
-                        )
-                        st.markdown(f'<span class="{conf_class}">{icon} {format_confidence(confidence)}</span>', 
-                                  unsafe_allow_html=True)
-            
-            # Customer Information
-            st.markdown("#### Customer Information")
-            customer_cols = st.columns(2)
-            
-            for i, field_name in enumerate(customer_fields):
-                if field_name in fields:
-                    field_data = fields[field_name]
-                    value = field_data.get("value")
-                    confidence = field_data.get("confidence", 0.0)
-                    
-                    with customer_cols[i % 2]:
-                        icon = get_confidence_icon(confidence)
-                        conf_class = get_confidence_color(confidence)
-                        
-                        label = field_name.replace("_", " ").title()
-                        st.text_input(
-                            label,
-                            value=str(value) if value else "",
-                            key=f"field_{field_name}",
-                            help=f"Confidence: {format_confidence(confidence)}"
-                        )
-                        st.markdown(f'<span class="{conf_class}">{icon} {format_confidence(confidence)}</span>', 
-                                  unsafe_allow_html=True)
-            
-            # Financial Information
-            st.markdown("#### Financial Information")
-            financial_cols = st.columns(3)
-            
-            for i, field_name in enumerate(financial_fields):
-                if field_name in fields:
-                    field_data = fields[field_name]
-                    value = field_data.get("value")
-                    confidence = field_data.get("confidence", 0.0)
-                    
-                    with financial_cols[i % 3]:
-                        icon = get_confidence_icon(confidence)
-                        conf_class = get_confidence_color(confidence)
-                        
-                        label = field_name.replace("_", " ").title()
-                        if field_name in ["subtotal", "tax_amount", "total_amount", "acceptance_percentage"]:
-                            st.number_input(
-                                label,
-                                value=float(value) if value else 0.0,
-                                key=f"field_{field_name}",
-                                format="%.2f",
-                                help=f"Confidence: {format_confidence(confidence)}"
-                            )
-                        else:
+                        with header_cols[i % 3]:
+                            icon = get_confidence_icon(confidence)
+                            conf_class = get_confidence_color(confidence)
+                            
+                            label = field_name.replace("_", " ").title()
                             st.text_input(
                                 label,
                                 value=str(value) if value else "",
-                                key=f"field_{field_name}",
+                                key=f"field_{selected_invoice_id}_{field_name}",
                                 help=f"Confidence: {format_confidence(confidence)}"
                             )
-                        st.markdown(f'<span class="{conf_class}">{icon} {format_confidence(confidence)}</span>', 
-                                  unsafe_allow_html=True)
-            
-            # Addresses
-            addresses = invoice_data.get("addresses", {})
-            if addresses:
-                st.markdown("#### Addresses")
+                            st.markdown(f'<span class="{conf_class}">{icon} {format_confidence(confidence)}</span>', 
+                                      unsafe_allow_html=True)
                 
-                for addr_type, addr_data in addresses.items():
-                    if addr_data.get("value"):
+                # Vendor Information
+                st.markdown("#### Vendor Information")
+                vendor_cols = st.columns(2)
+                
+                for i, field_name in enumerate(vendor_fields):
+                    if field_name in fields:
+                        field_data = fields[field_name]
+                        value = field_data.get("value")
+                        confidence = field_data.get("confidence", 0.0)
+                        
+                        with vendor_cols[i % 2]:
+                            icon = get_confidence_icon(confidence)
+                            conf_class = get_confidence_color(confidence)
+                            
+                            label = field_name.replace("_", " ").title()
+                            st.text_input(
+                                label,
+                                value=str(value) if value else "",
+                                key=f"field_{selected_invoice_id}_{field_name}",
+                                help=f"Confidence: {format_confidence(confidence)}"
+                            )
+                            st.markdown(f'<span class="{conf_class}">{icon} {format_confidence(confidence)}</span>', 
+                                      unsafe_allow_html=True)
+                
+                # Customer Information
+                st.markdown("#### Customer Information")
+                customer_cols = st.columns(2)
+                
+                for i, field_name in enumerate(customer_fields):
+                    if field_name in fields:
+                        field_data = fields[field_name]
+                        value = field_data.get("value")
+                        confidence = field_data.get("confidence", 0.0)
+                        
+                        with customer_cols[i % 2]:
+                            icon = get_confidence_icon(confidence)
+                            conf_class = get_confidence_color(confidence)
+                            
+                            label = field_name.replace("_", " ").title()
+                            st.text_input(
+                                label,
+                                value=str(value) if value else "",
+                                key=f"field_{selected_invoice_id}_{field_name}",
+                                help=f"Confidence: {format_confidence(confidence)}"
+                            )
+                            st.markdown(f'<span class="{conf_class}">{icon} {format_confidence(confidence)}</span>', 
+                                      unsafe_allow_html=True)
+                
+                # Financial Information
+                st.markdown("#### Financial Information")
+                financial_cols = st.columns(3)
+                
+                for i, field_name in enumerate(financial_fields):
+                    if field_name in fields:
+                        field_data = fields[field_name]
+                        value = field_data.get("value")
+                        confidence = field_data.get("confidence", 0.0)
+                        
+                        with financial_cols[i % 3]:
+                            icon = get_confidence_icon(confidence)
+                            conf_class = get_confidence_color(confidence)
+                            
+                            label = field_name.replace("_", " ").title()
+                            if field_name in ["subtotal", "tax_amount", "total_amount", "acceptance_percentage"]:
+                                st.number_input(
+                                    label,
+                                    value=float(value) if value else 0.0,
+                                    key=f"field_{selected_invoice_id}_{field_name}",
+                                    format="%.2f",
+                                    help=f"Confidence: {format_confidence(confidence)}"
+                                )
+                            else:
+                                st.text_input(
+                                    label,
+                                    value=str(value) if value else "",
+                                    key=f"field_{selected_invoice_id}_{field_name}",
+                                    help=f"Confidence: {format_confidence(confidence)}"
+                                )
+                            st.markdown(f'<span class="{conf_class}">{icon} {format_confidence(confidence)}</span>', 
+                                      unsafe_allow_html=True)
+                
+                # Addresses
+                addresses = st.session_state.get("edited_addresses", {})
+                if addresses:
+                    st.markdown("#### Addresses")
+                    for addr_type, addr_data in addresses.items():
                         st.markdown(f"**{addr_type.replace('_', ' ').title()}:**")
-                        addr = addr_data["value"]
-                        st.text(f"{addr.get('street', '')}, {addr.get('city', '')}, {addr.get('province', '')} {addr.get('postal_code', '')}")
-                        conf = addr_data.get("confidence", 0.0)
-                        st.markdown(f'<span class="{get_confidence_color(conf)}">{get_confidence_icon(conf)} {format_confidence(conf)}</span>', unsafe_allow_html=True)
+                        addr_val = (addr_data or {}).get("value") or {}
+                        col_a, col_b = st.columns(2)
+                        with col_a:
+                            st.text_input("Street", value=addr_val.get("street", "") or "", key=f"{selected_invoice_id}_{addr_type}_street")
+                            st.text_input("City", value=addr_val.get("city", "") or "", key=f"{selected_invoice_id}_{addr_type}_city")
+                            st.text_input("Province", value=addr_val.get("province", "") or "", key=f"{selected_invoice_id}_{addr_type}_province")
+                        with col_b:
+                            st.text_input("Postal Code", value=addr_val.get("postal_code", "") or "", key=f"{selected_invoice_id}_{addr_type}_postal_code")
+                            st.text_input("Country", value=addr_val.get("country", "") or "", key=f"{selected_invoice_id}_{addr_type}_country")
+                            conf = addr_data.get("confidence", 0.0)
+                            st.markdown(
+                                f'<span class="{get_confidence_color(conf)}">{get_confidence_icon(conf)} {format_confidence(conf)}</span>',
+                                unsafe_allow_html=True,
+                            )
 
-            # Re-run extraction for this invoice (uses existing file path/name)
-            st.markdown("#### Re-run Extraction")
-            if st.button("Re-run extraction for this invoice"):
-                try:
-                    file_path = invoice_data.get("file_path")
-                    file_name = invoice_data.get("file_name", "invoice.pdf")
-                    invoice_id = invoice_data.get("invoice_id")
-                    if not file_path or not invoice_id:
-                        st.error("Missing file path or invoice id; cannot re-run extraction.")
-                    else:
-                        resp = requests.post(
-                            f"{API_BASE_URL}/api/extraction/extract/{invoice_id}",
-                            params={"file_identifier": file_path, "file_name": file_name},
-                            timeout=180,
-                        )
-                        if resp.status_code == 200:
-                            st.success("Extraction re-run completed. Refreshing...")
-                            st.cache_data.clear()
-                            st.rerun()
-                        else:
-                            st.error(f"Extraction re-run failed: {resp.status_code} {resp.text}")
-                except Exception as e:
-                    st.error(f"Error re-running extraction: {e}")
     
         # Tab 2: Line Items
         with tab2:
             st.subheader("Line Items")
             
-            line_items = invoice_data.get("line_items", [])
+            line_items = st.session_state.get("edited_line_items", [])
             
             if line_items:
                 # Summary
@@ -530,16 +550,59 @@ def main():
                         return float(val)
                     except Exception:
                         return default
+                def current_line_value(ln: int, key: str, fallback):
+                    return st.session_state.get(f"item_{selected_invoice_id}_{ln}_{key}", fallback)
+
+                def compute_display_values(item):
+                    ln = item.get("line_number")
+                    qty = current_line_value(ln, "qty", item.get("quantity"))
+                    unit_price = current_line_value(ln, "price", item.get("unit_price"))
+                    gst = current_line_value(ln, "gst", item.get("gst_amount"))
+                    pst = current_line_value(ln, "pst", item.get("pst_amount"))
+                    qst = current_line_value(ln, "qst", item.get("qst_amount"))
+                    combined = current_line_value(ln, "combined", item.get("combined_tax"))
+                    tax_amount = current_line_value(ln, "tax_amount", item.get("tax_amount"))
+                    amt = item.get("amount")
+                    line_total = None
+                    try:
+                        if amt is not None:
+                            line_total = float(amt)
+                        elif qty is not None and unit_price is not None:
+                            line_total = float(qty) * float(unit_price)
+                    except Exception:
+                        line_total = safe_num(amt, 0.0)
+                    if line_total is None:
+                        line_total = safe_num(amt, 0.0)
+                    subtotal = line_total
+                    try:
+                        if tax_amount not in [None, ""]:
+                            subtotal = line_total - float(tax_amount)
+                        elif combined not in [None, ""]:
+                            subtotal = line_total - float(combined)
+                        else:
+                            parts = [gst, pst, qst]
+                            if any(p is not None for p in parts):
+                                subtotal = line_total - sum(float(p) for p in parts if p is not None)
+                    except Exception:
+                        subtotal = line_total
+                    return line_total, subtotal
 
                 # Line items table
                 items_data = []
                 for item in line_items:
+                    ln = item.get("line_number")
+                    line_total, subtotal = compute_display_values(item)
                     items_data.append({
-                        "Line": item.get("line_number"),
+                        "Line": ln,
                         "Description": item.get("description", "")[:50],
-                        "Qty": safe_num(item.get("quantity")),
-                        "Unit Price": f"${safe_num(item.get('unit_price'), 0):,.2f}",
-                        "Amount": f"${safe_num(item.get('amount'), 0):,.2f}",
+                        "Qty": safe_num(current_line_value(ln, "qty", item.get("quantity"))),
+                        "Unit Price": f"${safe_num(current_line_value(ln, 'price', item.get('unit_price')), 0):,.2f}",
+                        "Subtotal": f"${subtotal:,.2f}",
+                        "Line Total": f"${line_total:,.2f}",
+                        "GST": f"${safe_num(current_line_value(ln, 'gst', item.get('gst_amount')), 0):,.2f}" if item.get("gst_amount") is not None or st.session_state.get(f"item_{selected_invoice_id}_{ln}_gst") is not None else "",
+                        "PST": f"${safe_num(current_line_value(ln, 'pst', item.get('pst_amount')), 0):,.2f}" if item.get("pst_amount") is not None or st.session_state.get(f"item_{selected_invoice_id}_{ln}_pst") is not None else "",
+                        "QST": f"${safe_num(current_line_value(ln, 'qst', item.get('qst_amount')), 0):,.2f}" if item.get("qst_amount") is not None or st.session_state.get(f"item_{selected_invoice_id}_{ln}_qst") is not None else "",
+                        "Combined Tax": f"${safe_num(current_line_value(ln, 'combined', item.get('combined_tax')), 0):,.2f}" if item.get("combined_tax") is not None or st.session_state.get(f"item_{selected_invoice_id}_{ln}_combined") is not None else "",
                         "Confidence": format_confidence(item.get("confidence", 0.0))
                     })
                 
@@ -548,16 +611,23 @@ def main():
                 # Detailed view
                 st.markdown("#### Detailed View")
                 for item in line_items:
-                    with st.expander(f"Line {item.get('line_number')}: {item.get('description', '')[:50]}"):
+                    ln = item.get("line_number")
+                    line_total, subtotal = compute_display_values(item)
+                    with st.expander(f"Line {ln}: {item.get('description', '')[:50]}"):
                         col1, col2 = st.columns(2)
                         
                         with col1:
-                            st.text_input("Description", value=item.get("description", ""), key=f"item_{item.get('line_number')}_desc")
-                            st.number_input("Quantity", value=safe_num(item.get("quantity"), 0.0), key=f"item_{item.get('line_number')}_qty")
-                            st.number_input("Amount", value=safe_num(item.get("amount"), 0.0), format="%.2f", key=f"item_{item.get('line_number')}_amount")
+                            st.text_input("Description", value=item.get("description", ""), key=f"item_{selected_invoice_id}_{ln}_desc")
+                            st.number_input("Quantity", value=safe_num(item.get("quantity"), 0.0), key=f"item_{selected_invoice_id}_{ln}_qty")
+                            st.number_input("GST", value=safe_num(item.get("gst_amount"), 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_gst")
+                            st.number_input("PST", value=safe_num(item.get("pst_amount"), 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_pst")
+                            st.number_input("QST", value=safe_num(item.get("qst_amount"), 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_qst")
                         
                         with col2:
-                            st.number_input("Unit Price", value=safe_num(item.get("unit_price"), 0.0), format="%.2f", key=f"item_{item.get('line_number')}_price")
+                            st.number_input("Unit Price", value=safe_num(item.get("unit_price"), 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_price")
+                            st.number_input("Combined Tax", value=safe_num(item.get("combined_tax"), 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_combined")
+                            st.markdown(f"**Line Total:** ${line_total:,.2f}")
+                            st.markdown(f"**Subtotal (excl. tax):** ${subtotal:,.2f}")
                             conf = item.get("confidence", 0.0)
                             conf_class = get_confidence_color(conf)
                             st.markdown(f'<span class="{conf_class}">{get_confidence_icon(conf)} Confidence: {format_confidence(conf)}</span>', 
@@ -567,33 +637,126 @@ def main():
     
         # Tab 4: Validation
         with tab4:
-            st.subheader("Submit Validation")
-            
-            reviewer_name = st.text_input("Reviewer Name", value="", placeholder="Enter your name")
-            
-            validation_status = st.selectbox(
-                "Validation Status",
-                ["pending", "validated", "needs_review"],
-                index=0
-            )
-            
-            validation_notes = st.text_area(
-                "Validation Notes",
-                placeholder="Add any notes or comments about this validation..."
-            )
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if st.button("Submit Validation", type="primary"):
+            with tab4:
+                st.subheader("Submit Validation")
+                
+                reviewer_name = st.text_input("Reviewer Name", value="", placeholder="Enter your name")
+                
+                validation_status = st.selectbox(
+                    "Validation Status",
+                    ["pending", "validated", "needs_review"],
+                    index=0
+                )
+                
+                validation_notes = st.text_area(
+                    "Validation Notes",
+                    placeholder="Add any notes or comments about this validation..."
+                )
+                
+                submitted = st.form_submit_button("Submit Validation", type="primary")
+                if submitted:
                     if not reviewer_name:
                         st.warning("Please enter your name as reviewer.")
                     else:
-                        # Collect field validations (simplified - would collect from form in full implementation)
+                        # Collect edits from session_state buffers
                         field_validations = []
                         line_item_validations = []
-                        
-                        # Submit validation
+
+                        # Header/vendor/customer/financial fields diff
+                        fields_data = invoice_data.get("fields", {}) or {}
+                        header_fields = ["invoice_number", "invoice_date", "due_date", "po_number", "standing_offer_number"]
+                        vendor_fields = ["vendor_name", "vendor_id", "vendor_phone"]
+                        customer_fields = ["customer_name", "customer_id"]
+                        financial_fields = [
+                            "subtotal",
+                            "tax_amount",
+                            "total_amount",
+                            "currency",
+                            "payment_terms",
+                            "acceptance_percentage",
+                            "tax_registration_number",
+                        ]
+                        for fname in header_fields + vendor_fields + customer_fields + financial_fields:
+                            if fname in fields_data:
+                                field_data = fields_data.get(fname) or {}
+                                orig_val = field_data.get("value")
+                                new_val = st.session_state.get(f"field_{selected_invoice_id}_{fname}")
+                                if new_val is not None and str(new_val) != str(orig_val or ""):
+                                    field_validations.append({
+                                        "field_name": fname,
+                                        "value": orig_val,
+                                        "confidence": field_data.get("confidence", 0.0),
+                                        "validated": True,
+                                        "corrected_value": new_val,
+                                        "validation_notes": "",
+                                    })
+
+                        # Addresses
+                        edited_addresses = st.session_state.get("edited_addresses", {})
+                        for addr_key, addr_data in edited_addresses.items():
+                            value = {
+                                "street": st.session_state.get(f"{selected_invoice_id}_{addr_key}_street") or "",
+                                "city": st.session_state.get(f"{selected_invoice_id}_{addr_key}_city") or "",
+                                "province": st.session_state.get(f"{selected_invoice_id}_{addr_key}_province") or "",
+                                "postal_code": st.session_state.get(f"{selected_invoice_id}_{addr_key}_postal_code") or "",
+                                "country": st.session_state.get(f"{selected_invoice_id}_{addr_key}_country") or "",
+                            }
+                            field_validations.append({
+                                "field_name": addr_key,
+                                "value": None,
+                                "confidence": 0.9,
+                                "validated": True,
+                                "corrected_value": value,
+                                "validation_notes": ""
+                            })
+
+                        # Line items
+                        original_items = {li.get("line_number"): li for li in invoice_data.get("line_items", [])}
+                        for item in st.session_state.get("edited_line_items", []):
+                            ln = item.get("line_number")
+                            orig = original_items.get(ln, {}) or {}
+                            corrections = {}
+
+                            def maybe_add(key_short: str, canon_key: str):
+                                new_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_{key_short}")
+                                old_val = orig.get(canon_key)
+                                if new_val is not None and new_val != old_val:
+                                    corrections[canon_key] = new_val
+
+                            # text
+                            desc_new = st.session_state.get(f"item_{selected_invoice_id}_{ln}_desc")
+                            if desc_new is not None and desc_new != orig.get("description"):
+                                corrections["description"] = desc_new
+
+                            # numerics
+                            maybe_add("qty", "quantity")
+                            maybe_add("price", "unit_price")
+                            maybe_add("gst", "gst_amount")
+                            maybe_add("pst", "pst_amount")
+                            maybe_add("qst", "qst_amount")
+                            maybe_add("combined", "combined_tax")
+
+                            # derive line_total (amount) for submission if changed
+                            line_total_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_amount")
+                            if line_total_val is None:
+                                qty_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_qty")
+                                price_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_price")
+                                try:
+                                    if qty_val is not None and price_val is not None:
+                                        line_total_val = float(qty_val) * float(price_val)
+                                except Exception:
+                                    line_total_val = None
+                            if line_total_val is not None and line_total_val != orig.get("amount"):
+                                corrections["amount"] = line_total_val
+
+                            if corrections:
+                                line_item_validations.append({
+                                    "line_number": ln,
+                                    "validated": True,
+                                    "corrections": corrections,
+                                    "validation_notes": ""
+                                })
+
                         success = submit_validation(
                             selected_invoice_id,
                             field_validations,
@@ -602,27 +765,59 @@ def main():
                             reviewer_name,
                             validation_notes
                         )
-                        
+
                         if success:
-                            st.success("Validation submitted successfully!")
+                            st.success("Validation submitted successfully.")
+                            updated_invoice = load_invoice(selected_invoice_id)
+                            if updated_invoice:
+                                reset_invoice_state(selected_invoice_id, updated_invoice)
+                            st.cache_data.clear()
                             st.rerun()
-            
-            with col2:
-                if st.button("Reset"):
-                    st.rerun()
-            
-            # Review history
-            st.markdown("---")
-            st.markdown("#### Review History")
-            
-            if invoice_data.get("reviewer"):
-                st.info(f"""
-                **Reviewed by:** {invoice_data.get("reviewer")}  
-                **Status:** {invoice_data.get("review_status", "N/A")}  
-                **Date:** {invoice_data.get("review_timestamp", "N/A")}
-                """)
+                
+                # Review history
+                st.markdown("---")
+                st.markdown("#### Review History")
+                history = st.session_state.get("validation_history") or []
+                if history:
+                    for entry in reversed(history):
+                        st.info(
+                            f"**Status:** {entry.get('status')} | "
+                            f"**Reviewer:** {entry.get('reviewer')} | "
+                            f"**When:** {entry.get('timestamp')} \n\n"
+                            f"**Notes:** {entry.get('notes') or 'None'}"
+                        )
+                else:
+                    st.info("No review history available.")
+
+    # Re-run extraction outside the form
+    st.markdown("#### Re-run Extraction")
+    if st.button("Re-run extraction for this invoice"):
+        try:
+            file_path = invoice_data.get("file_path")
+            file_name = invoice_data.get("file_name", "invoice.pdf")
+            invoice_id = invoice_data.get("invoice_id")
+
+            if not file_path or not invoice_id:
+                st.error("Missing file path or invoice id; cannot re-run extraction.")
             else:
-                st.info("No review history available.")
+                resp = requests.post(
+                    f"{API_BASE_URL}/api/hitl/invoice/{invoice_id}/reextract",
+                    timeout=180,
+                )
+                if resp.status_code == 200:
+                    st.success("Extraction re-run completed. Refreshing...")
+
+                    # Re-load invoice data and reset edit state
+                    new_invoice = load_invoice(invoice_id)
+                    if new_invoice:
+                        reset_invoice_state(invoice_id, new_invoice)
+
+                    st.cache_data.clear()
+                    st.rerun()
+                else:
+                    st.error(f"Re-extraction failed: {resp.status_code} - {resp.text}")
+        except Exception as e:
+            st.error(f"Error re-running extraction: {e}")
 
 
 if __name__ == "__main__":

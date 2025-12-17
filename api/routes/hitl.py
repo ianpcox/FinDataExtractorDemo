@@ -295,6 +295,10 @@ async def get_invoice_for_validation(
                     "unit_of_measure": item.unit_of_measure,
                     "tax_rate": to_number(item.tax_rate),
                     "tax_amount": to_number(item.tax_amount),
+                    "gst_amount": to_number(getattr(item, "gst_amount", None)),
+                    "pst_amount": to_number(getattr(item, "pst_amount", None)),
+                    "qst_amount": to_number(getattr(item, "qst_amount", None)),
+                    "combined_tax": to_number(getattr(item, "combined_tax", None)),
                     "project_code": item.project_code,
                     "cost_centre_code": item.cost_centre_code,
                     "airport_code": item.airport_code,
@@ -420,7 +424,7 @@ async def validate_invoice(
                             for field, value in item_validation.corrections.items():
                                 if hasattr(line_item, field):
                                     old_value = getattr(line_item, field, None)
-                                    if field in ["quantity", "unit_price", "amount", "tax_rate", "tax_amount"]:
+                                    if field in ["quantity", "unit_price", "amount", "tax_rate", "tax_amount", "gst_amount", "pst_amount", "qst_amount", "combined_tax"]:
                                         setattr(line_item, field, Decimal(str(value)))
                                     else:
                                         setattr(line_item, field, value)

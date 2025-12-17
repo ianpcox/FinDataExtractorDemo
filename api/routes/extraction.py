@@ -90,6 +90,9 @@ async def extract_invoice(
             "status": result.get("status"),
             "invoice": invoice_payload,
             "confidence": result.get("confidence"),
+            "field_confidence": result.get("field_confidence"),
+            "low_confidence_fields": result.get("low_confidence_fields", []),
+            "low_confidence_triggered": result.get("low_confidence_triggered", False),
             "extraction_timestamp": extraction_ts
         }
 
