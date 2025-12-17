@@ -110,7 +110,11 @@ async def review_invoice(
         "fields": invoice.model_dump(mode="json"),
         "field_confidence": fc,
     }
-    prompt = svc._build_llm_prompt(invoice, di_payload, low_conf_fields)
+    try:
+        canonical_di = svc.field_extractor.normalize_di_data(di_payload)
+    except Exception:
+        canonical_di = di_payload
+    prompt = svc._build_llm_prompt(canonical_di, low_conf_fields)
     if not prompt:
         raise HTTPException(status_code=500, detail="Failed to build LLM prompt")
 

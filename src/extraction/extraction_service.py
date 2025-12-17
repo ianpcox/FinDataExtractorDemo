@@ -251,7 +251,7 @@ class ExtractionService:
             except Exception:
                 canonical_di = di_payload or {}
 
-            prompt = self._build_llm_prompt(invoice, di_payload, low_conf_fields)
+            prompt = self._build_llm_prompt(canonical_di, low_conf_fields)
             if not prompt:
                 return
 
@@ -289,26 +289,30 @@ class ExtractionService:
         except Exception as e:
             logger.error(f"LLM fallback failed: {e}", exc_info=True)
 
-    def _build_llm_prompt(self, invoice: Invoice, di_data: Dict[str, Any], low_conf_fields: List[str]) -> Optional[str]:
+    def _build_llm_prompt(
+        self,
+        canonical_di: Dict[str, Any],
+        low_conf_fields: list[str],
+    ) -> str:
         """
-        Build a compact JSON payload for the LLM containing only the low-confidence slice plus a short OCR snippet.
+        Build a JSON-safe prompt payload for the LLM, focusing ONLY on low-confidence fields.
         """
-        try:
-            di_payload = di_data.get("fields", di_data) or {}
-            subset = {k: di_payload.get(k) for k in low_conf_fields}
-            content_snippet = self._build_content_snippet(di_data)
-            payload = {
-                "di_payload": di_payload,
-                "field_confidence": di_data.get("field_confidence") or {},
-                "low_conf_fields": low_conf_fields,
-                "low_conf_subset": subset,
-                "ocr_snippet": content_snippet,
-            }
-            sanitized = self._sanitize_for_json(payload)
-            return json.dumps(sanitized, ensure_ascii=False)
-        except Exception as e:
-            logger.error(f"Failed to build LLM prompt: {e}", exc_info=True)
-            return None
+        if not canonical_di or not low_conf_fields:
+            return ""
+
+        # Only include the fields the DI model is unsure about
+        minimal = {k: canonical_di.get(k) for k in low_conf_fields}
+
+        # Make sure there are no date/Decimal/etc. objects
+        sanitized = self._sanitize_for_json(minimal)
+
+        payload = {
+            "low_confidence_fields": low_conf_fields,
+            "fields": sanitized,
+        }
+
+        # This string is what you send as the LLM "input"
+        return json.dumps(payload, ensure_ascii=False, default=str)
 
     def _build_content_snippet(self, di_data: Dict[str, Any]) -> str:
         """Extract a small OCR snippet to limit token usage."""
