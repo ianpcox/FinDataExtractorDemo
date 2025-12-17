@@ -301,7 +301,16 @@ def main():
                         else:
                             st.error(f"Extraction failed: {extract_resp.status_code} {extract_resp.text}")
                     else:
-                        st.error(f"Upload failed: {resp.status_code} {resp.text}")
+                        try:
+                            err_json = resp.json()
+                            detail = err_json.get("detail") or err_json
+                            msg = detail.get("message") if isinstance(detail, dict) else detail
+                            errs = detail.get("errors") if isinstance(detail, dict) else None
+                            if errs and isinstance(errs, list):
+                                msg = f"{msg}: {', '.join(errs)}"
+                            st.error(f"Upload failed: {msg}")
+                        except Exception:
+                            st.error(f"Upload failed: {resp.status_code} {resp.text}")
                 except Exception as e:
                     st.error(f"Error during upload/extract: {e}")
     
