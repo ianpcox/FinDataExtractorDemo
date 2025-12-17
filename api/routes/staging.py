@@ -155,7 +155,7 @@ async def batch_stage_invoices(
 @router.get("/invoice/{invoice_id}/payload")
 async def get_staged_payload(
     invoice_id: str,
-    format: Optional[str] = Query(None, description="Format: json, csv, xml, dynamics_gp"),
+    format: Optional[str] = Query("dynamics_gp", description="Format: json, csv, xml, dynamics_gp"),
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -178,16 +178,13 @@ async def get_staged_payload(
             )
         
         # Determine format
-        if format:
-            try:
-                erp_format = ERPPayloadFormat(format.lower())
-            except ValueError:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid format: {format}"
-                )
-        else:
-            erp_format = ERPPayloadFormat.DYNAMICS_GP
+        try:
+            erp_format = ERPPayloadFormat(format.lower()) if format else ERPPayloadFormat.DYNAMICS_GP
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid format: {format}"
+            )
         
         # Get payload
         staging_service = ERPStagingService(erp_format=erp_format)
@@ -253,7 +250,7 @@ async def preview_staged_payload(
         
         # Determine format
         try:
-            erp_format = ERPPayloadFormat(format.lower())
+            erp_format = ERPPayloadFormat(format.lower()) if format else ERPPayloadFormat.JSON
         except ValueError:
             raise HTTPException(
                 status_code=400,
