@@ -267,7 +267,7 @@ def main():
                             st.success("Extraction completed. Loading invoice...")
                             st.cache_data.clear()
                             st.session_state["selected_invoice_id"] = invoice_id
-                            st.experimental_rerun()
+                            st.rerun()
                         else:
                             st.error(f"Extraction failed: {extract_resp.status_code} {extract_resp.text}")
                     else:
@@ -507,7 +507,7 @@ def main():
                         if resp.status_code == 200:
                             st.success("Extraction re-run completed. Refreshing...")
                             st.cache_data.clear()
-                            st.experimental_rerun()
+                            st.rerun()
                         else:
                             st.error(f"Extraction re-run failed: {resp.status_code} {resp.text}")
                 except Exception as e:
