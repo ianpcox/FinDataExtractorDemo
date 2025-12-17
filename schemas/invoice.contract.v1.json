@@ -1,0 +1,370 @@
+{
+  "contract_name": "invoice.contract.v1",
+  "version": 1,
+
+  "canonical_schema_ref": "invoice.canonical.v1.schema.json",
+  "hitl_schema_ref": "invoice.hitl_view.v1.schema.json",
+
+  "mappings": {
+    "di_to_canonical": {
+      "InvoiceId": "invoice_number",
+      "InvoiceDate": "invoice_date",
+      "DueDate": "due_date",
+      "VendorName": "vendor_name",
+      "VendorId": "vendor_id",
+      "VendorPhoneNumber": "vendor_phone",
+      "VendorPhone": "vendor_phone",
+      "VendorAddress": "vendor_address",
+
+      "CustomerName": "customer_name",
+      "CustomerId": "customer_id",
+      "CustomerAddress": "bill_to_address",
+      "BillToAddress": "bill_to_address",
+
+      "RemitToAddress": "remit_to_address",
+      "RemittanceAddress": "remit_to_address",
+      "RemitToName": "remit_to_name",
+
+      "Entity": "entity",
+      "ContractId": "contract_id",
+      "StandingOfferNumber": "standing_offer_number",
+      "PurchaseOrder": "po_number",
+      "PONumber": "po_number",
+
+      "ServiceStartDate": "period_start",
+      "ServiceEndDate": "period_end",
+
+      "SubTotal": "subtotal",
+      "TotalTax": "tax_amount",
+      "InvoiceTotal": "total_amount",
+
+      "CurrencyCode": "currency",
+      "Currency": "currency",
+
+      "PaymentTerm": "payment_terms",
+      "PaymentTerms": "payment_terms",
+
+      "AcceptancePercentage": "acceptance_percentage",
+      "TaxRegistrationNumber": "tax_registration_number",
+      "SalesTaxNumber": "tax_registration_number"
+    },
+
+    "legacy_to_canonical": {
+      "invoice_id": "invoice_number",
+      "invoice_total": "total_amount",
+      "total_tax": "tax_amount",
+      "purchase_order": "po_number",
+      "payment_term": "payment_terms"
+    }
+  },
+
+  "confidence_policy": {
+    "low_conf_threshold": 0.75,
+
+    "required_fields": [
+      "invoice_number",
+      "invoice_date",
+      "vendor_name",
+      "total_amount"
+    ],
+
+    "important_fields": [
+      "invoice_number",
+      "invoice_date",
+      "total_amount",
+      "vendor_name",
+      "subtotal",
+      "tax_amount"
+    ],
+
+    "overall_confidence_weights": {
+      "invoice_number": 2.0,
+      "invoice_date": 2.0,
+      "total_amount": 3.0,
+      "vendor_name": 2.0,
+      "subtotal": 1.5,
+      "tax_amount": 1.5
+    }
+  },
+
+  "overlay_policy": {
+    "enable_field_locations": true,
+    "coordinate_space": "normalized",
+    "max_regions_per_field": 10
+  },
+
+  "fields": {
+    "invoice_number": {
+      "type": "string",
+      "required": true,
+      "nullable": true,
+      "parsers": ["strip", "normalize_whitespace"],
+      "di_fields": ["InvoiceId"],
+      "legacy_fields": ["invoice_id"],
+      "confidence_required": true,
+      "match_role": "primary_key",
+      "overlay_role": "header_field",
+      "description": "Vendor invoice identifier (not database id)."
+    },
+
+    "invoice_date": {
+      "type": "date",
+      "required": true,
+      "nullable": true,
+      "parsers": ["parse_date_iso"],
+      "di_fields": ["InvoiceDate"],
+      "legacy_fields": [],
+      "confidence_required": true,
+      "match_role": "date_key",
+      "overlay_role": "header_field"
+    },
+
+    "due_date": {
+      "type": "date",
+      "required": false,
+      "nullable": true,
+      "parsers": ["parse_date_iso"],
+      "di_fields": ["DueDate"],
+      "legacy_fields": [],
+      "confidence_required": false,
+      "match_role": "date_key",
+      "overlay_role": "header_field"
+    },
+
+    "vendor_name": {
+      "type": "string",
+      "required": true,
+      "nullable": true,
+      "parsers": ["strip", "normalize_whitespace"],
+      "di_fields": ["VendorName"],
+      "legacy_fields": [],
+      "confidence_required": true,
+      "match_role": "vendor_key",
+      "overlay_role": "header_field"
+    },
+
+    "vendor_id": {
+      "type": "string",
+      "required": false,
+      "nullable": true,
+      "parsers": ["strip"],
+      "di_fields": ["VendorId"],
+      "legacy_fields": [],
+      "match_role": "vendor_key",
+      "overlay_role": "header_field"
+    },
+
+    "vendor_phone": {
+      "type": "string",
+      "required": false,
+      "nullable": true,
+      "parsers": ["strip", "normalize_whitespace"],
+      "di_fields": ["VendorPhoneNumber", "VendorPhone"],
+      "legacy_fields": [],
+      "match_role": "vendor_key",
+      "overlay_role": "header_field"
+    },
+
+    "customer_name": {
+      "type": "string",
+      "required": false,
+      "nullable": true,
+      "parsers": ["strip", "normalize_whitespace"],
+      "di_fields": ["CustomerName"],
+      "legacy_fields": [],
+      "match_role": "secondary_key",
+      "overlay_role": "header_field"
+    },
+
+    "customer_id": {
+      "type": "string",
+      "required": false,
+      "nullable": true,
+      "parsers": ["strip"],
+      "di_fields": ["CustomerId"],
+      "legacy_fields": [],
+      "match_role": "secondary_key",
+      "overlay_role": "header_field"
+    },
+
+    "po_number": {
+      "type": "string",
+      "required": false,
+      "nullable": true,
+      "parsers": ["strip", "normalize_whitespace"],
+      "di_fields": ["PurchaseOrder", "PONumber"],
+      "legacy_fields": ["purchase_order"],
+      "match_role": "reference_key",
+      "overlay_role": "header_field"
+    },
+
+    "contract_id": {
+      "type": "string",
+      "required": false,
+      "nullable": true,
+      "parsers": ["strip"],
+      "di_fields": ["ContractId"],
+      "legacy_fields": [],
+      "match_role": "reference_key",
+      "overlay_role": "header_field"
+    },
+
+    "standing_offer_number": {
+      "type": "string",
+      "required": false,
+      "nullable": true,
+      "parsers": ["strip", "normalize_whitespace"],
+      "di_fields": ["StandingOfferNumber"],
+      "legacy_fields": ["standing_offer_number"],
+      "match_role": "reference_key",
+      "overlay_role": "header_field"
+    },
+
+    "period_start": {
+      "type": "date",
+      "required": false,
+      "nullable": true,
+      "parsers": ["parse_date_iso"],
+      "di_fields": ["ServiceStartDate"],
+      "legacy_fields": [],
+      "match_role": "date_key",
+      "overlay_role": "header_field"
+    },
+
+    "period_end": {
+      "type": "date",
+      "required": false,
+      "nullable": true,
+      "parsers": ["parse_date_iso"],
+      "di_fields": ["ServiceEndDate"],
+      "legacy_fields": [],
+      "match_role": "date_key",
+      "overlay_role": "header_field"
+    },
+
+    "subtotal": {
+      "type": "decimal_string",
+      "required": false,
+      "nullable": true,
+      "parsers": ["parse_decimal_currency"],
+      "di_fields": ["SubTotal"],
+      "legacy_fields": [],
+      "match_role": "amount_key",
+      "overlay_role": "header_field"
+    },
+
+    "tax_amount": {
+      "type": "decimal_string",
+      "required": false,
+      "nullable": true,
+      "parsers": ["parse_decimal_currency"],
+      "di_fields": ["TotalTax"],
+      "legacy_fields": ["total_tax"],
+      "match_role": "amount_key",
+      "overlay_role": "header_field"
+    },
+
+    "total_amount": {
+      "type": "decimal_string",
+      "required": true,
+      "nullable": true,
+      "parsers": ["parse_decimal_currency"],
+      "di_fields": ["InvoiceTotal"],
+      "legacy_fields": ["invoice_total"],
+      "confidence_required": true,
+      "match_role": "amount_key",
+      "overlay_role": "header_field"
+    },
+
+    "currency": {
+      "type": "string",
+      "required": true,
+      "nullable": true,
+      "parsers": ["strip"],
+      "di_fields": ["CurrencyCode", "Currency"],
+      "legacy_fields": [],
+      "match_role": "non_matchable",
+      "overlay_role": "header_field"
+    },
+
+    "payment_terms": {
+      "type": "string",
+      "required": false,
+      "nullable": true,
+      "parsers": ["strip", "normalize_whitespace"],
+      "di_fields": ["PaymentTerms", "PaymentTerm"],
+      "legacy_fields": ["payment_term"],
+      "match_role": "non_matchable",
+      "overlay_role": "header_field"
+    },
+
+    "acceptance_percentage": {
+      "type": "decimal_string",
+      "required": false,
+      "nullable": true,
+      "parsers": ["parse_decimal_currency"],
+      "di_fields": ["AcceptancePercentage"],
+      "legacy_fields": [],
+      "match_role": "non_matchable",
+      "overlay_role": "header_field"
+    },
+
+    "tax_registration_number": {
+      "type": "string",
+      "required": false,
+      "nullable": true,
+      "parsers": ["strip", "normalize_whitespace"],
+      "di_fields": ["TaxRegistrationNumber", "SalesTaxNumber"],
+      "legacy_fields": [],
+      "match_role": "vendor_key",
+      "overlay_role": "header_field"
+    },
+
+    "vendor_address": {
+      "type": "object",
+      "required": false,
+      "nullable": true,
+      "parsers": ["identity"],
+      "di_fields": ["VendorAddress"],
+      "legacy_fields": [],
+      "match_role": "vendor_key",
+      "overlay_role": "address_field"
+    },
+
+    "bill_to_address": {
+      "type": "object",
+      "required": false,
+      "nullable": true,
+      "parsers": ["identity"],
+      "di_fields": ["CustomerAddress", "BillToAddress"],
+      "legacy_fields": [],
+      "match_role": "secondary_key",
+      "overlay_role": "address_field"
+    },
+
+    "remit_to_address": {
+      "type": "object",
+      "required": false,
+      "nullable": true,
+      "parsers": ["identity"],
+      "di_fields": ["RemitToAddress", "RemittanceAddress"],
+      "legacy_fields": [],
+      "match_role": "vendor_key",
+      "overlay_role": "address_field"
+    },
+
+    "remit_to_name": {
+      "type": "string",
+      "required": false,
+      "nullable": true,
+      "parsers": ["strip", "normalize_whitespace"],
+      "di_fields": ["RemitToName"],
+      "legacy_fields": [],
+      "match_role": "vendor_key",
+      "overlay_role": "header_field"
+    }
+  },
+
+  "notes": "This contract centralizes DI->canonical mapping, required/important field policy, and overlay/matching roles for v1."
+}
+

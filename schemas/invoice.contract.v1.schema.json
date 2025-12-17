@@ -1,0 +1,207 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/invoice.contract.v1.schema.json",
+  "title": "Invoice Contract v1 (Canonical + DI mapping + workflow metadata)",
+  "type": "object",
+  "additionalProperties": false,
+
+  "$defs": {
+    "fieldName": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "diFieldName": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0
+    },
+
+    "valueType": {
+      "type": "string",
+      "enum": [
+        "string",
+        "date",
+        "datetime",
+        "decimal_string",
+        "integer",
+        "boolean",
+        "object",
+        "array"
+      ]
+    },
+
+    "parser": {
+      "type": "string",
+      "enum": [
+        "identity",
+        "strip",
+        "normalize_whitespace",
+        "parse_date_iso",
+        "parse_datetime_iso",
+        "parse_decimal_currency",
+        "parse_int",
+        "parse_bool"
+      ]
+    },
+
+    "matcherRole": {
+      "type": "string",
+      "enum": [
+        "primary_key",
+        "secondary_key",
+        "vendor_key",
+        "amount_key",
+        "date_key",
+        "reference_key",
+        "non_matchable"
+      ]
+    },
+
+    "overlayRole": {
+      "type": "string",
+      "enum": [
+        "header_field",
+        "address_field",
+        "line_item_field",
+        "extension_field",
+        "non_overlayable"
+      ]
+    },
+
+    "fieldSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "required", "parsers"],
+      "properties": {
+        "type": { "$ref": "#/$defs/valueType" },
+        "required": { "type": "boolean" },
+
+        "nullable": { "type": "boolean", "default": true },
+
+        "parsers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/parser" },
+          "minItems": 1
+        },
+
+        "di_fields": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/diFieldName" },
+          "default": []
+        },
+        "legacy_fields": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/fieldName" },
+          "default": []
+        },
+
+        "confidence_required": { "type": "boolean", "default": false },
+
+        "match_role": { "$ref": "#/$defs/matcherRole", "default": "non_matchable" },
+        "overlay_role": { "$ref": "#/$defs/overlayRole", "default": "non_overlayable" },
+
+        "description": { "type": "string" }
+      }
+    },
+
+    "mappingTable": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["di_to_canonical", "legacy_to_canonical"],
+      "properties": {
+        "di_to_canonical": {
+          "type": "object",
+          "description": "Document Intelligence field name -> canonical field name",
+          "additionalProperties": { "$ref": "#/$defs/fieldName" }
+        },
+        "legacy_to_canonical": {
+          "type": "object",
+          "description": "Legacy (snake_case) field name -> canonical field name",
+          "additionalProperties": { "$ref": "#/$defs/fieldName" }
+        }
+      }
+    },
+
+    "confidencePolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["low_conf_threshold", "required_fields", "important_fields"],
+      "properties": {
+        "low_conf_threshold": { "$ref": "#/$defs/confidence" },
+
+        "required_fields": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/fieldName" },
+          "minItems": 1,
+          "description": "Fields that must be present; missing value or missing confidence triggers fallback/HITL."
+        },
+
+        "important_fields": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/fieldName" },
+          "minItems": 1,
+          "description": "Fields weighted heavily in overall confidence scoring."
+        },
+
+        "overall_confidence_weights": {
+          "type": "object",
+          "description": "Optional per-field weights for overall confidence scoring.",
+          "additionalProperties": { "type": "number", "minimum": 0.0 }
+        }
+      }
+    },
+
+    "overlayPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enable_field_locations": { "type": "boolean", "default": true },
+        "coordinate_space": { "type": "string", "enum": ["normalized", "pixel"], "default": "normalized" },
+        "max_regions_per_field": { "type": "integer", "minimum": 1, "default": 10 }
+      }
+    }
+  },
+
+  "required": [
+    "contract_name",
+    "version",
+    "canonical_schema_ref",
+    "hitl_schema_ref",
+    "fields",
+    "mappings",
+    "confidence_policy"
+  ],
+
+  "properties": {
+    "contract_name": { "type": "string", "const": "invoice.contract.v1" },
+    "version": { "type": "integer", "const": 1 },
+
+    "canonical_schema_ref": {
+      "type": "string",
+      "description": "Reference to the canonical invoice schema ($id or file path)."
+    },
+    "hitl_schema_ref": {
+      "type": "string",
+      "description": "Reference to the HITL view schema ($id or file path)."
+    },
+
+    "fields": {
+      "type": "object",
+      "description": "canonical_field_name -> FieldSpec",
+      "additionalProperties": { "$ref": "#/$defs/fieldSpec" }
+    },
+
+    "mappings": { "$ref": "#/$defs/mappingTable" },
+
+    "confidence_policy": { "$ref": "#/$defs/confidencePolicy" },
+
+    "overlay_policy": { "$ref": "#/$defs/overlayPolicy" },
+
+    "notes": { "type": "string" }
+  }
+}
+

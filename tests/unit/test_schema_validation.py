@@ -77,3 +77,10 @@ def test_hitl_view_schema():
     }
     _assert_valid(validator, payload)
 
+
+@pytest.mark.unit
+def test_contract_schema_example():
+    contract_validator = _load_validator("invoice.contract.v1.schema.json")
+    example = json.load((SCHEMA_DIR / "invoice.contract.v1.json").open("r", encoding="utf-8"))
+    _assert_valid(contract_validator, example)
+
