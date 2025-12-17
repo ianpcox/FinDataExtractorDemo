@@ -41,11 +41,12 @@ Formatting rules:
 - Monetary amounts must be numeric, using "." as the decimal separator.
 - Do not change currencies or magnitudes: if the invoice says 1,234.56, keep that amount, including cents.
 - Trim whitespace and normalize casing where appropriate, but do not rewrite vendor names beyond obvious OCR fixes.
+- For address fields (vendor_address, bill_to_address, remit_to_address), return an object with keys: street, city, province, postal_code, country. Leave any unknown subfields empty or omit the address field entirely if not confident.
 
 Output:
 - Return ONE JSON object only (no explanations, comments, code fences, or extra keys).
-- The JSON object’s keys must be a subset of the canonical field names you are given (e.g., "invoice_number", "invoice_date", "vendor_name", "total_amount").
-- Each key you include should have a single scalar value (string, number, or ISO date) that reflects the corrected extraction.
+- The JSON object’s keys must be a subset of the canonical field names you are given (e.g., "invoice_number", "invoice_date", "vendor_name", "total_amount", "vendor_address", "bill_to_address", "remit_to_address").
+- For scalar fields, use a single string/number/ISO date. For address fields, use an object with street, city, province, postal_code, country.
 """
 
 
