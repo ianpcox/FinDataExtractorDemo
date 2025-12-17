@@ -6,6 +6,7 @@ from decimal import Decimal
 import logging
 import json
 import hashlib
+from typing import Any, Mapping, Dict
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -400,25 +401,61 @@ class ExtractionService:
 
     def _sanitize_for_json(self, obj):
         """Recursively convert payload objects to JSON-serializable primitives."""
-        if obj is None:
-            return None
-        if isinstance(obj, (str, int, float, bool)):
-            return obj
-        if isinstance(obj, Decimal):
-            return float(obj)
-        if isinstance(obj, (date, datetime)):
-            return obj.isoformat()
-        if isinstance(obj, dict):
-            return {k: self._sanitize_for_json(v) for k, v in obj.items()}
-        if isinstance(obj, list):
-            return [self._sanitize_for_json(v) for v in obj]
+        return self._sanitize_for_json_v2(obj)
+
+    def _sanitize_for_json_v2(
+        self,
+        data: Any,
+        max_depth: int = 4,
+        _depth: int = 0,
+    ) -> Any:
+        """Best-effort scrubber to make DI/canonical data JSON-safe and small."""
+        if _depth >= max_depth:
+            return str(data)
+
+        # Primitives
+        if data is None or isinstance(data, (str, int, float, bool)):
+            return data
+
+        # Dates → ISO strings
+        if isinstance(data, (date, datetime)):
+            return data.isoformat()
+
+        # Decimals → float
+        if isinstance(data, Decimal):
+            return float(data)
+
+        # Mappings/dicts
+        if isinstance(data, Mapping):
+            filtered: Dict[str, Any] = {}
+            for k, v in data.items():
+                # Only string keys, skip private-ish keys
+                if not isinstance(k, str) or k.startswith("_"):
+                    continue
+
+                key = k.lower()
+                # Drop obvious secrets
+                if any(bad in key for bad in ("password", "secret", "token", "key")):
+                    continue
+
+                filtered[k] = self._sanitize_for_json_v2(v, max_depth=max_depth, _depth=_depth + 1)
+            return filtered
+
+        # Lists / tuples / sets
+        if isinstance(data, (list, tuple, set)):
+            return [
+                self._sanitize_for_json_v2(v, max_depth=max_depth, _depth=_depth + 1)
+                for v in list(data)[:64]  # cap length so payload stays small
+            ]
+
         # Handle Azure SDK field objects like CurrencyValue by using amount/value/text
-        if hasattr(obj, "amount"):
-            return self._sanitize_for_json(getattr(obj, "amount"))
-        if hasattr(obj, "value"):
-            return self._sanitize_for_json(getattr(obj, "value"))
-        if hasattr(obj, "text"):
-            return self._sanitize_for_json(getattr(obj, "text"))
-        # Fallback to string
-        return str(obj)
+        if hasattr(data, "amount"):
+            return self._sanitize_for_json_v2(getattr(data, "amount"), max_depth=max_depth, _depth=_depth + 1)
+        if hasattr(data, "value"):
+            return self._sanitize_for_json_v2(getattr(data, "value"), max_depth=max_depth, _depth=_depth + 1)
+        if hasattr(data, "text"):
+            return self._sanitize_for_json_v2(getattr(data, "text"), max_depth=max_depth, _depth=_depth + 1)
+
+        # Everything else
+        return str(data)
 
