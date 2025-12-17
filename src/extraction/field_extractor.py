@@ -246,6 +246,20 @@ class FieldExtractor:
         invoice.remit_to_name = self._get_field_value(
             canonical_data.get("remit_to_name"), field_confidence.get("remit_to_name")
         )
+
+        # If a field failed to extract but DI still emitted a confidence score,
+        # drop the confidence to 0 so the UI doesn't show a misleading high score.
+        for attr, key in [
+            ("invoice_number", "invoice_number"),
+            ("invoice_date", "invoice_date"),
+            ("vendor_name", "vendor_name"),
+            ("total_amount", "total_amount"),
+        ]:
+            if getattr(invoice, attr) in (None, "", {}):
+                if invoice.field_confidence is None:
+                    invoice.field_confidence = {}
+                if key in invoice.field_confidence:
+                    invoice.field_confidence[key] = 0.0
         
         # Calculate overall confidence
         invoice.extraction_confidence = self._calculate_overall_confidence(field_confidence)

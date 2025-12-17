@@ -16,7 +16,7 @@ from src.services.db_service import DatabaseService
 from src.models.database import get_db
 from src.models.invoice import Invoice, LineItem, Address
 from sqlalchemy.ext.asyncio import AsyncSession
-from src.extraction.extraction_service import ExtractionService
+from src.extraction.extraction_service import ExtractionService, LLM_SYSTEM_PROMPT
 from src.extraction.document_intelligence_client import DocumentIntelligenceClient
 from src.extraction.field_extractor import FieldExtractor
 from src.ingestion.file_handler import FileHandler
@@ -92,10 +92,35 @@ async def review_invoice(
     if not invoice:
         raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
 
-    # Build low-confidence list (debug: force with threshold)
+    # Build low-confidence list similar to extraction fallback
     fc = invoice.field_confidence or {}
     low_conf_threshold = 0.75
-    low_conf_fields = [k for k, v in fc.items() if v is None or v < low_conf_threshold]
+    low_conf_fields: List[str] = []
+
+    required = [
+        "invoice_number",
+        "invoice_date",
+        "vendor_name",
+        "total_amount",
+        "vendor_address",
+        "bill_to_address",
+        "remit_to_address",
+    ]
+    for field in required:
+        val = getattr(invoice, field, None)
+        conf = fc.get(field)
+        if val in (None, "", {}) or conf is None or conf < low_conf_threshold:
+            low_conf_fields.append(field)
+
+    for name, conf in fc.items():
+        if name in required:
+            continue
+        if conf is None or conf < low_conf_threshold:
+            low_conf_fields.append(name)
+
+    # Deduplicate while preserving order
+    seen = set()
+    low_conf_fields = [x for x in low_conf_fields if not (x in seen or seen.add(x))]
 
     if not low_conf_fields:
         return {
@@ -106,15 +131,12 @@ async def review_invoice(
         }
 
     svc = _get_extraction_service()
-    di_payload = {
-        "fields": invoice.model_dump(mode="json"),
-        "field_confidence": fc,
-    }
+    di_payload = invoice.model_dump(mode="json")
     try:
         canonical_di = svc.field_extractor.normalize_di_data(di_payload)
     except Exception:
         canonical_di = di_payload
-    prompt = svc._build_llm_prompt(canonical_di, low_conf_fields)
+    prompt = svc._build_llm_prompt(canonical_di, low_conf_fields, di_payload)
     if not prompt:
         raise HTTPException(status_code=500, detail="Failed to build LLM prompt")
 
@@ -127,9 +149,8 @@ async def review_invoice(
         resp = client.chat.completions.create(
             model=settings.AOAI_DEPLOYMENT_NAME,
             temperature=0.0,
-            response_format={"type": "json_object"},
             messages=[
-                {"role": "system", "content": svc.LLM_SYSTEM_PROMPT},
+                {"role": "system", "content": LLM_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
         )
@@ -152,6 +173,143 @@ async def review_invoice(
         logger.error(f"Review endpoint failed for invoice {invoice_id}: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
+
+@router.post("/invoice/{invoice_id}/llm-fallback-test")
+async def llm_fallback_test(
+    invoice_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Exercise LLM fallback for an invoice without mutating or saving it.
+    Returns low-confidence fields, raw suggestions, parsed JSON, and a before/after diff.
+    """
+    if AzureOpenAI is None:
+        raise HTTPException(status_code=500, detail="OpenAI client not available")
+
+    invoice = await DatabaseService.get_invoice(invoice_id, db=db)
+    if not invoice:
+        raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
+
+    fc = invoice.field_confidence or {}
+    low_conf_threshold = 0.75
+    low_conf_fields: List[str] = []
+
+    required = [
+        "invoice_number",
+        "invoice_date",
+        "vendor_name",
+        "total_amount",
+        "vendor_address",
+        "bill_to_address",
+        "remit_to_address",
+    ]
+    for field in required:
+        val = getattr(invoice, field, None)
+        conf = fc.get(field)
+        if val in (None, "", {}) or conf is None or conf < low_conf_threshold:
+            low_conf_fields.append(field)
+
+    for name, conf in fc.items():
+        if name in required:
+            continue
+        if conf is None or conf < low_conf_threshold:
+            low_conf_fields.append(name)
+
+    seen = set()
+    low_conf_fields = [x for x in low_conf_fields if not (x in seen or seen.add(x))]
+
+    if not low_conf_fields:
+        return {
+            "invoice_id": invoice_id,
+            "low_conf_fields": [],
+            "suggestions": {},
+            "applied_diff": {},
+            "message": "No low-confidence fields; skipping LLM test",
+        }
+
+    svc = _get_extraction_service()
+    di_payload = invoice.model_dump(mode="json")
+    try:
+        canonical_di = svc.field_extractor.normalize_di_data(di_payload)
+    except Exception:
+        canonical_di = di_payload
+
+    prompt = svc._build_llm_prompt(canonical_di, low_conf_fields, di_payload)
+    if not prompt:
+        raise HTTPException(status_code=500, detail="Failed to build LLM prompt")
+
+    try:
+        client = AzureOpenAI(
+            azure_endpoint=settings.AOAI_ENDPOINT,
+            api_key=settings.AOAI_API_KEY,
+            api_version=settings.AOAI_API_VERSION,
+        )
+        resp = client.chat.completions.create(
+            model=settings.AOAI_DEPLOYMENT_NAME,
+            temperature=0.0,
+            messages=[
+                {"role": "system", "content": LLM_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        if not resp.choices or not resp.choices[0].message or not resp.choices[0].message.content:
+            return {
+                "invoice_id": invoice_id,
+                "low_conf_fields": low_conf_fields,
+                "suggestions": {},
+                "applied_diff": {},
+                "message": "LLM returned no content",
+            }
+
+        suggestion_text = resp.choices[0].message.content.strip()
+        try:
+            suggestions = json.loads(suggestion_text) if suggestion_text else {}
+        except Exception:
+            suggestions = {}
+
+        invoice_copy = invoice.copy(deep=True)
+        before = invoice.model_dump(mode="json")
+        try:
+            svc._apply_llm_suggestions(invoice_copy, suggestion_text, low_conf_fields)
+        except Exception as e:
+            logger.warning(f"LLM suggestion apply failed in test: {e}")
+        after = invoice_copy.model_dump(mode="json")
+
+        diff = {
+            k: {"before": before.get(k), "after": after.get(k)}
+            for k in after.keys()
+            if before.get(k) != after.get(k)
+        }
+
+        return {
+            "invoice_id": invoice_id,
+            "low_conf_fields": low_conf_fields,
+            "suggestions": suggestions,
+            "raw": suggestion_text,
+            "applied_diff": diff,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"LLM fallback test failed for invoice {invoice_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get("/invoice/schema")
+async def get_invoice_schema():
+    """
+    Return the canonical Invoice JSON schema (v1 contract) for consumers.
+    """
+    try:
+        # Pydantic v2 uses model_json_schema; v1 uses schema
+        if hasattr(Invoice, "model_json_schema"):
+            schema = Invoice.model_json_schema()
+        else:
+            schema = Invoice.schema()
+        return JSONResponse(status_code=200, content=schema)
+    except Exception as e:
+        logger.error(f"Failed to generate Invoice schema: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to generate schema")
 
 @router.get("/invoice/{invoice_id}")
 async def get_invoice_for_validation(

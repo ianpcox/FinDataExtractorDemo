@@ -152,30 +152,35 @@ class ExtractionService:
             invoice_dict = invoice.model_dump(mode="json")
             extraction_ts = invoice.extraction_timestamp.isoformat() if invoice.extraction_timestamp else None
 
-            # Low-confidence fallback: decide which fields to send to LLM
-            # Low-confidence fallback: decide which fields to send to LLM
-            # For debugging: force essentially all fields through the LLM by using a threshold above any DI confidence
-            low_conf_threshold = 1.01   # anything <= 1.0 will be considered "low confidence"
+            # Low-confidence fallback: trigger when required fields are missing or low, and when any field is explicitly low.
+            low_conf_threshold = 0.75
             low_conf_fields: List[str] = []
             fc = invoice.field_confidence or {}
 
-            # Include all fields below threshold (this effectively grabs all DI fields, since DI confidences < 1.0)
+            required = [
+                "invoice_number",
+                "invoice_date",
+                "vendor_name",
+                "total_amount",
+                "vendor_address",
+                "bill_to_address",
+                "remit_to_address",
+            ]
+            for field in required:
+                val = getattr(invoice, field, None)
+                conf = fc.get(field)
+                if val in (None, "", {}) or conf is None or conf < low_conf_threshold:
+                    low_conf_fields.append(field)
+
             for name, conf in fc.items():
+                if name in required:
+                    continue
                 if conf is None or conf < low_conf_threshold:
                     low_conf_fields.append(name)
 
-            line_items = invoice.line_items
-            if line_items and invoice.line_items:
-                line_item_required = ["description", "quantity", "unit_price", "amount"]
-                for idx, li in enumerate(invoice.line_items):
-                    licf = {}
-                    if hasattr(li, "confidence") and isinstance(li.confidence, dict):
-                        licf = (li.confidence or {}).get("fields", {}) or {}
-                    for fname in line_item_required:
-                        conf = licf.get(fname)
-                        if conf is None or conf < low_conf_threshold:
-                            key = f"line_item[{idx}].{fname}"
-                            low_conf_fields.append(key)
+            # Deduplicate while preserving order
+            seen = set()
+            low_conf_fields = [x for x in low_conf_fields if not (x in seen or seen.add(x))]
 
             if not low_conf_fields:
                 logger.info("No fields below low_conf_threshold=%.2f, skipping LLM fallback", low_conf_threshold)
@@ -184,7 +189,8 @@ class ExtractionService:
                     self._run_low_confidence_fallback(
                         invoice=invoice,
                         low_conf_fields=low_conf_fields,
-                        di_payload=doc_intelligence_data,
+                        di_data=doc_intelligence_data,
+                        di_field_confidence=fc,
                     )
                 except Exception as e:
                     logger.exception("LLM fallback failed; continuing with DI-only invoice: %s", e)
@@ -218,17 +224,22 @@ class ExtractionService:
                 "errors": errors
             }
     
-    def _run_low_confidence_fallback(self, invoice: Invoice, low_conf_fields: list, di_payload: dict):
-        """
-        Low-confidence fallback hook. Currently a stub; if settings.USE_LLM_FALLBACK is True,
-        this is where we would call a multimodal LLM to suggest corrections.
-        """
+    def _run_low_confidence_fallback(
+        self,
+        invoice: Invoice,
+        low_conf_fields: List[str],
+        di_data: Dict[str, Any],
+        di_field_confidence: Dict[str, float],
+    ) -> None:
+        """Run LLM fallback to refine low-confidence fields. Best-effort and non-blocking."""
+        logger.info("Running LLM fallback for low confidence fields: %s", low_conf_fields)
+
+        if not low_conf_fields:
+            logger.info("No low-confidence fields to refine; skipping LLM fallback.")
+            return
+
         if not getattr(settings, "USE_LLM_FALLBACK", False):
-            logger.info(
-                "Low-confidence fallback stub (LLM disabled). Invoice %s fields: %s",
-                invoice.id,
-                ", ".join(low_conf_fields)
-            )
+            logger.info("LLM fallback disabled via settings; skipping.")
             return
 
         if AzureOpenAI is None:
@@ -240,63 +251,79 @@ class ExtractionService:
             return
 
         try:
-            client = AzureOpenAI(
-                azure_endpoint=settings.AOAI_ENDPOINT,
-                api_key=settings.AOAI_API_KEY,
-                api_version=settings.AOAI_API_VERSION,
-            )
+            # Prepare sanitized DI snapshot for prompt/caching
+            di_snapshot = {
+                "di_fields": di_data or {},
+                "di_field_confidence": di_field_confidence or {},
+                "low_conf_fields": low_conf_fields,
+            }
+            di_snapshot = self._sanitize_for_json(di_snapshot)
 
             try:
-                canonical_di = self.field_extractor.normalize_di_data(di_payload or {})
+                canonical_di = self.field_extractor.normalize_di_data(di_data or {})
             except Exception:
-                canonical_di = di_payload or {}
+                canonical_di = di_data or {}
 
-            prompt = self._build_llm_prompt(canonical_di, low_conf_fields)
+            prompt = self._build_llm_prompt(canonical_di, low_conf_fields, di_data)
             if not prompt:
+                logger.info("No prompt built for LLM fallback; skipping.")
                 return
 
             cache_key = (
                 settings.AOAI_DEPLOYMENT_NAME or "",
                 tuple(sorted(low_conf_fields)),
-                invoice.id or "",
-                hashlib.sha256(prompt.encode("utf-8", "ignore")).hexdigest(),
+                invoice.file_name or invoice.id or "",
+                json.dumps(di_snapshot, sort_keys=True),
             )
-
-            logger.info("LLM fallback: low_conf_fields=%s", low_conf_fields)
 
             suggestion_text = self._llm_cache.get(cache_key)
             if suggestion_text is None:
-                resp = client.responses.create(
+                client = AzureOpenAI(
+                    api_key=settings.AOAI_API_KEY,
+                    api_version=settings.AOAI_API_VERSION,
+                    azure_endpoint=settings.AOAI_ENDPOINT,
+                )
+
+                logger.info("Calling Azure OpenAI chat.completions for LLM fallback.")
+                resp = client.chat.completions.create(
                     model=settings.AOAI_DEPLOYMENT_NAME,
-                    response_format={"type": "json_object"},
-                    input=[
-                        {
-                            "role": "user",
-                            "content": [{"type": "text", "text": prompt}],
-                        }
+                    temperature=0.0,
+                    messages=[
+                        {"role": "system", "content": LLM_SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt},
                     ],
                 )
-                suggestion_text = None
-                try:
-                    if resp.output and resp.output[0].content:
-                        suggestion_text = resp.output[0].content[0].text
-                except Exception:
-                    suggestion_text = getattr(resp, "output_text", None)
 
-                if not suggestion_text:
-                    logger.warning("LLM fallback returned empty content")
+                if not resp.choices or not resp.choices[0].message or not resp.choices[0].message.content:
+                    logger.warning("LLM fallback returned no content; skipping suggestions.")
                     return
 
+                suggestion_text = resp.choices[0].message.content.strip()
                 self._llm_cache[cache_key] = suggestion_text
 
+            # Parse and apply suggestions
+            try:
+                llm_data = json.loads(suggestion_text)
+            except json.JSONDecodeError as e:
+                logger.error("LLM fallback returned non-JSON content: %s", e)
+                logger.debug("Raw LLM suggestion text: %s", suggestion_text)
+                return
+
+            if not isinstance(llm_data, dict):
+                logger.error("LLM fallback JSON is not an object; got %s", type(llm_data))
+                return
+
             self._apply_llm_suggestions(invoice, suggestion_text, low_conf_fields)
+            logger.info("LLM fallback suggestions applied successfully.")
+
         except Exception as e:
-            logger.error(f"LLM fallback failed: {e}", exc_info=True)
+            logger.exception("LLM fallback failed: %s", e)
 
     def _build_llm_prompt(
         self,
         canonical_di: Dict[str, Any],
         low_conf_fields: list[str],
+        di_raw: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
         Build a JSON-safe prompt payload for the LLM, focusing ONLY on low-confidence fields.
@@ -314,6 +341,10 @@ class ExtractionService:
             "low_confidence_fields": low_conf_fields,
             "fields": sanitized,
         }
+
+        snippet = self._build_content_snippet(di_raw or {})
+        if snippet:
+            payload["ocr_snippet"] = snippet
 
         # This string is what you send as the LLM "input"
         return json.dumps(payload, ensure_ascii=False, default=str)
