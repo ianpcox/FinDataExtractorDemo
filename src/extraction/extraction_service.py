@@ -266,24 +266,28 @@ class ExtractionService:
 
             suggestion_text = self._llm_cache.get(cache_key)
             if suggestion_text is None:
-                resp = client.chat.completions.create(
+                resp = client.responses.create(
                     model=settings.AOAI_DEPLOYMENT_NAME,
-                    temperature=0.0,
                     response_format={"type": "json_object"},
-                    messages=[
-                        {"role": "system", "content": LLM_SYSTEM_PROMPT},
-                        {"role": "user", "content": prompt},
+                    input=[
+                        {
+                            "role": "user",
+                            "content": [{"type": "text", "text": prompt}],
+                        }
                     ],
                 )
-                if not resp.choices:
-                    logger.warning("LLM fallback returned no choices")
-                    return
-                suggestion_text = resp.choices[0].message.content
-                if suggestion_text:
-                    self._llm_cache[cache_key] = suggestion_text
-                else:
+                suggestion_text = None
+                try:
+                    if resp.output and resp.output[0].content:
+                        suggestion_text = resp.output[0].content[0].text
+                except Exception:
+                    suggestion_text = getattr(resp, "output_text", None)
+
+                if not suggestion_text:
                     logger.warning("LLM fallback returned empty content")
                     return
+
+                self._llm_cache[cache_key] = suggestion_text
 
             self._apply_llm_suggestions(invoice, suggestion_text, low_conf_fields)
         except Exception as e:
