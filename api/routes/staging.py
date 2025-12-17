@@ -58,7 +58,7 @@ async def stage_invoice(
         
         # Determine format
         try:
-            erp_format = ERPPayloadFormat(request.format.lower())
+            erp_format = ERPPayloadFormat(request.format.lower()) if request.format else ERPPayloadFormat.DYNAMICS_GP
         except ValueError:
             raise HTTPException(
                 status_code=400,
