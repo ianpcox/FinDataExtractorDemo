@@ -154,39 +154,54 @@ class ExtractionService:
             invoice_dict = invoice.model_dump(mode="json")
             extraction_ts = invoice.extraction_timestamp.isoformat() if invoice.extraction_timestamp else None
 
-            # Low-confidence fallback: include missing/unknown required fields
-            low_conf_threshold = 1.1  # TEMP: force all REQUIRED fields through fallback for testing
+            # Low-confidence fallback: decide which fields to send to LLM
+            low_conf_threshold = 0.75  # adjust this; see note below
             low_conf_fields: List[str] = []
-
             REQUIRED = [
                 "invoice_number",
                 "invoice_date",
-                "vendor_name",
+                "due_date",
                 "total_amount",
-                "bill_to_address",
-                "remit_to_address",
-                "vendor_address",
+                "currency",
+                "vendor_name",
             ]
             fc = invoice.field_confidence or {}
 
-            # required fields: trigger LLM if missing value OR missing confidence OR low confidence
-            for f in REQUIRED:
-                val = getattr(invoice, f, None)
-                conf = fc.get(f)
-                if val is None or conf is None or conf < low_conf_threshold:
-                    low_conf_fields.append(f)
-
-            # also include any other explicitly low-confidence fields
-            for name, conf in (fc or {}).items():
-                if conf is not None and conf < low_conf_threshold and name not in low_conf_fields:
+            for name in REQUIRED:
+                conf = fc.get(name)
+                if conf is None or conf < low_conf_threshold:
                     low_conf_fields.append(name)
-            # Placeholder for future multimodal correction hook
-            if low_conf_fields:
-                self._run_low_confidence_fallback(invoice, low_conf_fields, doc_intelligence_data)
-                # re-save after potential adjustments
-                invoice_dict = invoice.model_dump(mode="json")
-                await DatabaseService.save_invoice(invoice, db=db)
-            
+
+            line_items = invoice.line_items
+            if line_items and invoice.line_items:
+                line_item_required = ["description", "quantity", "unit_price", "amount"]
+                for idx, li in enumerate(invoice.line_items):
+                    licf = {}
+                    if hasattr(li, "confidence") and isinstance(li.confidence, dict):
+                        licf = (li.confidence or {}).get("fields", {}) or {}
+                    for fname in line_item_required:
+                        conf = licf.get(fname)
+                        if conf is None or conf < low_conf_threshold:
+                            key = f"line_item[{idx}].{fname}"
+                            low_conf_fields.append(key)
+
+            if not low_conf_fields:
+                logger.info("No fields below low_conf_threshold=%.2f, skipping LLM fallback", low_conf_threshold)
+            else:
+                try:
+                    self._run_low_confidence_fallback(
+                        invoice=invoice,
+                        low_conf_fields=low_conf_fields,
+                        di_payload=doc_intelligence_data,
+                    )
+                except Exception as e:
+                    logger.exception("LLM fallback failed; continuing with DI-only invoice: %s", e)
+
+            # Final save after LLM post-processing
+            logger.info("Saving extracted invoice to database (after LLM) for: %s", invoice_id)
+            await DatabaseService.save_invoice(invoice, db=db)
+            invoice_dict = invoice.model_dump(mode="json")
+
             result = {
                 "invoice_id": invoice_id,
                 "status": "extracted",
