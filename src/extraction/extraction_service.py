@@ -155,7 +155,7 @@ class ExtractionService:
             extraction_ts = invoice.extraction_timestamp.isoformat() if invoice.extraction_timestamp else None
 
             # Low-confidence fallback: decide which fields to send to LLM
-            low_conf_threshold = 0.75  # adjust this; see note below
+            low_conf_threshold = 1.1  # TEMP: force all REQUIRED fields through fallback for testing
             low_conf_fields: List[str] = []
             REQUIRED = [
                 "invoice_number",
