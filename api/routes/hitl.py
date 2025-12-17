@@ -20,6 +20,11 @@ from src.extraction.extraction_service import ExtractionService
 from src.extraction.document_intelligence_client import DocumentIntelligenceClient
 from src.extraction.field_extractor import FieldExtractor
 from src.ingestion.file_handler import FileHandler
+from src.config import settings
+try:
+    from openai import AzureOpenAI
+except ImportError:
+    AzureOpenAI = None
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +75,78 @@ def _get_extraction_service() -> ExtractionService:
         doc_intelligence_client=doc_client,
         file_handler=file_handler
     )
+
+
+@router.post("/invoice/{invoice_id}/review")
+async def review_invoice(
+    invoice_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Run LLM review for low-confidence fields and return suggestions without mutating the invoice.
+    """
+    if AzureOpenAI is None:
+        raise HTTPException(status_code=500, detail="OpenAI client not available")
+
+    invoice = await DatabaseService.get_invoice(invoice_id, db=db)
+    if not invoice:
+        raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
+
+    # Build low-confidence list (debug: force with threshold)
+    fc = invoice.field_confidence or {}
+    low_conf_threshold = 0.75
+    low_conf_fields = [k for k, v in fc.items() if v is None or v < low_conf_threshold]
+
+    if not low_conf_fields:
+        return {
+            "invoice_id": invoice_id,
+            "low_conf_fields": [],
+            "suggestions": {},
+            "message": "No low-confidence fields; skipping review",
+        }
+
+    svc = _get_extraction_service()
+    di_payload = {
+        "fields": invoice.model_dump(mode="json"),
+        "field_confidence": fc,
+    }
+    prompt = svc._build_llm_prompt(invoice, di_payload, low_conf_fields)
+    if not prompt:
+        raise HTTPException(status_code=500, detail="Failed to build LLM prompt")
+
+    try:
+        client = AzureOpenAI(
+            azure_endpoint=settings.AOAI_ENDPOINT,
+            api_key=settings.AOAI_API_KEY,
+            api_version=settings.AOAI_API_VERSION,
+        )
+        resp = client.chat.completions.create(
+            model=settings.AOAI_DEPLOYMENT_NAME,
+            temperature=0.0,
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": svc.LLM_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        if not resp.choices:
+            raise HTTPException(status_code=500, detail="LLM returned no choices")
+        suggestion_text = resp.choices[0].message.content or ""
+        try:
+            suggestions = json.loads(suggestion_text) if suggestion_text else {}
+        except Exception:
+            suggestions = {}
+        return {
+            "invoice_id": invoice_id,
+            "low_conf_fields": low_conf_fields,
+            "suggestions": suggestions,
+            "raw": suggestion_text,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Review endpoint failed for invoice {invoice_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.get("/invoice/{invoice_id}")
