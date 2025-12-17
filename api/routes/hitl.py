@@ -144,7 +144,7 @@ async def get_invoice_for_validation(
             "fields": {
                 "invoice_number": {
                     "value": to_str(invoice.invoice_number, "Not extracted"),
-                    "confidence": get_conf("invoice_id"),
+                    "confidence": get_conf("invoice_number"),
                     "validated": False
                 },
                 "invoice_date": {

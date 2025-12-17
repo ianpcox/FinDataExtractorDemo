@@ -4,10 +4,12 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import Response
 from typing import Optional
 import logging
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.services.db_service import DatabaseService
 from src.erp.pdf_overlay_renderer import PDFOverlayRenderer
 from src.ingestion.file_handler import FileHandler
+from src.models.database import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +19,8 @@ router = APIRouter(prefix="/overlay", tags=["overlay"])
 @router.get("/{invoice_id}")
 async def get_overlay_pdf(
     invoice_id: str,
-    file_handler: FileHandler = Depends(lambda: FileHandler())
+    file_handler: FileHandler = Depends(lambda: FileHandler()),
+    db: AsyncSession = Depends(get_db)
 ):
     """
     Generate PDF overlay for an invoice
@@ -30,7 +33,7 @@ async def get_overlay_pdf(
     """
     try:
         # Get invoice from database
-        invoice = await DatabaseService.get_invoice(invoice_id)
+        invoice = await DatabaseService.get_invoice(invoice_id, db=db)
         if not invoice:
             raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
         
