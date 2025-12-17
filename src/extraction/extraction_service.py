@@ -22,6 +22,32 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+LLM_SYSTEM_PROMPT = """
+You are an expert accounts-payable invoice validator working for a Canadian federal agency.
+
+You are given:
+- JSON containing the fields extracted from a single vendor invoice (the canonical extraction result); 
+- a list of canonical field names that currently have LOW confidence; and
+- a snippet of the invoice text that contains the raw evidence.
+
+Your task:
+- For each low-confidence field, look at the evidence text and the current extracted value.
+- If the correct value is clearly present in the evidence text, correct it.
+- If the value is present but the format is wrong (e.g., date style, thousand separators, currency symbol), normalize the format.
+- If the correct value cannot be identified with high confidence, DO NOT guess or hallucinate: simply omit that field from your JSON response.
+
+Formatting rules:
+- Dates must be ISO 8601 date strings: "YYYY-MM-DD".
+- Monetary amounts must be numeric, using "." as the decimal separator.
+- Do not change currencies or magnitudes: if the invoice says 1,234.56, keep that amount, including cents.
+- Trim whitespace and normalize casing where appropriate, but do not rewrite vendor names beyond obvious OCR fixes.
+
+Output:
+- Return ONE JSON object only (no explanations, comments, code fences, or extra keys).
+- The JSON object’s keys must be a subset of the canonical field names you are given (e.g., "invoice_number", "invoice_date", "vendor_name", "total_amount").
+- Each key you include should have a single scalar value (string, number, or ISO date) that reflects the corrected extraction.
+"""
+
 
 class ExtractionService:
     """Service for extracting data from invoice PDFs"""
@@ -128,7 +154,7 @@ class ExtractionService:
             extraction_ts = invoice.extraction_timestamp.isoformat() if invoice.extraction_timestamp else None
 
             # Low-confidence fallback: include missing/unknown required fields
-            low_conf_threshold = 0.75
+        low_conf_threshold = 1.1  # TEMP: force all REQUIRED fields through fallback for testing
             low_conf_fields: List[str] = []
 
             REQUIRED = ["invoice_number", "invoice_date", "vendor_name", "total_amount"]
@@ -225,15 +251,16 @@ class ExtractionService:
                 resp = client.chat.completions.create(
                     model=settings.AOAI_DEPLOYMENT_NAME,
                     temperature=0.0,
+                    response_format={"type": "json_object"},
                     messages=[
-                        {"role": "system", "content": "You are an assistant that fixes invoice extraction results. Return JSON only."},
+                        {"role": "system", "content": LLM_SYSTEM_PROMPT},
                         {"role": "user", "content": prompt},
                     ],
                 )
                 if not resp.choices:
                     logger.warning("LLM fallback returned no choices")
                     return
-                suggestion_text = resp.choices[0].message.content if resp.choices else None
+                suggestion_text = resp.choices[0].message.content
                 if suggestion_text:
                     self._llm_cache[cache_key] = suggestion_text
                 else:
@@ -289,6 +316,13 @@ class ExtractionService:
             logger.warning(f"Could not parse LLM suggestions as JSON: {e}")
             return
 
+        logger.info(
+            "LLM suggestions for invoice %s (fields=%s): %s",
+            invoice.id,
+            ", ".join(low_conf_fields),
+            suggestion_text,
+        )
+
         # Map known fields
         for field in low_conf_fields:
             if field in data:
@@ -303,6 +337,15 @@ class ExtractionService:
 
                     if target_field in ["subtotal", "tax_amount", "total_amount", "acceptance_percentage"]:
                         parsed = self.field_extractor._parse_decimal(data[field])
+                        old_val = getattr(invoice, target_field, None)
+                        if old_val != parsed:
+                            logger.info(
+                                "LLM updated %s for invoice %s: %r -> %r",
+                                target_field,
+                                invoice.id,
+                                old_val,
+                                parsed,
+                            )
                         setattr(invoice, target_field, parsed)
                     elif target_field in [
                         "invoice_date",
@@ -314,19 +357,49 @@ class ExtractionService:
                     ]:
                         from dateutil.parser import parse
 
-                        setattr(invoice, target_field, parse(data[field]).date())
+                        new_val = parse(data[field]).date()
+                        old_val = getattr(invoice, target_field, None)
+                        if old_val != new_val:
+                            logger.info(
+                                "LLM updated %s for invoice %s: %r -> %r",
+                                target_field,
+                                invoice.id,
+                                old_val,
+                                new_val,
+                            )
+                        setattr(invoice, target_field, new_val)
                     elif target_field in ["vendor_address", "bill_to_address", "remit_to_address"]:
                         addr = data[field]
                         if isinstance(addr, dict):
                             from src.models.invoice import Address
 
-                            setattr(invoice, target_field, Address(**addr))
+                            new_val = Address(**addr)
+                            old_val = getattr(invoice, target_field, None)
+                            if old_val != new_val:
+                                logger.info(
+                                    "LLM updated %s for invoice %s: %r -> %r",
+                                    target_field,
+                                    invoice.id,
+                                    old_val,
+                                    new_val,
+                                )
+                            setattr(invoice, target_field, new_val)
                     else:
-                        setattr(invoice, target_field, data[field])
+                        new_val = data[field]
+                        old_val = getattr(invoice, target_field, None)
+                        if old_val != new_val:
+                            logger.info(
+                                "LLM updated %s for invoice %s: %r -> %r",
+                                target_field,
+                                invoice.id,
+                                old_val,
+                                new_val,
+                            )
+                        setattr(invoice, target_field, new_val)
 
                     if invoice.field_confidence is None:
                         invoice.field_confidence = {}
-                    invoice.field_confidence[target_field] = 0.9
+                    invoice.field_confidence[target_field] = max(invoice.field_confidence.get(target_field, 0.0), 0.9)
                 except Exception as e:
                     logger.warning(f"Could not apply LLM suggestion for {field}: {e}")
 

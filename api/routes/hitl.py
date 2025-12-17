@@ -18,6 +18,7 @@ from src.models.invoice import Invoice, LineItem, Address
 from sqlalchemy.ext.asyncio import AsyncSession
 from src.extraction.extraction_service import ExtractionService
 from src.extraction.document_intelligence_client import DocumentIntelligenceClient
+from src.extraction.field_extractor import FieldExtractor
 from src.ingestion.file_handler import FileHandler
 
 logger = logging.getLogger(__name__)
@@ -397,28 +398,40 @@ async def validate_invoice(
                         "payment_terms": "payment_terms",
                         "acceptance_percentage": "acceptance_percentage",
                         "tax_registration_number": "tax_registration_number",
+                        "federal_tax": "tax_breakdown",
+                        "provincial_tax": "tax_breakdown",
+                        "combined_tax": "tax_breakdown",
                     }
                     
                     if field_validation.field_name in field_mapping:
                         attr_name = field_mapping[field_validation.field_name]
-                        old_value = getattr(invoice, attr_name, None)
-                        # Handle type conversions
-                        if attr_name in ["subtotal", "tax_amount", "total_amount", "acceptance_percentage"]:
-                            setattr(invoice, attr_name, Decimal(str(field_validation.corrected_value)))
-                        elif attr_name in ["invoice_date", "due_date"]:
-                            from dateutil.parser import parse
-                            setattr(invoice, attr_name, parse(field_validation.corrected_value).date())
-                        elif attr_name in ["vendor_address", "bill_to_address", "remit_to_address"]:
-                            if isinstance(field_validation.corrected_value, dict):
-                                try:
-                                    setattr(invoice, attr_name, Address(**field_validation.corrected_value))
-                                except Exception:
-                                    # store raw dict if not parseable
-                                    setattr(invoice, attr_name, field_validation.corrected_value)
-                            else:
-                                logger.warning(f"Skipping non-dict address correction for {attr_name}")
+                        if attr_name == "tax_breakdown":
+                            tb = invoice.tax_breakdown or {}
+                            old_value = tb.get(field_validation.field_name)
+                            tb[field_validation.field_name] = Decimal(str(field_validation.corrected_value)) if field_validation.corrected_value is not None else None
+                            invoice.tax_breakdown = tb
                         else:
-                            setattr(invoice, attr_name, field_validation.corrected_value)
+                            old_value = getattr(invoice, attr_name, None)
+                            # Handle type conversions
+                            if attr_name in ["subtotal", "tax_amount", "total_amount", "acceptance_percentage"]:
+                                setattr(invoice, attr_name, Decimal(str(field_validation.corrected_value)))
+                            elif attr_name in ["invoice_date", "due_date"]:
+                                from dateutil.parser import parse
+                                setattr(invoice, attr_name, parse(field_validation.corrected_value).date())
+                            elif attr_name in ["vendor_address", "bill_to_address", "remit_to_address"]:
+                                if isinstance(field_validation.corrected_value, dict):
+                                    try:
+                                        setattr(invoice, attr_name, Address(**field_validation.corrected_value))
+                                    except Exception:
+                                        # store raw dict if not parseable
+                                        setattr(invoice, attr_name, field_validation.corrected_value)
+                                else:
+                                    logger.warning(f"Skipping non-dict address correction for {attr_name}")
+                            else:
+                                setattr(invoice, attr_name, field_validation.corrected_value)
+                        if invoice.field_confidence is None:
+                            invoice.field_confidence = {}
+                        invoice.field_confidence[field_validation.field_name] = field_validation.confidence or 0.9
                         corrections_log.append({
                             "invoice_id": invoice.id,
                             "field": field_validation.field_name,
@@ -451,6 +464,14 @@ async def validate_invoice(
                                         "corrected_at": datetime.utcnow().isoformat()
                                     })
                         break
+
+        # Recompute overall confidence after corrections
+        try:
+            fe = FieldExtractor()
+            if invoice.field_confidence:
+                invoice.extraction_confidence = fe._calculate_overall_confidence(invoice.field_confidence)
+        except Exception as conf_err:
+            logger.warning(f"Could not recalculate extraction confidence: {conf_err}")
 
         # Update review status
         invoice.review_status = request.overall_validation_status

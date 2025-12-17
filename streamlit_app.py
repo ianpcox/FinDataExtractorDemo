@@ -392,7 +392,7 @@ def main():
 
     with col_main:
         with st.form("invoice_review_form"):
-            tab1, tab2, tab4 = st.tabs(["Fields", "Line Items", "Validation"])
+            tab1, tab2, tab3, tab4 = st.tabs(["Fields", "Line Items", "Addresses", "Validation"])
 
         # Tab 1: Fields
             with tab1:
@@ -404,7 +404,18 @@ def main():
                 header_fields = ["invoice_number", "invoice_date", "due_date", "po_number", "standing_offer_number"]
                 vendor_fields = ["vendor_name", "vendor_id", "vendor_phone"]
                 customer_fields = ["customer_name", "customer_id"]
-                financial_fields = ["subtotal", "tax_amount", "total_amount", "currency", "payment_terms", "acceptance_percentage", "tax_registration_number"]
+                financial_fields = [
+                    "subtotal",
+                    "tax_amount",
+                    "total_amount",
+                    "currency",
+                    "payment_terms",
+                    "acceptance_percentage",
+                    "tax_registration_number",
+                    "federal_tax",
+                    "provincial_tax",
+                    "combined_tax",
+                ]
                 
                 # Header Information
                 st.markdown("#### Header Information")
@@ -481,59 +492,40 @@ def main():
                 # Financial Information
                 st.markdown("#### Financial Information")
                 financial_cols = st.columns(3)
+                tax_breakdown = invoice_data.get("tax_breakdown", {}) or {}
                 
                 for i, field_name in enumerate(financial_fields):
-                    if field_name in fields:
-                        field_data = fields[field_name]
-                        value = field_data.get("value")
-                        confidence = field_data.get("confidence", 0.0)
+                    field_data = fields.get(field_name) or {"value": tax_breakdown.get(field_name), "confidence": 0.0}
+                    value = field_data.get("value")
+                    confidence = field_data.get("confidence", 0.0)
+                    
+                    with financial_cols[i % 3]:
+                        icon = get_confidence_icon(confidence)
+                        conf_class = get_confidence_color(confidence)
                         
-                        with financial_cols[i % 3]:
-                            icon = get_confidence_icon(confidence)
-                            conf_class = get_confidence_color(confidence)
-                            
-                            label = field_name.replace("_", " ").title()
-                            if field_name in ["subtotal", "tax_amount", "total_amount", "acceptance_percentage"]:
-                                st.number_input(
-                                    label,
-                                    value=float(value) if value else 0.0,
-                                    key=f"field_{selected_invoice_id}_{field_name}",
-                                    format="%.2f",
-                                    help=f"Confidence: {format_confidence(confidence)}"
-                                )
-                            else:
-                                st.text_input(
-                                    label,
-                                    value=str(value) if value else "",
-                                    key=f"field_{selected_invoice_id}_{field_name}",
-                                    help=f"Confidence: {format_confidence(confidence)}"
-                                )
-                            st.markdown(f'<span class="{conf_class}">{icon} {format_confidence(confidence)}</span>', 
-                                      unsafe_allow_html=True)
-                
-                # Addresses
-                addresses = st.session_state.get("edited_addresses", {})
-                if addresses:
-                    st.markdown("#### Addresses")
-                    for addr_type, addr_data in addresses.items():
-                        st.markdown(f"**{addr_type.replace('_', ' ').title()}:**")
-                        addr_val = (addr_data or {}).get("value") or {}
-                        col_a, col_b = st.columns(2)
-                        with col_a:
-                            st.text_input("Street", value=addr_val.get("street", "") or "", key=f"{selected_invoice_id}_{addr_type}_street")
-                            st.text_input("City", value=addr_val.get("city", "") or "", key=f"{selected_invoice_id}_{addr_type}_city")
-                            st.text_input("Province", value=addr_val.get("province", "") or "", key=f"{selected_invoice_id}_{addr_type}_province")
-                        with col_b:
-                            st.text_input("Postal Code", value=addr_val.get("postal_code", "") or "", key=f"{selected_invoice_id}_{addr_type}_postal_code")
-                            st.text_input("Country", value=addr_val.get("country", "") or "", key=f"{selected_invoice_id}_{addr_type}_country")
-                            conf = addr_data.get("confidence", 0.0)
-                            st.markdown(
-                                f'<span class="{get_confidence_color(conf)}">{get_confidence_icon(conf)} {format_confidence(conf)}</span>',
-                                unsafe_allow_html=True,
+                        label = field_name.replace("_", " ").title()
+                        if field_name in ["subtotal", "tax_amount", "total_amount", "acceptance_percentage", "federal_tax", "provincial_tax", "combined_tax"]:
+                            st.number_input(
+                                label,
+                                value=float(value) if value else 0.0,
+                                key=f"field_{selected_invoice_id}_{field_name}",
+                                format="%.2f",
+                                help=f"Confidence: {format_confidence(confidence)}"
                             )
+                        else:
+                            st.text_input(
+                                label,
+                                value=str(value) if value else "",
+                                key=f"field_{selected_invoice_id}_{field_name}",
+                                help=f"Confidence: {format_confidence(confidence)}"
+                            )
+                        st.markdown(f'<span class="{conf_class}">{icon} {format_confidence(confidence)}</span>', 
+                                  unsafe_allow_html=True)
+                
+                # (Addresses moved to tab3)
 
     
-        # Tab 2: Line Items
+            # Tab 2: Line Items
         with tab2:
             st.subheader("Line Items")
             
@@ -558,11 +550,14 @@ def main():
                     qty = current_line_value(ln, "qty", item.get("quantity"))
                     unit_price = current_line_value(ln, "price", item.get("unit_price"))
                     gst = current_line_value(ln, "gst", item.get("gst_amount"))
-                    pst = current_line_value(ln, "pst", item.get("pst_amount"))
-                    qst = current_line_value(ln, "qst", item.get("qst_amount"))
+                    pstqst = current_line_value(
+                        ln,
+                        "pstqst",
+                        item.get("pst_amount") if item.get("pst_amount") is not None else item.get("qst_amount"),
+                    )
                     combined = current_line_value(ln, "combined", item.get("combined_tax"))
                     tax_amount = current_line_value(ln, "tax_amount", item.get("tax_amount"))
-                    amt = item.get("amount")
+                    amt = current_line_value(ln, "amount", item.get("amount"))
                     line_total = None
                     try:
                         if amt is not None:
@@ -573,16 +568,19 @@ def main():
                         line_total = safe_num(amt, 0.0)
                     if line_total is None:
                         line_total = safe_num(amt, 0.0)
-                    subtotal = line_total
+                    # allow editable subtotal override
+                    subtotal_override = current_line_value(ln, "subtotal", None)
+                    subtotal = safe_num(subtotal_override, line_total) if subtotal_override is not None else line_total
                     try:
-                        if tax_amount not in [None, ""]:
-                            subtotal = line_total - float(tax_amount)
-                        elif combined not in [None, ""]:
-                            subtotal = line_total - float(combined)
-                        else:
-                            parts = [gst, pst, qst]
-                            if any(p is not None for p in parts):
-                                subtotal = line_total - sum(float(p) for p in parts if p is not None)
+                        if subtotal_override is None:
+                            if tax_amount not in [None, ""]:
+                                subtotal = line_total - float(tax_amount)
+                            elif combined not in [None, ""]:
+                                subtotal = line_total - float(combined)
+                            else:
+                                parts = [gst, pstqst]
+                                if any(p is not None for p in parts):
+                                    subtotal = line_total - sum(float(p) for p in parts if p is not None)
                     except Exception:
                         subtotal = line_total
                     return line_total, subtotal
@@ -600,8 +598,7 @@ def main():
                         "Subtotal": f"${subtotal:,.2f}",
                         "Line Total": f"${line_total:,.2f}",
                         "GST": f"${safe_num(current_line_value(ln, 'gst', item.get('gst_amount')), 0):,.2f}" if item.get("gst_amount") is not None or st.session_state.get(f"item_{selected_invoice_id}_{ln}_gst") is not None else "",
-                        "PST": f"${safe_num(current_line_value(ln, 'pst', item.get('pst_amount')), 0):,.2f}" if item.get("pst_amount") is not None or st.session_state.get(f"item_{selected_invoice_id}_{ln}_pst") is not None else "",
-                        "QST": f"${safe_num(current_line_value(ln, 'qst', item.get('qst_amount')), 0):,.2f}" if item.get("qst_amount") is not None or st.session_state.get(f"item_{selected_invoice_id}_{ln}_qst") is not None else "",
+                        "PST/QST": f"${safe_num(current_line_value(ln, 'pstqst', item.get('pst_amount') if item.get('pst_amount') is not None else item.get('qst_amount')), 0):,.2f}" if (item.get("pst_amount") is not None or item.get("qst_amount") is not None or st.session_state.get(f"item_{selected_invoice_id}_{ln}_pstqst") is not None) else "",
                         "Combined Tax": f"${safe_num(current_line_value(ln, 'combined', item.get('combined_tax')), 0):,.2f}" if item.get("combined_tax") is not None or st.session_state.get(f"item_{selected_invoice_id}_{ln}_combined") is not None else "",
                         "Confidence": format_confidence(item.get("confidence", 0.0))
                     })
@@ -620,20 +617,51 @@ def main():
                             st.text_input("Description", value=item.get("description", ""), key=f"item_{selected_invoice_id}_{ln}_desc")
                             st.number_input("Quantity", value=safe_num(item.get("quantity"), 0.0), key=f"item_{selected_invoice_id}_{ln}_qty")
                             st.number_input("GST", value=safe_num(item.get("gst_amount"), 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_gst")
-                            st.number_input("PST", value=safe_num(item.get("pst_amount"), 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_pst")
-                            st.number_input("QST", value=safe_num(item.get("qst_amount"), 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_qst")
-                        
+                            st.number_input(
+                                "PST/QST",
+                                value=safe_num(
+                                    item.get("pst_amount") if item.get("pst_amount") is not None else item.get("qst_amount"),
+                                    0.0,
+                                ),
+                                format="%.2f",
+                                key=f"item_{selected_invoice_id}_{ln}_pstqst",
+                            )
+
                         with col2:
                             st.number_input("Unit Price", value=safe_num(item.get("unit_price"), 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_price")
                             st.number_input("Combined Tax", value=safe_num(item.get("combined_tax"), 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_combined")
-                            st.markdown(f"**Line Total:** ${line_total:,.2f}")
-                            st.markdown(f"**Subtotal (excl. tax):** ${subtotal:,.2f}")
+                            st.number_input("Line Total", value=safe_num(line_total, 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_amount")
+                            st.number_input("Subtotal", value=safe_num(subtotal, 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_subtotal")
                             conf = item.get("confidence", 0.0)
                             conf_class = get_confidence_color(conf)
                             st.markdown(f'<span class="{conf_class}">{get_confidence_icon(conf)} Confidence: {format_confidence(conf)}</span>', 
                                       unsafe_allow_html=True)
             else:
                 st.info("No line items found.")
+    
+        # Tab 3: Addresses
+        with tab3:
+            addresses = st.session_state.get("edited_addresses", {})
+            if addresses:
+                st.subheader("Addresses")
+                for addr_type, addr_data in addresses.items():
+                    st.markdown(f"**{addr_type.replace('_', ' ').title()}:**")
+                    addr_val = (addr_data or {}).get("value") or {}
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        st.text_input("Street", value=addr_val.get("street", "") or "", key=f"{selected_invoice_id}_{addr_type}_street")
+                        st.text_input("City", value=addr_val.get("city", "") or "", key=f"{selected_invoice_id}_{addr_type}_city")
+                        st.text_input("Province", value=addr_val.get("province", "") or "", key=f"{selected_invoice_id}_{addr_type}_province")
+                    with col_b:
+                        st.text_input("Postal Code", value=addr_val.get("postal_code", "") or "", key=f"{selected_invoice_id}_{addr_type}_postal_code")
+                        st.text_input("Country", value=addr_val.get("country", "") or "", key=f"{selected_invoice_id}_{addr_type}_country")
+                        conf = addr_data.get("confidence", 0.0)
+                        st.markdown(
+                            f'<span class="{get_confidence_color(conf)}">{get_confidence_icon(conf)} {format_confidence(conf)}</span>',
+                            unsafe_allow_html=True,
+                        )
+            else:
+                st.info("No addresses available.")
     
         # Tab 4: Validation
         with tab4:
@@ -664,6 +692,7 @@ def main():
 
                         # Header/vendor/customer/financial fields diff
                         fields_data = invoice_data.get("fields", {}) or {}
+                        tax_breakdown = invoice_data.get("tax_breakdown", {}) or {}
                         header_fields = ["invoice_number", "invoice_date", "due_date", "po_number", "standing_offer_number"]
                         vendor_fields = ["vendor_name", "vendor_id", "vendor_phone"]
                         customer_fields = ["customer_name", "customer_id"]
@@ -675,21 +704,23 @@ def main():
                             "payment_terms",
                             "acceptance_percentage",
                             "tax_registration_number",
+                            "federal_tax",
+                            "provincial_tax",
+                            "combined_tax",
                         ]
                         for fname in header_fields + vendor_fields + customer_fields + financial_fields:
-                            if fname in fields_data:
-                                field_data = fields_data.get(fname) or {}
-                                orig_val = field_data.get("value")
-                                new_val = st.session_state.get(f"field_{selected_invoice_id}_{fname}")
-                                if new_val is not None and str(new_val) != str(orig_val or ""):
-                                    field_validations.append({
-                                        "field_name": fname,
-                                        "value": orig_val,
-                                        "confidence": field_data.get("confidence", 0.0),
-                                        "validated": True,
-                                        "corrected_value": new_val,
-                                        "validation_notes": "",
-                                    })
+                            field_data = fields_data.get(fname) or {"value": tax_breakdown.get(fname), "confidence": 0.0}
+                            orig_val = field_data.get("value")
+                            new_val = st.session_state.get(f"field_{selected_invoice_id}_{fname}")
+                            if new_val is not None and str(new_val) != str(orig_val or ""):
+                                field_validations.append({
+                                    "field_name": fname,
+                                    "value": orig_val,
+                                    "confidence": field_data.get("confidence", 0.0),
+                                    "validated": True,
+                                    "corrected_value": new_val,
+                                    "validation_notes": "",
+                                })
 
                         # Addresses
                         edited_addresses = st.session_state.get("edited_addresses", {})
@@ -732,18 +763,42 @@ def main():
                             maybe_add("qty", "quantity")
                             maybe_add("price", "unit_price")
                             maybe_add("gst", "gst_amount")
-                            maybe_add("pst", "pst_amount")
-                            maybe_add("qst", "qst_amount")
+                            # PST/QST combined input
+                            pstqst_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_pstqst")
+                            if pstqst_val is not None and pstqst_val != orig.get("pst_amount") and pstqst_val != orig.get("qst_amount"):
+                                corrections["pst_amount"] = pstqst_val
+                                corrections["qst_amount"] = pstqst_val
                             maybe_add("combined", "combined_tax")
 
                             # derive line_total (amount) for submission if changed
                             line_total_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_amount")
+                            subtotal_input = st.session_state.get(f"item_{selected_invoice_id}_{ln}_subtotal")
                             if line_total_val is None:
                                 qty_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_qty")
                                 price_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_price")
                                 try:
                                     if qty_val is not None and price_val is not None:
                                         line_total_val = float(qty_val) * float(price_val)
+                                except Exception:
+                                    line_total_val = None
+                            # if user edited subtotal, back-calc line total using taxes
+                            if line_total_val is None and subtotal_input is not None:
+                                try:
+                                    base = float(subtotal_input)
+                                    tax_components = []
+                                    for key in [
+                                        f"item_{selected_invoice_id}_{ln}_tax_amount",
+                                        f"item_{selected_invoice_id}_{ln}_combined",
+                                        f"item_{selected_invoice_id}_{ln}_gst",
+                                        f"item_{selected_invoice_id}_{ln}_pstqst",
+                                    ]:
+                                        val = st.session_state.get(key)
+                                        if val not in [None, ""]:
+                                            tax_components.append(float(val))
+                                    if tax_components:
+                                        line_total_val = base + sum(tax_components)
+                                    else:
+                                        line_total_val = base
                                 except Exception:
                                     line_total_val = None
                             if line_total_val is not None and line_total_val != orig.get("amount"):
@@ -790,8 +845,9 @@ def main():
                     st.info("No review history available.")
 
     # Re-run extraction outside the form
-    st.markdown("#### Re-run Extraction")
-    if st.button("Re-run extraction for this invoice"):
+    st.markdown("#### Re-run Extraction (DI + LLM Assist)")
+    st.caption("Runs Document Intelligence and the LLM fallback for low-confidence fields.")
+    if st.button("Re-run Extraction with AI Assist"):
         try:
             file_path = invoice_data.get("file_path")
             file_name = invoice_data.get("file_name", "invoice.pdf")
