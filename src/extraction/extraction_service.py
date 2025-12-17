@@ -256,7 +256,7 @@ class ExtractionService:
             except Exception:
                 canonical_di = di_payload or {}
 
-            prompt = self._build_llm_prompt(canonical_di, low_conf_fields)
+            prompt = self._build_llm_prompt(invoice, di_payload, low_conf_fields)
             if not prompt:
                 return
 
@@ -292,43 +292,44 @@ class ExtractionService:
         except Exception as e:
             logger.error(f"LLM fallback failed: {e}", exc_info=True)
 
-    def _build_llm_prompt(self, di_payload: Dict[str, Any], low_conf_fields: List[str]) -> Optional[str]:
-        """Build prompt using canonical field names and DI content as evidence."""
+    def _build_llm_prompt(self, invoice: Invoice, di_data: Dict[str, Any], low_conf_fields: List[str]) -> Optional[str]:
+        """
+        Build a compact JSON payload for the LLM containing only the low-confidence slice plus a short OCR snippet.
+        """
         try:
-            # Only send the low-confidence fields to keep the LLM call surgical/cheap
-            minimal = {k: v for k, v in di_payload.items() if k in low_conf_fields}
+            di_payload = di_data.get("fields", di_data) or {}
+            subset = {k: di_payload.get(k) for k in low_conf_fields}
+            content_snippet = self._build_content_snippet(di_data)
+            payload = {
+                "di_payload": di_payload,
+                "field_confidence": di_data.get("field_confidence") or {},
+                "low_conf_fields": low_conf_fields,
+                "low_conf_subset": subset,
+                "ocr_snippet": content_snippet,
+            }
+            return json.dumps(payload, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"Failed to build LLM prompt: {e}", exc_info=True)
+            return None
 
-            # Keep evidence small: only low-conf fields + limited text
-            content_snippet = ""
-            pages = di_payload.get("pages")
+    def _build_content_snippet(self, di_data: Dict[str, Any]) -> str:
+        """Extract a small OCR snippet to limit token usage."""
+        try:
+            pages = di_data.get("pages")
             if isinstance(pages, list) and pages:
                 first_page = str(pages[0])
                 last_page = str(pages[-1]) if len(pages) > 1 else ""
                 head = first_page[:1200]
                 tail = last_page[-800:] if last_page else ""
-                content_snippet = head + ("\n...\n" + tail if tail else "")
-            else:
-                raw_content = str(di_payload.get("content", ""))
-                if len(raw_content) > 2000:
-                    head = raw_content[:1200]
-                    tail = raw_content[-800:]
-                    content_snippet = head + "\n...\n" + tail
-                else:
-                    content_snippet = raw_content
-
-            sanitized = self._sanitize_for_json(minimal)
-            parts = [
-                "Given this invoice extraction (JSON), improve only the listed low-confidence fields using the evidence text.",
-                "Return JSON with just those fields corrected. If unknown, omit the field.",
-                f"Low-confidence fields (canonical): {', '.join(low_conf_fields)}",
-                f"Data:\n{json.dumps(sanitized, default=str)[:6000]}",
-            ]
-            if content_snippet:
-                parts.append(f"Evidence text (may be truncated):\n{content_snippet[:2000]}")
-            return "\n\n".join(parts)
-        except Exception as e:
-            logger.error(f"Failed to build LLM prompt: {e}", exc_info=True)
-            return None
+                return head + ("\n...\n" + tail if tail else "")
+            raw_content = str(di_data.get("content", ""))
+            if len(raw_content) > 2000:
+                head = raw_content[:1200]
+                tail = raw_content[-800:]
+                return head + "\n...\n" + tail
+            return raw_content
+        except Exception:
+            return ""
 
     def _apply_llm_suggestions(self, invoice: Invoice, suggestion_text: str, low_conf_fields: List[str]):
         try:
