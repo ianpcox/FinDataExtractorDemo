@@ -236,7 +236,7 @@ class ExtractionService:
         invoice: Invoice,
         low_conf_fields: List[str],
         di_data: Dict[str, Any],
-        di_field_confidence: Dict[str, float],
+        di_field_confidence: Optional[Dict[str, float]] = None,
     ) -> None:
         """Run LLM fallback to refine low-confidence fields. Best-effort and non-blocking."""
         logger.info("Running LLM fallback for low confidence fields: %s", low_conf_fields)
@@ -354,7 +354,8 @@ class ExtractionService:
             payload["ocr_snippet"] = snippet
 
         # This string is what you send as the LLM "input"
-        return json.dumps(payload, ensure_ascii=False, default=str)
+        prefix = f"Low-confidence fields: {', '.join(low_conf_fields)}\n"
+        return prefix + json.dumps(payload, ensure_ascii=False, default=str)
 
     def _build_content_snippet(self, di_data: Dict[str, Any]) -> str:
         """Extract a small OCR snippet to limit token usage."""
@@ -433,7 +434,7 @@ class ExtractionService:
 
                 if invoice.field_confidence is None:
                     invoice.field_confidence = {}
-                invoice.field_confidence[target_field] = max(invoice.field_confidence.get(target_field, 0.0), 0.9)
+                invoice.field_confidence[target_field] = 0.9
             except Exception as e:
                 logger.warning(f"Could not apply LLM suggestion for {field}: {e}")
 

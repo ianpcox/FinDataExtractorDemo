@@ -882,11 +882,12 @@ def main():
                         maybe_add("qty", "quantity")
                         maybe_add("price", "unit_price")
                         maybe_add("gst", "gst_amount")
-                        # PST/QST combined input
+                            # PST/QST combined input (store as pst_amount only)
                         pstqst_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_pstqst")
-                        if pstqst_val is not None and pstqst_val != orig.get("pst_amount") and pstqst_val != orig.get("qst_amount"):
-                            corrections["pst_amount"] = pstqst_val
-                            corrections["qst_amount"] = pstqst_val
+                            if pstqst_val is not None and pstqst_val != orig.get("pst_amount"):
+                                corrections["pst_amount"] = pstqst_val
+                                # clear qst_amount if present
+                                corrections["qst_amount"] = None
                         maybe_add("combined", "combined_tax")
 
                         # derive line_total (amount) for submission if changed
@@ -909,7 +910,7 @@ def main():
                                     f"item_{selected_invoice_id}_{ln}_tax_amount",
                                     f"item_{selected_invoice_id}_{ln}_combined",
                                     f"item_{selected_invoice_id}_{ln}_gst",
-                                    f"item_{selected_invoice_id}_{ln}_pstqst",
+                                        f"item_{selected_invoice_id}_{ln}_pstqst",
                                 ]:
                                     val = st.session_state.get(key)
                                     if val not in [None, ""]:

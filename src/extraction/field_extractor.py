@@ -143,6 +143,8 @@ class FieldExtractor:
         invoice.invoice_number = self._get_field_value(
             canonical_data.get("invoice_number"), field_confidence.get("invoice_number")
         )
+        if invoice.invoice_number is None:
+            invoice.invoice_number = doc_intelligence_data.get("invoice_id") or doc_intelligence_data.get("InvoiceId")
         invoice.invoice_date = self._parse_date(
             canonical_data.get("invoice_date"), field_confidence.get("invoice_date")
         )
@@ -185,6 +187,8 @@ class FieldExtractor:
         invoice.po_number = self._get_field_value(
             canonical_data.get("po_number"), field_confidence.get("po_number")
         )
+        if invoice.po_number is None:
+            invoice.po_number = doc_intelligence_data.get("purchase_order") or doc_intelligence_data.get("PurchaseOrder")
         
         # Period covered
         invoice.period_start = self._parse_date(
@@ -201,8 +205,13 @@ class FieldExtractor:
         invoice.tax_amount = self._parse_decimal(
             canonical_data.get("tax_amount"), field_confidence.get("tax_amount")
         )
+        di_total_raw = (
+            canonical_data.get("total_amount")
+            or doc_intelligence_data.get("InvoiceTotal")
+            or doc_intelligence_data.get("invoice_total")
+        )
         invoice.total_amount = self._parse_decimal(
-            canonical_data.get("total_amount"), field_confidence.get("total_amount")
+            di_total_raw, field_confidence.get("total_amount")
         )
         
         # Tax breakdown (by tax type)
@@ -220,15 +229,13 @@ class FieldExtractor:
         # Line items
         items_data = canonical_data.get("items", [])
         invoice.line_items = self._extract_line_items(items_data, field_confidence)
-        # Derive totals if missing
-        if invoice.line_items:
+        # Derive totals only if DI did not provide them
+        if invoice.line_items and di_total_raw is None:
             line_sum = sum([item.amount or Decimal("0.00") for item in invoice.line_items], Decimal("0.00"))
             if invoice.subtotal is None:
                 invoice.subtotal = line_sum
-            # If total missing but we have subtotal and tax_amount
             if invoice.total_amount is None and invoice.subtotal is not None:
                 invoice.total_amount = invoice.subtotal + (invoice.tax_amount or Decimal("0.00"))
-            # If tax_amount missing but we have total and subtotal
             if invoice.tax_amount is None and invoice.total_amount is not None and invoice.subtotal is not None:
                 invoice.tax_amount = invoice.total_amount - invoice.subtotal
         invoice.acceptance_percentage = self._parse_decimal(
@@ -418,20 +425,44 @@ class FieldExtractor:
                     tax_line_total += amt
                 continue
 
+            # Taxes: merge PST/QST into a single pst_amount; compute tax_amount/combined_tax if missing
+            gst_amt = self._parse_decimal(item_data.get("gst_amount") or item_data.get("gst"))
+            pst_qst_raw = item_data.get("pst_amount") or item_data.get("pst") or item_data.get("qst_amount") or item_data.get("qst")
+            pst_amt = self._parse_decimal(pst_qst_raw)
+            combined_tax = self._parse_decimal(item_data.get("combined_tax"))
+            if combined_tax is None and (gst_amt is not None or pst_amt is not None):
+                combined_tax = (gst_amt or Decimal("0")) + (pst_amt or Decimal("0"))
+            tax_amount = self._parse_decimal(item_data.get("tax"))
+            if tax_amount is None:
+                tax_amount = combined_tax
+
+            # Acceptance percentage per line item; apply to computed line total if provided and non-zero
+            acc_pct = self._parse_decimal(item_data.get("acceptance_percentage"))
+            has_acc = acc_pct is not None and acc_pct != 0
+
+            quantity_val = self._parse_decimal(item_data.get("quantity"))
+            unit_price_val = self._parse_decimal(item_data.get("unit_price"))
+            amount_val = self._parse_decimal(item_data.get("amount")) or Decimal("0.00")
+            if has_acc:
+                base_subtotal = amount_val
+                if quantity_val is not None and unit_price_val is not None:
+                    base_subtotal = quantity_val * unit_price_val
+                amount_val = base_subtotal * (acc_pct / Decimal("100"))
+
             line_item = LineItem(
                 line_number=idx,
                 description=desc_val,
-                quantity=self._parse_decimal(item_data.get("quantity")),
-                unit_price=self._parse_decimal(item_data.get("unit_price")),
-                amount=self._parse_decimal(item_data.get("amount")) or Decimal("0.00"),
+                quantity=quantity_val,
+                unit_price=unit_price_val,
+                amount=amount_val,
                 confidence=item_conf,
                 unit_of_measure=item_data.get("unit"),
                 tax_rate=self._parse_decimal(item_data.get("tax_rate")),
-                tax_amount=self._parse_decimal(item_data.get("tax")),
-                gst_amount=self._parse_decimal(item_data.get("gst_amount") or item_data.get("gst")),
-                pst_amount=self._parse_decimal(item_data.get("pst_amount") or item_data.get("pst")),
-                qst_amount=self._parse_decimal(item_data.get("qst_amount") or item_data.get("qst")),
-                combined_tax=self._parse_decimal(item_data.get("combined_tax")),
+                tax_amount=tax_amount,
+                gst_amount=gst_amt,
+                pst_amount=pst_amt,
+                qst_amount=None,
+                combined_tax=combined_tax,
                 project_code=item_data.get("project_code"),
                 region_code=item_data.get("region_code"),
                 airport_code=item_data.get("airport_code"),
@@ -618,6 +649,8 @@ class FieldExtractor:
                 continue
             try:
                 out[canon] = float(v)
+                if canon == "invoice_number":
+                    out["invoice_id"] = float(v)
             except Exception:
                 # ignore non-numeric confidence values
                 pass

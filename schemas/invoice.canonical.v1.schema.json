@@ -57,6 +57,10 @@
         "unit_of_measure": { "type": ["string", "null"] },
         "tax_rate": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }] },
         "tax_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }] },
+        "gst_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }] },
+        "pst_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }] },
+        "qst_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }] },
+        "combined_tax": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }] },
 
         "project_code": { "type": ["string", "null"] },
         "region_code": { "type": ["string", "null"] },
