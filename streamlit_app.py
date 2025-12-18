@@ -109,7 +109,6 @@ def format_confidence(confidence: float) -> str:
     return f"{confidence:.1%}"
 
 
-@st.cache_data(ttl=60, show_spinner=False)
 def load_invoice_list(status_filter: Optional[str] = None) -> list:
     """Load list of invoices from API"""
     try:
@@ -136,7 +135,6 @@ def load_invoice_list(status_filter: Optional[str] = None) -> list:
         return []
 
 
-@st.cache_data(ttl=20, show_spinner=False)
 def load_invoice(invoice_id: str) -> Optional[Dict[str, Any]]:
     """Load invoice details from API"""
     try:
@@ -149,6 +147,94 @@ def load_invoice(invoice_id: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         st.error(f"Error: {e}")
         return None
+
+
+def list_blobs(container: str, prefix: Optional[str] = None) -> list:
+    """List blobs from Azure storage via API."""
+    try:
+        params = {"container": container}
+        if prefix:
+            params["prefix"] = prefix
+        resp = requests.get(f"{API_BASE_URL}/api/ingestion/blobs", params=params, timeout=30)
+        if resp.status_code == 200:
+            return resp.json().get("blobs", [])
+        st.error(f"Error listing blobs: {resp.status_code} {resp.text}")
+        return []
+    except Exception as e:
+        st.error(f"Error listing blobs: {e}")
+        return []
+
+
+def ingest_blob(container: str, blob_name: str) -> Optional[Dict[str, Any]]:
+    """Trigger ingestion for an existing blob."""
+    try:
+        resp = requests.post(
+            f"{API_BASE_URL}/api/ingestion/extract-blob",
+            params={"container": container, "blob_name": blob_name},
+            timeout=180,
+        )
+        if resp.status_code in (200, 201):
+            return resp.json()
+        st.error(f"Blob ingestion failed: {resp.status_code} {resp.text}")
+        return None
+    except Exception as e:
+        st.error(f"Error ingesting blob: {e}")
+        return None
+
+
+def check_db_health() -> bool:
+    """Ping DB health endpoint."""
+    try:
+        resp = requests.get(f"{API_BASE_URL}/api/ingestion/health/db", timeout=10)
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
+def _post_validation_payload(payload: dict) -> bool:
+    """POST validation payload; return True on 200."""
+    try:
+        resp = requests.post(
+            f"{API_BASE_URL}/api/hitl/invoice/validate",
+            json=payload,
+            timeout=30,
+        )
+        if resp.status_code == 200:
+            return True
+        st.error(f"Validation failed: {resp.status_code} - {resp.text}")
+        return False
+    except Exception as e:
+        st.error(f"Error submitting validation: {e}")
+        return False
+
+
+def _enqueue_pending(payload: dict):
+    queue = st.session_state.get("pending_validations", [])
+    queue.append(payload)
+    st.session_state["pending_validations"] = queue
+
+
+def _retry_pending_queue():
+    queue = st.session_state.get("pending_validations", [])
+    if not queue:
+        st.info("No queued saves.")
+        return
+    succeeded = []
+    failed = []
+    for idx, payload in enumerate(list(queue)):
+        ok = _post_validation_payload(payload)
+        if ok:
+            succeeded.append(idx)
+        else:
+            failed.append(idx)
+    # remove succeeded in reverse order
+    for idx in sorted(succeeded, reverse=True):
+        queue.pop(idx)
+    st.session_state["pending_validations"] = queue
+    if succeeded:
+        st.success(f"Pushed {len(succeeded)} queued save(s).")
+    if failed:
+        st.warning(f"{len(failed)} queued save(s) still pending.")
 
 
 def get_invoice_pdf(invoice_id: str) -> Optional[bytes]:
@@ -195,30 +281,15 @@ def reset_invoice_state(invoice_id: str, invoice_data: dict):
 def submit_validation(invoice_id: str, field_validations: list, line_item_validations: list,
                      overall_status: str, reviewer: str, notes: str) -> bool:
     """Submit invoice validation"""
-    try:
-        payload = {
-            "invoice_id": invoice_id,
-            "field_validations": field_validations,
-            "line_item_validations": line_item_validations,
-            "overall_validation_status": overall_status,
-            "reviewer": reviewer,
-            "validation_notes": notes
-        }
-        
-        response = requests.post(
-            f"{API_BASE_URL}/api/hitl/invoice/validate",
-            json=payload,
-            timeout=30
-        )
-        
-        if response.status_code == 200:
-            return True
-        else:
-            st.error(f"Validation failed: {response.status_code} - {response.text}")
-            return False
-    except Exception as e:
-        st.error(f"Error submitting validation: {e}")
-        return False
+    payload = {
+        "invoice_id": invoice_id,
+        "field_validations": field_validations,
+        "line_item_validations": line_item_validations,
+        "overall_validation_status": overall_status,
+        "reviewer": reviewer,
+        "validation_notes": notes
+    }
+    return _post_validation_payload(payload)
 
 
 def main():
@@ -313,6 +384,40 @@ def main():
                             st.error(f"Upload failed: {resp.status_code} {resp.text}")
                 except Exception as e:
                     st.error(f"Error during upload/extract: {e}")
+
+        st.markdown("---")
+        st.markdown("### Backend Health")
+        db_ok = check_db_health()
+        if db_ok:
+            st.success("DB: reachable")
+        else:
+            st.error("DB: unreachable (will queue saves locally)")
+        if st.button("Recheck DB"):
+            st.cache_data.clear()
+            st.rerun()
+        
+        st.markdown("---")
+        st.markdown("### Blob Browser (invoices-raw)")
+        default_container = "invoices-raw"
+        blob_prefix = st.text_input("Prefix (optional)", value="", placeholder="e.g., folder/")
+        if st.button("List Blobs"):
+            st.session_state["blob_list"] = list_blobs(default_container, blob_prefix or None)
+        blobs = st.session_state.get("blob_list") or []
+        blob_names = [b.get("name") for b in blobs if b.get("name")]
+        selected_blob = st.selectbox("Select Blob", ["-- choose --"] + blob_names)
+        if st.button("Ingest Selected Blob"):
+            if selected_blob and selected_blob != "-- choose --":
+                st.info(f"Ingesting blob: {selected_blob}")
+                ingest_result = ingest_blob(default_container, selected_blob)
+                if ingest_result:
+                    new_invoice_id = ingest_result.get("invoice_id")
+                    if new_invoice_id:
+                        st.success(f"Ingested blob to invoice {new_invoice_id}. Loading...")
+                        st.session_state["selected_invoice_id"] = new_invoice_id
+                        st.cache_data.clear()
+                        st.rerun()
+            else:
+                st.warning("Please select a blob first.")
     
     # Main content
     st.markdown("")
@@ -325,17 +430,23 @@ def main():
         st.info("No invoices found. Upload invoices using the API or demo scripts.")
         return
     
-    # Invoice selector
+    # Invoice selector with null default
     invoice_options = {
         f"{inv['invoice_number'] or 'N/A'} - {inv['vendor_name'] or 'Unknown'} - ${inv['total_amount'] or 0:,.2f}": inv['invoice_id']
         for inv in invoices
     }
+    placeholder_label = "— Select an invoice —"
+    option_labels = [placeholder_label] + list(invoice_options.keys())
     
     selected_invoice_label = st.selectbox(
         "Select Invoice",
-        list(invoice_options.keys()),
+        option_labels,
         index=0
     )
+    
+    if selected_invoice_label == placeholder_label:
+        st.info("Please select an invoice to begin review.")
+        return
     
     selected_invoice_id = invoice_options[selected_invoice_label]
     
@@ -373,7 +484,9 @@ def main():
         st.metric("Status", invoice_data.get("status", "N/A"))
     
     with col4:
-        total_val = invoice_data.get('fields', {}).get('total_amount', {}).get('value', None)
+        # Show edited total if present so the metric reflects pending changes
+        edited_total = st.session_state.get(f"field_{selected_invoice_id}_total_amount")
+        total_val = edited_total if edited_total is not None else invoice_data.get('fields', {}).get('total_amount', {}).get('value', None)
         try:
             total_val_num = float(total_val) if total_val is not None else 0.0
         except Exception:
@@ -677,181 +790,219 @@ def main():
             with tab4:
                 st.subheader("Submit Validation")
                 
-                reviewer_name = st.text_input("Reviewer Name", value="", placeholder="Enter your name")
+                reviewer_name = st.text_input("Reviewer Name", value="", placeholder="Enter your name", key="reviewer_name")
                 
                 validation_status = st.selectbox(
                     "Validation Status",
                     ["pending", "validated", "needs_review"],
-                    index=0
+                    index=0,
+                    key="validation_status"
                 )
                 
                 validation_notes = st.text_area(
                     "Validation Notes",
-                    placeholder="Add any notes or comments about this validation..."
+                    placeholder="Add any notes or comments about this validation...",
+                    key="validation_notes"
                 )
-                
-                submitted = st.form_submit_button("Submit Validation", type="primary")
-                if submitted:
-                    if not reviewer_name:
-                        st.warning("Please enter your name as reviewer.")
-                    else:
-                        # Collect edits from session_state buffers
-                        field_validations = []
-                        line_item_validations = []
 
-                        # Header/vendor/customer/financial fields diff
-                        fields_data = invoice_data.get("fields", {}) or {}
-                        tax_breakdown = invoice_data.get("tax_breakdown", {}) or {}
-                        header_fields = ["invoice_number", "invoice_date", "due_date", "po_number", "standing_offer_number"]
-                        vendor_fields = ["vendor_name", "vendor_id", "vendor_phone"]
-                        customer_fields = ["customer_name", "customer_id"]
-                        financial_fields = [
-                            "subtotal",
-                            "tax_amount",
-                            "total_amount",
-                            "currency",
-                            "payment_terms",
-                            "acceptance_percentage",
-                            "tax_registration_number",
-                            "federal_tax",
-                            "provincial_tax",
-                            "combined_tax",
-                        ]
-                        for fname in header_fields + vendor_fields + customer_fields + financial_fields:
-                            field_data = fields_data.get(fname) or {"value": tax_breakdown.get(fname), "confidence": 0.0}
-                            orig_val = field_data.get("value")
-                            new_val = st.session_state.get(f"field_{selected_invoice_id}_{fname}")
-                            if new_val is not None and str(new_val) != str(orig_val or ""):
-                                field_validations.append({
-                                    "field_name": fname,
-                                    "value": orig_val,
-                                    "confidence": field_data.get("confidence", 0.0),
-                                    "validated": True,
-                                    "corrected_value": new_val,
-                                    "validation_notes": "",
-                                })
+                def _build_validation_payload():
+                    field_validations = []
+                    line_item_validations = []
 
-                        # Addresses
-                        edited_addresses = st.session_state.get("edited_addresses", {})
-                        for addr_key, addr_data in edited_addresses.items():
-                            value = {
-                                "street": st.session_state.get(f"{selected_invoice_id}_{addr_key}_street") or "",
-                                "city": st.session_state.get(f"{selected_invoice_id}_{addr_key}_city") or "",
-                                "province": st.session_state.get(f"{selected_invoice_id}_{addr_key}_province") or "",
-                                "postal_code": st.session_state.get(f"{selected_invoice_id}_{addr_key}_postal_code") or "",
-                                "country": st.session_state.get(f"{selected_invoice_id}_{addr_key}_country") or "",
-                            }
+                    # Header/vendor/customer/financial fields diff
+                    fields_data = invoice_data.get("fields", {}) or {}
+                    tax_breakdown = invoice_data.get("tax_breakdown", {}) or {}
+                    header_fields = ["invoice_number", "invoice_date", "due_date", "po_number", "standing_offer_number"]
+                    vendor_fields = ["vendor_name", "vendor_id", "vendor_phone"]
+                    customer_fields = ["customer_name", "customer_id"]
+                    financial_fields = [
+                        "subtotal",
+                        "tax_amount",
+                        "total_amount",
+                        "currency",
+                        "payment_terms",
+                        "acceptance_percentage",
+                        "tax_registration_number",
+                        "federal_tax",
+                        "provincial_tax",
+                        "combined_tax",
+                    ]
+                    for fname in header_fields + vendor_fields + customer_fields + financial_fields:
+                        field_data = fields_data.get(fname) or {"value": tax_breakdown.get(fname), "confidence": 0.0}
+                        orig_val = field_data.get("value")
+                        new_val = st.session_state.get(f"field_{selected_invoice_id}_{fname}")
+                        if new_val is not None and str(new_val) != str(orig_val or ""):
                             field_validations.append({
-                                "field_name": addr_key,
-                                "value": None,
-                                "confidence": 0.9,
+                                "field_name": fname,
+                                "value": orig_val,
+                                "confidence": field_data.get("confidence", 0.0),
                                 "validated": True,
-                                "corrected_value": value,
+                                "corrected_value": new_val,
+                                "validation_notes": "",
+                            })
+
+                    # Addresses
+                    edited_addresses = st.session_state.get("edited_addresses", {})
+                    for addr_key, addr_data in edited_addresses.items():
+                        value = {
+                            "street": st.session_state.get(f"{selected_invoice_id}_{addr_key}_street") or "",
+                            "city": st.session_state.get(f"{selected_invoice_id}_{addr_key}_city") or "",
+                            "province": st.session_state.get(f"{selected_invoice_id}_{addr_key}_province") or "",
+                            "postal_code": st.session_state.get(f"{selected_invoice_id}_{addr_key}_postal_code") or "",
+                            "country": st.session_state.get(f"{selected_invoice_id}_{addr_key}_country") or "",
+                        }
+                        field_validations.append({
+                            "field_name": addr_key,
+                            "value": None,
+                            "confidence": 0.9,
+                            "validated": True,
+                            "corrected_value": value,
+                            "validation_notes": ""
+                        })
+
+                    # Line items
+                    original_items = {li.get("line_number"): li for li in invoice_data.get("line_items", [])}
+                    for item in st.session_state.get("edited_line_items", []):
+                        ln = item.get("line_number")
+                        orig = original_items.get(ln, {}) or {}
+                        corrections = {}
+
+                        def maybe_add(key_short: str, canon_key: str):
+                            new_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_{key_short}")
+                            old_val = orig.get(canon_key)
+                            if new_val is not None and new_val != old_val:
+                                corrections[canon_key] = new_val
+
+                        # text
+                        desc_new = st.session_state.get(f"item_{selected_invoice_id}_{ln}_desc")
+                        if desc_new is not None and desc_new != orig.get("description"):
+                            corrections["description"] = desc_new
+
+                        # numerics
+                        maybe_add("qty", "quantity")
+                        maybe_add("price", "unit_price")
+                        maybe_add("gst", "gst_amount")
+                        # PST/QST combined input
+                        pstqst_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_pstqst")
+                        if pstqst_val is not None and pstqst_val != orig.get("pst_amount") and pstqst_val != orig.get("qst_amount"):
+                            corrections["pst_amount"] = pstqst_val
+                            corrections["qst_amount"] = pstqst_val
+                        maybe_add("combined", "combined_tax")
+
+                        # derive line_total (amount) for submission if changed
+                        line_total_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_amount")
+                        subtotal_input = st.session_state.get(f"item_{selected_invoice_id}_{ln}_subtotal")
+                        if line_total_val is None:
+                            qty_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_qty")
+                            price_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_price")
+                            try:
+                                if qty_val is not None and price_val is not None:
+                                    line_total_val = float(qty_val) * float(price_val)
+                            except Exception:
+                                line_total_val = None
+                        # if user edited subtotal, back-calc line total using taxes
+                        if line_total_val is None and subtotal_input is not None:
+                            try:
+                                base = float(subtotal_input)
+                                tax_components = []
+                                for key in [
+                                    f"item_{selected_invoice_id}_{ln}_tax_amount",
+                                    f"item_{selected_invoice_id}_{ln}_combined",
+                                    f"item_{selected_invoice_id}_{ln}_gst",
+                                    f"item_{selected_invoice_id}_{ln}_pstqst",
+                                ]:
+                                    val = st.session_state.get(key)
+                                    if val not in [None, ""]:
+                                        tax_components.append(float(val))
+                                if tax_components:
+                                    line_total_val = base + sum(tax_components)
+                                else:
+                                    line_total_val = base
+                            except Exception:
+                                line_total_val = None
+                        if line_total_val is not None and line_total_val != orig.get("amount"):
+                            corrections["amount"] = line_total_val
+
+                        if corrections:
+                            line_item_validations.append({
+                                "line_number": ln,
+                                "validated": True,
+                                "corrections": corrections,
                                 "validation_notes": ""
                             })
 
-                        # Line items
-                        original_items = {li.get("line_number"): li for li in invoice_data.get("line_items", [])}
-                        for item in st.session_state.get("edited_line_items", []):
-                            ln = item.get("line_number")
-                            orig = original_items.get(ln, {}) or {}
-                            corrections = {}
+                    return field_validations, line_item_validations
 
-                            def maybe_add(key_short: str, canon_key: str):
-                                new_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_{key_short}")
-                                old_val = orig.get(canon_key)
-                                if new_val is not None and new_val != old_val:
-                                    corrections[canon_key] = new_val
+                def _persist_changes(status_value: str, reviewer_value: str, notes_value: str):
+                    if not reviewer_value:
+                        st.warning("Please enter your name as reviewer.")
+                        return False
+                    field_validations, line_item_validations = _build_validation_payload()
+                    payload = {
+                        "invoice_id": selected_invoice_id,
+                        "field_validations": field_validations,
+                        "line_item_validations": line_item_validations,
+                        "overall_validation_status": status_value,
+                        "reviewer": reviewer_value,
+                        "validation_notes": notes_value,
+                    }
+                    success = _post_validation_payload(payload)
+                    if success:
+                        st.cache_data.clear()
+                        st.success("Changes saved to database.")
+                        updated_invoice = load_invoice(selected_invoice_id)
+                        if updated_invoice:
+                            reset_invoice_state(selected_invoice_id, updated_invoice)
+                        st.rerun()
+                    else:
+                        st.warning("Save failed; queued locally. Retry when DB is reachable.")
+                        _enqueue_pending(payload)
+                    return success
 
-                            # text
-                            desc_new = st.session_state.get(f"item_{selected_invoice_id}_{ln}_desc")
-                            if desc_new is not None and desc_new != orig.get("description"):
-                                corrections["description"] = desc_new
+                # Primary submit
+                submitted = st.form_submit_button("Submit Validation", type="primary")
+                if submitted:
+                    _persist_changes(
+                        st.session_state.get("validation_status", "pending"),
+                        st.session_state.get("reviewer_name", ""),
+                        st.session_state.get("validation_notes", ""),
+                    )
 
-                            # numerics
-                            maybe_add("qty", "quantity")
-                            maybe_add("price", "unit_price")
-                            maybe_add("gst", "gst_amount")
-                            # PST/QST combined input
-                            pstqst_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_pstqst")
-                            if pstqst_val is not None and pstqst_val != orig.get("pst_amount") and pstqst_val != orig.get("qst_amount"):
-                                corrections["pst_amount"] = pstqst_val
-                                corrections["qst_amount"] = pstqst_val
-                            maybe_add("combined", "combined_tax")
+        # Explicit save button outside the form to persist edits without re-filling the form
+        st.markdown("---")
+        if st.button("Save Changes (persist to DB)"):
+            _persist_changes(
+                st.session_state.get("validation_status", "pending"),
+                st.session_state.get("reviewer_name", ""),
+                st.session_state.get("validation_notes", ""),
+            )
 
-                            # derive line_total (amount) for submission if changed
-                            line_total_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_amount")
-                            subtotal_input = st.session_state.get(f"item_{selected_invoice_id}_{ln}_subtotal")
-                            if line_total_val is None:
-                                qty_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_qty")
-                                price_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_price")
-                                try:
-                                    if qty_val is not None and price_val is not None:
-                                        line_total_val = float(qty_val) * float(price_val)
-                                except Exception:
-                                    line_total_val = None
-                            # if user edited subtotal, back-calc line total using taxes
-                            if line_total_val is None and subtotal_input is not None:
-                                try:
-                                    base = float(subtotal_input)
-                                    tax_components = []
-                                    for key in [
-                                        f"item_{selected_invoice_id}_{ln}_tax_amount",
-                                        f"item_{selected_invoice_id}_{ln}_combined",
-                                        f"item_{selected_invoice_id}_{ln}_gst",
-                                        f"item_{selected_invoice_id}_{ln}_pstqst",
-                                    ]:
-                                        val = st.session_state.get(key)
-                                        if val not in [None, ""]:
-                                            tax_components.append(float(val))
-                                    if tax_components:
-                                        line_total_val = base + sum(tax_components)
-                                    else:
-                                        line_total_val = base
-                                except Exception:
-                                    line_total_val = None
-                            if line_total_val is not None and line_total_val != orig.get("amount"):
-                                corrections["amount"] = line_total_val
+        # Review history
+        st.markdown("---")
+        st.markdown("#### Review History")
+        history = st.session_state.get("validation_history") or []
+        if history:
+            for entry in reversed(history):
+                st.info(
+                    f"**Status:** {entry.get('status')} | "
+                    f"**Reviewer:** {entry.get('reviewer')} | "
+                    f"**When:** {entry.get('timestamp')} \n\n"
+                    f"**Notes:** {entry.get('notes') or 'None'}"
+                )
+        else:
+            st.info("No review history available.")
 
-                            if corrections:
-                                line_item_validations.append({
-                                    "line_number": ln,
-                                    "validated": True,
-                                    "corrections": corrections,
-                                    "validation_notes": ""
-                                })
-
-                        success = submit_validation(
-                            selected_invoice_id,
-                            field_validations,
-                            line_item_validations,
-                            validation_status,
-                            reviewer_name,
-                            validation_notes
-                        )
-
-                        if success:
-                            st.success("Validation submitted successfully.")
-                            updated_invoice = load_invoice(selected_invoice_id)
-                            if updated_invoice:
-                                reset_invoice_state(selected_invoice_id, updated_invoice)
-                            st.cache_data.clear()
-                            st.rerun()
-                
-                # Review history
-                st.markdown("---")
-                st.markdown("#### Review History")
-                history = st.session_state.get("validation_history") or []
-                if history:
-                    for entry in reversed(history):
-                        st.info(
-                            f"**Status:** {entry.get('status')} | "
-                            f"**Reviewer:** {entry.get('reviewer')} | "
-                            f"**When:** {entry.get('timestamp')} \n\n"
-                            f"**Notes:** {entry.get('notes') or 'None'}"
-                        )
-                else:
-                    st.info("No review history available.")
+        # Queued saves (offline/fallback)
+        st.markdown("---")
+        st.markdown("#### Queued Saves (offline fallback)")
+        pending = st.session_state.get("pending_validations", [])
+        st.markdown(f"Queued items: **{len(pending)}**")
+        if pending:
+            if st.button("Retry queued saves now"):
+                _retry_pending_queue()
+            with st.expander("View queued payloads"):
+                for idx, item in enumerate(pending, start=1):
+                    st.json({"idx": idx, **item})
 
     # Re-run extraction outside the form
     st.markdown("#### Re-run Extraction (DI + LLM Assist)")

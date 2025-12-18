@@ -402,8 +402,12 @@ class FieldExtractor:
             if not isinstance(item_data, dict):
                 continue
             
-            # Get item confidence (default to 0.85 if field exists)
-            item_conf = item_data.get("confidence", 0.85)
+            # Get item confidence (default to 0.85 if missing/None)
+            raw_conf = item_data.get("confidence")
+            try:
+                item_conf = float(raw_conf) if raw_conf is not None else 0.85
+            except Exception:
+                item_conf = 0.85
             desc_val = self._get_field_value(item_data.get("description")) or ""
             desc_lower = desc_val.lower()
 

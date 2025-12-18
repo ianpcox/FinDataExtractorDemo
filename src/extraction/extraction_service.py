@@ -5,6 +5,7 @@ from datetime import datetime, date
 from decimal import Decimal
 import logging
 import json
+import re
 import hashlib
 from typing import Any, Mapping, Dict
 
@@ -182,9 +183,11 @@ class ExtractionService:
             seen = set()
             low_conf_fields = [x for x in low_conf_fields if not (x in seen or seen.add(x))]
 
+            llm_changed = False
             if not low_conf_fields:
                 logger.info("No fields below low_conf_threshold=%.2f, skipping LLM fallback", low_conf_threshold)
             else:
+                invoice_before_llm = invoice.model_dump(mode="json")
                 try:
                     self._run_low_confidence_fallback(
                         invoice=invoice,
@@ -192,12 +195,16 @@ class ExtractionService:
                         di_data=doc_intelligence_data,
                         di_field_confidence=fc,
                     )
+                    llm_changed = invoice.model_dump(mode="json") != invoice_before_llm
                 except Exception as e:
                     logger.exception("LLM fallback failed; continuing with DI-only invoice: %s", e)
 
-            # Final save after LLM post-processing
-            logger.info("Saving extracted invoice to database (after LLM) for: %s", invoice_id)
-            await DatabaseService.save_invoice(invoice, db=db)
+            # Final save after LLM post-processing only when there was a change
+            if llm_changed:
+                logger.info("Saving extracted invoice to database (after LLM) for: %s", invoice_id)
+                await DatabaseService.save_invoice(invoice, db=db)
+            else:
+                logger.info("Skipping post-LLM save; no LLM changes detected.")
             invoice_dict = invoice.model_dump(mode="json")
 
             result = {
@@ -301,19 +308,19 @@ class ExtractionService:
                 suggestion_text = resp.choices[0].message.content.strip()
                 self._llm_cache[cache_key] = suggestion_text
 
-            # Parse and apply suggestions
-            try:
-                llm_data = json.loads(suggestion_text)
-            except json.JSONDecodeError as e:
-                logger.error("LLM fallback returned non-JSON content: %s", e)
+            # Parse and apply suggestions (best-effort even if raw text is not strict JSON)
+            llm_data = self._coerce_llm_json(suggestion_text)
+            if llm_data is None:
+                logger.error("LLM fallback returned non-JSON content; preserving raw text for debugging.")
                 logger.debug("Raw LLM suggestion text: %s", suggestion_text)
                 return
 
             if not isinstance(llm_data, dict):
                 logger.error("LLM fallback JSON is not an object; got %s", type(llm_data))
+                logger.debug("Raw LLM suggestion text: %s", suggestion_text)
                 return
 
-            self._apply_llm_suggestions(invoice, suggestion_text, low_conf_fields)
+            self._apply_llm_suggestions(invoice, llm_data, low_conf_fields)
             logger.info("LLM fallback suggestions applied successfully.")
 
         except Exception as e:
@@ -368,11 +375,20 @@ class ExtractionService:
         except Exception:
             return ""
 
-    def _apply_llm_suggestions(self, invoice: Invoice, suggestion_text: str, low_conf_fields: List[str]):
-        try:
-            llm_suggestions = json.loads(suggestion_text)
-        except Exception as e:
-            logger.warning(f"Could not parse LLM suggestions as JSON: {e}")
+    def _apply_llm_suggestions(self, invoice: Invoice, suggestions: Any, low_conf_fields: List[str]):
+        """
+        Apply LLM suggestions to the invoice. Accepts either raw text or a parsed dict.
+        """
+        if isinstance(suggestions, str):
+            llm_suggestions = self._coerce_llm_json(suggestions)
+        elif isinstance(suggestions, dict):
+            llm_suggestions = suggestions
+        else:
+            logger.warning("LLM suggestions are neither str nor dict; skipping apply.")
+            return
+
+        if llm_suggestions is None:
+            logger.warning("LLM suggestions could not be coerced to JSON; skipping apply.")
             return
 
         logger.info("LLM suggestions: %s", llm_suggestions)
@@ -441,6 +457,54 @@ class ExtractionService:
     def _sanitize_for_json(self, obj):
         """Recursively convert payload objects to JSON-serializable primitives."""
         return self._sanitize_for_json_v2(obj)
+
+    def _coerce_llm_json(self, text: str) -> Optional[Dict[str, Any]]:
+        """
+        Best-effort extraction of JSON object from LLM output that may include noise or code fences.
+        Returns a parsed dict if successful, otherwise None.
+        """
+        if not text:
+            return None
+
+        # 1) Fast path: direct JSON
+        try:
+            data = json.loads(text)
+            return data if isinstance(data, dict) else None
+        except Exception:
+            pass
+
+        # 2) Strip common code fences like ```json ... ```
+        fenced = re.search(r"```(?:json)?\\s*(\\{.*?\\})\\s*```", text, re.DOTALL)
+        if fenced:
+            candidate = fenced.group(1)
+            try:
+                data = json.loads(candidate)
+                return data if isinstance(data, dict) else None
+            except Exception:
+                pass
+
+        # 3) Take substring from first '{' to last '}' and try to parse
+        if "{" in text and "}" in text:
+            start = text.find("{")
+            end = text.rfind("}") + 1
+            candidate = text[start:end]
+            try:
+                data = json.loads(candidate)
+                return data if isinstance(data, dict) else None
+            except Exception:
+                pass
+
+        # 4) Gentle single-quote to double-quote normalization on the candidate block
+        if "{" in text and "}" in text:
+            candidate = text[text.find("{"): text.rfind("}") + 1]
+            try:
+                normalized = candidate.replace("'", "\"")
+                data = json.loads(normalized)
+                return data if isinstance(data, dict) else None
+            except Exception:
+                pass
+
+        return None
 
     def _sanitize_for_json_v2(
         self,
