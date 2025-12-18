@@ -6,17 +6,18 @@ from decimal import Decimal
 import logging
 import json
 import re
-import time
 import hashlib
 from typing import Any, Mapping, Dict
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from .document_intelligence_client import DocumentIntelligenceClient
 from .field_extractor import FieldExtractor
 from src.ingestion.file_handler import FileHandler
 from src.models.invoice import Invoice
 from src.services.db_service import DatabaseService
+from src.models.db_utils import address_to_dict, line_items_to_json, _sanitize_tax_breakdown
 from src.config import settings
 try:
     from openai import AzureOpenAI
@@ -100,10 +101,18 @@ class ExtractionService:
         
         try:
             logger.info(f"Starting extraction for invoice: {invoice_id}")
+
+            claimed = await DatabaseService.claim_for_extraction(invoice_id)
+            if not claimed:
+                return {
+                    "invoice_id": invoice_id,
+                    "status": "conflict",
+                    "errors": ["Invoice is already processing"],
+                }
             
             # Step 1: Download PDF
             logger.info(f"Downloading PDF: {file_identifier}")
-            file_content = self.file_handler.download_file(file_identifier)
+            file_content = await run_in_threadpool(self.file_handler.download_file, file_identifier)
             
             if not file_content:
                 errors.append("Failed to download file")
@@ -115,8 +124,9 @@ class ExtractionService:
             
             # Step 2: Analyze with Document Intelligence
             logger.info(f"Analyzing invoice with Document Intelligence: {invoice_id}")
-            doc_intelligence_data = self.doc_intelligence_client.analyze_invoice(
-                file_content
+            doc_intelligence_data = await run_in_threadpool(
+                self.doc_intelligence_client.analyze_invoice,
+                file_content,
             )
             
             if not doc_intelligence_data or doc_intelligence_data.get("error"):
@@ -125,7 +135,7 @@ class ExtractionService:
                 )
                 return {
                     "invoice_id": invoice_id,
-                    "status": "extraction_failed",
+                    "status": "upstream_error",
                     "errors": errors
                 }
             
@@ -148,7 +158,10 @@ class ExtractionService:
             
             # Step 5: Save to database
             logger.info(f"Saving extracted invoice to database: {invoice_id}")
-            await DatabaseService.save_invoice(invoice, db=db)
+            patch = self._invoice_to_patch(invoice)
+            ok = await DatabaseService.set_extraction_result(invoice_id, patch, db=db)
+            if not ok:
+                raise ValueError("Failed to persist extraction result; state mismatch")
             
             # Prepare JSON-serializable payload
             invoice_dict = invoice.model_dump(mode="json")
@@ -190,11 +203,12 @@ class ExtractionService:
             else:
                 invoice_before_llm = invoice.model_dump(mode="json")
                 try:
-                    self._run_low_confidence_fallback(
-                        invoice=invoice,
-                        low_conf_fields=low_conf_fields,
-                        di_data=doc_intelligence_data,
-                        di_field_confidence=fc,
+                    await run_in_threadpool(
+                        self._run_low_confidence_fallback,
+                        invoice,
+                        low_conf_fields,
+                        doc_intelligence_data,
+                        fc,
                     )
                     llm_changed = invoice.model_dump(mode="json") != invoice_before_llm
                 except Exception as e:
@@ -203,7 +217,10 @@ class ExtractionService:
             # Final save after LLM post-processing only when there was a change
             if llm_changed:
                 logger.info("Saving extracted invoice to database (after LLM) for: %s", invoice_id)
-                await DatabaseService.save_invoice(invoice, db=db)
+                patch = self._invoice_to_patch(invoice)
+                ok2 = await DatabaseService.set_extraction_result(invoice_id, patch, db=db)
+                if not ok2:
+                    raise ValueError("Failed to persist post-LLM extraction result; state mismatch")
             else:
                 logger.info("Skipping post-LLM save; no LLM changes detected.")
             invoice_dict = invoice.model_dump(mode="json")
@@ -226,6 +243,7 @@ class ExtractionService:
         except Exception as e:
             logger.error(f"Error extracting invoice {invoice_id}: {e}", exc_info=True)
             errors.append(str(e))
+            await DatabaseService.set_extraction_failed(invoice_id, "; ".join(errors), db=db)
             return {
                 "invoice_id": invoice_id,
                 "status": "error",
@@ -354,10 +372,6 @@ class ExtractionService:
 
                 self._apply_llm_suggestions(invoice, llm_data, sub_fields)
                 logger.info("LLM fallback suggestions applied successfully for group %s.", grp_name)
-
-                # small jitter to avoid burst (helps with 429s)
-                if idx < len(groups) - 1:
-                    time.sleep(2.0)
 
         except Exception as e:
             logger.exception("LLM fallback failed: %s", e)
@@ -490,6 +504,50 @@ class ExtractionService:
                 )
         except Exception:
             pass
+
+    def _invoice_to_patch(self, invoice: Invoice) -> Dict[str, Any]:
+        """Convert an Invoice Pydantic model into a dict suitable for DB update."""
+        return {
+            "status": invoice.status,
+            "processing_state": invoice.processing_state,
+            "content_sha256": invoice.content_sha256,
+            "invoice_number": invoice.invoice_number,
+            "invoice_date": invoice.invoice_date,
+            "due_date": invoice.due_date,
+            "vendor_name": invoice.vendor_name,
+            "vendor_id": invoice.vendor_id,
+            "vendor_phone": invoice.vendor_phone,
+            "vendor_address": address_to_dict(invoice.vendor_address),
+            "customer_name": invoice.customer_name,
+            "customer_id": invoice.customer_id,
+            "entity": invoice.entity,
+            "bill_to_address": address_to_dict(invoice.bill_to_address),
+            "remit_to_address": address_to_dict(invoice.remit_to_address),
+            "remit_to_name": invoice.remit_to_name,
+            "contract_id": invoice.contract_id,
+            "standing_offer_number": invoice.standing_offer_number,
+            "po_number": invoice.po_number,
+            "period_start": invoice.period_start,
+            "period_end": invoice.period_end,
+            "subtotal": invoice.subtotal,
+            "tax_breakdown": _sanitize_tax_breakdown(invoice.tax_breakdown),
+            "tax_amount": invoice.tax_amount,
+            "total_amount": invoice.total_amount,
+            "currency": invoice.currency,
+            "acceptance_percentage": invoice.acceptance_percentage,
+            "tax_registration_number": invoice.tax_registration_number,
+            "payment_terms": invoice.payment_terms,
+            "line_items": line_items_to_json(invoice.line_items),
+            "invoice_subtype": invoice.invoice_subtype.value if invoice.invoice_subtype else None,
+            "extensions": invoice.extensions.dict() if invoice.extensions else None,
+            "extraction_confidence": invoice.extraction_confidence,
+            "field_confidence": invoice.field_confidence,
+            "extraction_timestamp": invoice.extraction_timestamp,
+            "review_status": invoice.review_status,
+            "reviewer": invoice.reviewer,
+            "review_timestamp": invoice.review_timestamp,
+            "review_notes": invoice.review_notes,
+        }
 
     def _sanitize_for_json(self, obj):
         """Recursively convert payload objects to JSON-serializable primitives."""

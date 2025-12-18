@@ -77,6 +77,24 @@ async def extract_invoice(
                     "errors": result.get("errors", [])
                 }
             )
+
+        if result["status"] == "upstream_error":
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "message": "Upstream service unavailable",
+                    "errors": result.get("errors", [])
+                }
+            )
+
+        if result["status"] == "conflict":
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "Invoice is already processing",
+                    "errors": result.get("errors", [])
+                }
+            )
         
         # Ensure all fields are JSON serializable
         invoice_payload = jsonable_encoder(result.get("invoice"))

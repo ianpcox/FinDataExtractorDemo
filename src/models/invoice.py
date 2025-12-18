@@ -14,6 +14,16 @@ class InvoiceSubtype(str, Enum):
     PER_DIEM_TRAVEL_INVOICE = "PER_DIEM_TRAVEL_INVOICE"
 
 
+class InvoiceState(str, Enum):
+    """Canonical invoice lifecycle states"""
+    PENDING = "PENDING"
+    PROCESSING = "PROCESSING"
+    EXTRACTED = "EXTRACTED"
+    FAILED = "FAILED"
+    VALIDATED = "VALIDATED"
+    STAGED = "STAGED"
+
+
 class Address(BaseModel):
     """Address model"""
     street: Optional[str] = None
@@ -69,7 +79,7 @@ class TimesheetData(BaseModel):
     representative_name: Optional[str] = None
     signature_present: bool = False
     comments: Optional[str] = None
-    shifts: List[TimesheetShift] = []
+    shifts: List[TimesheetShift] = Field(default_factory=list)
 
 
 class PerDiemTravelExtension(BaseModel):
@@ -102,6 +112,9 @@ class Invoice(BaseModel):
     file_name: str
     upload_date: datetime
     status: str = "processing"  # processing, extracted, validated, in_review, approved, rejected
+    review_version: int = 0
+    processing_state: str = "PENDING"  # PENDING, PROCESSING, EXTRACTED, FAILED
+    content_sha256: Optional[str] = None
     
     # Extracted Data - Header
     invoice_number: Optional[str] = None
@@ -129,7 +142,7 @@ class Invoice(BaseModel):
     acceptance_percentage: Optional[Decimal] = None
     tax_registration_number: Optional[str] = None
     currency: str = "CAD"
-    line_items: List[LineItem] = []
+    line_items: List[LineItem] = Field(default_factory=list)
     payment_terms: Optional[str] = None
     
     # Subtype and Extensions
