@@ -35,6 +35,10 @@ class LineItem(BaseModel):
     unit_of_measure: Optional[str] = None
     tax_rate: Optional[Decimal] = None
     tax_amount: Optional[Decimal] = None
+    gst_amount: Optional[Decimal] = None
+    pst_amount: Optional[Decimal] = None
+    qst_amount: Optional[Decimal] = None
+    combined_tax: Optional[Decimal] = None
     project_code: Optional[str] = None
     region_code: Optional[str] = None
     airport_code: Optional[str] = None

@@ -9,6 +9,7 @@ from decimal import Decimal
 from unittest.mock import Mock, MagicMock, AsyncMock
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import StaticPool
+from src.config import settings
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
@@ -33,6 +34,13 @@ TestingSessionLocal = async_sessionmaker(
     class_=AsyncSession,
     expire_on_commit=False
 )
+
+
+@pytest.fixture(autouse=True)
+def disable_llm_fallback(monkeypatch):
+    """Disable LLM fallback by default in tests to avoid real network calls."""
+    monkeypatch.setattr(settings, "USE_LLM_FALLBACK", False, raising=False)
+    return
 
 
 @pytest.fixture(scope="function")

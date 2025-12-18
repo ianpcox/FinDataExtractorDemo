@@ -3,6 +3,7 @@
 from typing import Optional
 from datetime import datetime
 import json
+from decimal import Decimal
 
 from .invoice import Invoice as InvoicePydantic, LineItem as LineItemPydantic, Address
 from .db_models import Invoice as InvoiceDB
@@ -28,6 +29,21 @@ def dict_to_address(data: Optional[dict]) -> Optional[Address]:
     if isinstance(data, str):
         data = json.loads(data)
     return Address(**data)
+
+
+def _sanitize_tax_breakdown(tb: Optional[dict]) -> Optional[dict]:
+    if not tb:
+        return None
+    out = {}
+    for k, v in tb.items():
+        if isinstance(v, Decimal):
+            out[k] = float(v)
+        else:
+            try:
+                out[k] = float(v)
+            except Exception:
+                out[k] = v
+    return out
 
 
 def line_items_to_json(line_items: list) -> Optional[dict]:
@@ -93,7 +109,7 @@ def pydantic_to_db_invoice(invoice_pydantic: InvoicePydantic) -> InvoiceDB:
         period_start=invoice_pydantic.period_start,
         period_end=invoice_pydantic.period_end,
         subtotal=invoice_pydantic.subtotal,
-        tax_breakdown=invoice_pydantic.tax_breakdown,
+        tax_breakdown=_sanitize_tax_breakdown(invoice_pydantic.tax_breakdown),
         tax_amount=invoice_pydantic.tax_amount,
         total_amount=invoice_pydantic.total_amount,
         currency=invoice_pydantic.currency,

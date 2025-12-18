@@ -65,9 +65,13 @@ class PDFProcessor:
             if len(pdf_reader.pages) == 0:
                 return False, "PDF has no pages"
             
-            # Try to access first page
+            # Try to access first page; allow image-only PDFs (extract_text may return None)
             first_page = pdf_reader.pages[0]
-            _ = first_page.extract_text()
+            try:
+                _ = first_page.extract_text()
+            except Exception:
+                # Do not fail validation for image/scanned PDFs; downstream DI can handle images
+                logger.info("PDF appears image-only; continuing with image fallback.")
             
             logger.info(
                 f"PDF validation successful: {file_name} "

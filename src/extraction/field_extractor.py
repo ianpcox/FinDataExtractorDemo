@@ -94,14 +94,9 @@ class FieldExtractor:
             if key in di_data and key not in canonical:
                 canonical[key] = di_data[key]
 
-        # Map field_confidence if present
-        if "field_confidence" in di_data:
-            di_fc = di_data["field_confidence"] or {}
-            fc_canonical = {}
-            for di_key, val in di_fc.items():
-                canon_key = self.DI_TO_CANONICAL.get(di_key, None)
-                if canon_key:
-                    fc_canonical[canon_key] = val
+        # Map field_confidence using canonical extractor
+        fc_canonical = self._extract_field_confidence(di_data)
+        if fc_canonical:
             canonical["field_confidence"] = fc_canonical
 
         return canonical
@@ -251,6 +246,20 @@ class FieldExtractor:
         invoice.remit_to_name = self._get_field_value(
             canonical_data.get("remit_to_name"), field_confidence.get("remit_to_name")
         )
+
+        # If a field failed to extract but DI still emitted a confidence score,
+        # drop the confidence to 0 so the UI doesn't show a misleading high score.
+        for attr, key in [
+            ("invoice_number", "invoice_number"),
+            ("invoice_date", "invoice_date"),
+            ("vendor_name", "vendor_name"),
+            ("total_amount", "total_amount"),
+        ]:
+            if getattr(invoice, attr) in (None, "", {}):
+                if invoice.field_confidence is None:
+                    invoice.field_confidence = {}
+                if key in invoice.field_confidence:
+                    invoice.field_confidence[key] = 0.0
         
         # Calculate overall confidence
         invoice.extraction_confidence = self._calculate_overall_confidence(field_confidence)
@@ -262,88 +271,6 @@ class FieldExtractor:
         )
         
         return invoice
-    
-    def _extract_field_confidence(self, di_data: Dict[str, Any]) -> Dict[str, float]:
-        """Extract field-level confidence from Document Intelligence data"""
-        confidence = {}
-        
-        # Document Intelligence provides confidence per field with DI field names
-        # Map DI field names to our field names
-        if "field_confidence" in di_data:
-            di_field_confidence = di_data["field_confidence"]
-            
-            # Map Document Intelligence field names to our field names
-            field_mapping = {
-                "InvoiceId": "invoice_id",
-                "InvoiceDate": "invoice_date",
-                "DueDate": "due_date",
-                "VendorName": "vendor_name",
-                "VendorPhoneNumber": "vendor_phone",
-                "VendorPhone": "vendor_phone",
-                "CustomerName": "customer_name",
-                "CustomerId": "customer_id",
-                "VendorAddress": "vendor_address",
-                "CustomerAddress": "customer_address",
-                "BillToAddress": "bill_to_address",
-                "SubTotal": "subtotal",
-                "TotalTax": "total_tax",
-                "InvoiceTotal": "invoice_total",
-                "PurchaseOrder": "purchase_order",
-                "PaymentTerm": "payment_term",
-                "PaymentTerms": "payment_term",
-                "ServiceStartDate": "service_start_date",
-                "ServiceEndDate": "service_end_date",
-                "CurrencyCode": "currency",
-                "Currency": "currency",
-                "RemitToAddress": "remit_to_address",
-                "RemittanceAddress": "remit_to_address",
-                "RemitToName": "remit_to_name",
-                "ContractId": "standing_offer_number",
-                "StandingOfferNumber": "standing_offer_number",
-                "AcceptancePercentage": "acceptance_percentage",
-                "TaxRegistrationNumber": "tax_registration_number",
-                "SalesTaxNumber": "tax_registration_number",
-            }
-            
-            # Map DI field names to our field names
-            for di_field_name, our_field_name in field_mapping.items():
-                if di_field_name in di_field_confidence:
-                    confidence[our_field_name] = di_field_confidence[di_field_name]
-        
-        # Also check if fields have confidence embedded
-        # Try to extract from Document Intelligence result structure
-        # This would come from the actual DI response structure
-        # For now, use default confidence if not available
-        field_mapping_reverse = {
-            "invoice_id": "InvoiceId",
-            "invoice_date": "InvoiceDate",
-            "due_date": "DueDate",
-            "vendor_name": "VendorName",
-            "vendor_phone": "VendorPhoneNumber",
-            "customer_name": "CustomerName",
-            "customer_id": "CustomerId",
-            "vendor_address": "VendorAddress",
-            "customer_address": "CustomerAddress",
-            "bill_to_address": "BillToAddress",
-            "subtotal": "SubTotal",
-            "total_tax": "TotalTax",
-            "invoice_total": "InvoiceTotal",
-            "purchase_order": "PurchaseOrder",
-            "payment_term": "PaymentTerms",
-            "remit_to_address": "RemitToAddress",
-            "remit_to_name": "RemitToName",
-            "standing_offer_number": "StandingOfferNumber",
-            "acceptance_percentage": "AcceptancePercentage",
-            "tax_registration_number": "TaxRegistrationNumber",
-        }
-        
-        for key, di_field in field_mapping_reverse.items():
-            if key not in confidence:
-                # Default to 0.85 if field is present (even if value is 0/False), else 0.0
-                value_present = key in di_data and di_data[key] is not None
-                confidence[key] = 0.85 if value_present else 0.0
-        
-        return confidence
     
     def _get_field_value(self, field: Any, confidence: Optional[float] = None) -> Optional[Any]:
         """Extract value from Document Intelligence field"""
@@ -386,6 +313,14 @@ class FieldExtractor:
         if decimal_value is None:
             return None
         
+        # handle objects with amount/value/text
+        if hasattr(decimal_value, "amount"):
+            return self._parse_decimal(getattr(decimal_value, "amount"), confidence)
+        if hasattr(decimal_value, "value"):
+            return self._parse_decimal(getattr(decimal_value, "value"), confidence)
+        if hasattr(decimal_value, "text"):
+            return self._parse_decimal(getattr(decimal_value, "text"), confidence)
+
         if isinstance(decimal_value, Decimal):
             return decimal_value
         
@@ -467,8 +402,12 @@ class FieldExtractor:
             if not isinstance(item_data, dict):
                 continue
             
-            # Get item confidence (default to 0.85 if field exists)
-            item_conf = item_data.get("confidence", 0.85)
+            # Get item confidence (default to 0.85 if missing/None)
+            raw_conf = item_data.get("confidence")
+            try:
+                item_conf = float(raw_conf) if raw_conf is not None else 0.85
+            except Exception:
+                item_conf = 0.85
             desc_val = self._get_field_value(item_data.get("description")) or ""
             desc_lower = desc_val.lower()
 
@@ -489,6 +428,10 @@ class FieldExtractor:
                 unit_of_measure=item_data.get("unit"),
                 tax_rate=self._parse_decimal(item_data.get("tax_rate")),
                 tax_amount=self._parse_decimal(item_data.get("tax")),
+                gst_amount=self._parse_decimal(item_data.get("gst_amount") or item_data.get("gst")),
+                pst_amount=self._parse_decimal(item_data.get("pst_amount") or item_data.get("pst")),
+                qst_amount=self._parse_decimal(item_data.get("qst_amount") or item_data.get("qst")),
+                combined_tax=self._parse_decimal(item_data.get("combined_tax")),
                 project_code=item_data.get("project_code"),
                 region_code=item_data.get("region_code"),
                 airport_code=item_data.get("airport_code"),
@@ -546,8 +489,12 @@ class FieldExtractor:
         
         # Important fields get higher weight
         important_fields = [
-            "invoice_id", "invoice_date", "invoice_total",
-            "vendor_name", "subtotal", "total_tax"
+            "invoice_number",
+            "invoice_date",
+            "total_amount",
+            "vendor_name",
+            "subtotal",
+            "tax_amount",
         ]
         
         important_scores = [field_confidence.get(f, 0.0) for f in important_fields if f in field_confidence]
@@ -618,4 +565,61 @@ class FieldExtractor:
             return detected_subtype, extensions
         
         return InvoiceSubtype.STANDARD_INVOICE, None
+
+    def _extract_field_confidence(self, di_data: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Map DI confidence keys to canonical Invoice field names.
+        If DI provides no confidence, return {} (do not default).
+        """
+        di_fc = (di_data or {}).get("field_confidence") or {}
+        if not isinstance(di_fc, dict) or not di_fc:
+            return {}
+
+        di_to_canon = {
+            # DI (prebuilt invoice) field names -> canonical invoice fields
+            "InvoiceId": "invoice_number",
+            "InvoiceDate": "invoice_date",
+            "DueDate": "due_date",
+            "VendorName": "vendor_name",
+            "VendorPhoneNumber": "vendor_phone",
+            "CustomerName": "customer_name",
+            "CustomerId": "customer_id",
+            "SubTotal": "subtotal",
+            "TotalTax": "tax_amount",
+            "InvoiceTotal": "total_amount",
+            "PurchaseOrder": "po_number",
+            "PaymentTerm": "payment_terms",
+            "ContractId": "standing_offer_number",
+            "StandingOfferNumber": "standing_offer_number",
+        }
+
+        # Legacy/normalized snake-case keys seen in the pipeline
+        legacy_to_canon = {
+            "invoice_id": "invoice_number",
+            "invoice_total": "total_amount",
+            "total_tax": "tax_amount",
+            "purchase_order": "po_number",
+            "payment_term": "payment_terms",
+        }
+
+        canonical_allowlist = {
+            "invoice_number", "invoice_date", "due_date",
+            "vendor_name", "vendor_phone",
+            "customer_name", "customer_id",
+            "subtotal", "tax_amount", "total_amount",
+            "po_number", "payment_terms",
+            "standing_offer_number",
+        }
+
+        out: Dict[str, float] = {}
+        for k, v in di_fc.items():
+            canon = di_to_canon.get(k) or legacy_to_canon.get(k) or (k if k in canonical_allowlist else None)
+            if not canon:
+                continue
+            try:
+                out[canon] = float(v)
+            except Exception:
+                # ignore non-numeric confidence values
+                pass
+        return out
 

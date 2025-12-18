@@ -10,11 +10,21 @@ from decimal import Decimal
 import logging
 import json
 from pathlib import Path
+from typing import List
 
 from src.services.db_service import DatabaseService
 from src.models.database import get_db
 from src.models.invoice import Invoice, LineItem, Address
 from sqlalchemy.ext.asyncio import AsyncSession
+from src.extraction.extraction_service import ExtractionService, LLM_SYSTEM_PROMPT
+from src.extraction.document_intelligence_client import DocumentIntelligenceClient
+from src.extraction.field_extractor import FieldExtractor
+from src.ingestion.file_handler import FileHandler
+from src.config import settings
+try:
+    from openai import AzureOpenAI
+except ImportError:
+    AzureOpenAI = None
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +65,251 @@ class InvoiceValidationResponse(BaseModel):
     invoice_id: str
     validation_status: str
     message: str
+    review_history: Optional[list] = None
 
+
+def _get_extraction_service() -> ExtractionService:
+    doc_client = DocumentIntelligenceClient()
+    file_handler = FileHandler()
+    return ExtractionService(
+        doc_intelligence_client=doc_client,
+        file_handler=file_handler
+    )
+
+
+@router.post("/invoice/{invoice_id}/review")
+async def review_invoice(
+    invoice_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Run LLM review for low-confidence fields and return suggestions without mutating the invoice.
+    """
+    if AzureOpenAI is None:
+        raise HTTPException(status_code=500, detail="OpenAI client not available")
+
+    invoice = await DatabaseService.get_invoice(invoice_id, db=db)
+    if not invoice:
+        raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
+
+    # Build low-confidence list similar to extraction fallback
+    fc = invoice.field_confidence or {}
+    low_conf_threshold = 0.75
+    low_conf_fields: List[str] = []
+
+    required = [
+        "invoice_number",
+        "invoice_date",
+        "vendor_name",
+        "total_amount",
+        "vendor_address",
+        "bill_to_address",
+        "remit_to_address",
+    ]
+    for field in required:
+        val = getattr(invoice, field, None)
+        conf = fc.get(field)
+        if val in (None, "", {}) or conf is None or conf < low_conf_threshold:
+            low_conf_fields.append(field)
+
+    for name, conf in fc.items():
+        if name in required:
+            continue
+        if conf is None or conf < low_conf_threshold:
+            low_conf_fields.append(name)
+
+    # Deduplicate while preserving order
+    seen = set()
+    low_conf_fields = [x for x in low_conf_fields if not (x in seen or seen.add(x))]
+
+    if not low_conf_fields:
+        return {
+            "invoice_id": invoice_id,
+            "low_conf_fields": [],
+            "suggestions": {},
+            "message": "No low-confidence fields; skipping review",
+        }
+
+    svc = _get_extraction_service()
+    di_payload = invoice.model_dump(mode="json")
+    try:
+        canonical_di = svc.field_extractor.normalize_di_data(di_payload)
+    except Exception:
+        canonical_di = di_payload
+    prompt = svc._build_llm_prompt(canonical_di, low_conf_fields, di_payload)
+    if not prompt:
+        raise HTTPException(status_code=500, detail="Failed to build LLM prompt")
+
+    try:
+        client = AzureOpenAI(
+            azure_endpoint=settings.AOAI_ENDPOINT,
+            api_key=settings.AOAI_API_KEY,
+            api_version=settings.AOAI_API_VERSION,
+        )
+        resp = client.chat.completions.create(
+            model=settings.AOAI_DEPLOYMENT_NAME,
+            temperature=0.0,
+            messages=[
+                {"role": "system", "content": LLM_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        if not resp.choices:
+            raise HTTPException(status_code=500, detail="LLM returned no choices")
+        suggestion_text = resp.choices[0].message.content or ""
+        try:
+            suggestions = json.loads(suggestion_text) if suggestion_text else {}
+        except Exception:
+            suggestions = {}
+        return {
+            "invoice_id": invoice_id,
+            "low_conf_fields": low_conf_fields,
+            "suggestions": suggestions,
+            "raw": suggestion_text,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Review endpoint failed for invoice {invoice_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.post("/invoice/{invoice_id}/llm-fallback-test")
+async def llm_fallback_test(
+    invoice_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Exercise LLM fallback for an invoice without mutating or saving it.
+    Returns low-confidence fields, raw suggestions, parsed JSON, and a before/after diff.
+    """
+    if AzureOpenAI is None:
+        raise HTTPException(status_code=500, detail="OpenAI client not available")
+
+    invoice = await DatabaseService.get_invoice(invoice_id, db=db)
+    if not invoice:
+        raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
+
+    fc = invoice.field_confidence or {}
+    low_conf_threshold = 0.75
+    low_conf_fields: List[str] = []
+
+    required = [
+        "invoice_number",
+        "invoice_date",
+        "vendor_name",
+        "total_amount",
+        "vendor_address",
+        "bill_to_address",
+        "remit_to_address",
+    ]
+    for field in required:
+        val = getattr(invoice, field, None)
+        conf = fc.get(field)
+        if val in (None, "", {}) or conf is None or conf < low_conf_threshold:
+            low_conf_fields.append(field)
+
+    for name, conf in fc.items():
+        if name in required:
+            continue
+        if conf is None or conf < low_conf_threshold:
+            low_conf_fields.append(name)
+
+    seen = set()
+    low_conf_fields = [x for x in low_conf_fields if not (x in seen or seen.add(x))]
+
+    if not low_conf_fields:
+        return {
+            "invoice_id": invoice_id,
+            "low_conf_fields": [],
+            "suggestions": {},
+            "applied_diff": {},
+            "message": "No low-confidence fields; skipping LLM test",
+        }
+
+    svc = _get_extraction_service()
+    di_payload = invoice.model_dump(mode="json")
+    try:
+        canonical_di = svc.field_extractor.normalize_di_data(di_payload)
+    except Exception:
+        canonical_di = di_payload
+
+    prompt = svc._build_llm_prompt(canonical_di, low_conf_fields, di_payload)
+    if not prompt:
+        raise HTTPException(status_code=500, detail="Failed to build LLM prompt")
+
+    try:
+        client = AzureOpenAI(
+            azure_endpoint=settings.AOAI_ENDPOINT,
+            api_key=settings.AOAI_API_KEY,
+            api_version=settings.AOAI_API_VERSION,
+        )
+        resp = client.chat.completions.create(
+            model=settings.AOAI_DEPLOYMENT_NAME,
+            temperature=0.0,
+            messages=[
+                {"role": "system", "content": LLM_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+        )
+        if not resp.choices or not resp.choices[0].message or not resp.choices[0].message.content:
+            return {
+                "invoice_id": invoice_id,
+                "low_conf_fields": low_conf_fields,
+                "suggestions": {},
+                "applied_diff": {},
+                "message": "LLM returned no content",
+            }
+
+        suggestion_text = resp.choices[0].message.content.strip()
+        try:
+            suggestions = json.loads(suggestion_text) if suggestion_text else {}
+        except Exception:
+            suggestions = {}
+
+        invoice_copy = invoice.copy(deep=True)
+        before = invoice.model_dump(mode="json")
+        try:
+            svc._apply_llm_suggestions(invoice_copy, suggestion_text, low_conf_fields)
+        except Exception as e:
+            logger.warning(f"LLM suggestion apply failed in test: {e}")
+        after = invoice_copy.model_dump(mode="json")
+
+        diff = {
+            k: {"before": before.get(k), "after": after.get(k)}
+            for k in after.keys()
+            if before.get(k) != after.get(k)
+        }
+
+        return {
+            "invoice_id": invoice_id,
+            "low_conf_fields": low_conf_fields,
+            "suggestions": suggestions,
+            "raw": suggestion_text,
+            "applied_diff": diff,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"LLM fallback test failed for invoice {invoice_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.get("/invoice/schema")
+async def get_invoice_schema():
+    """
+    Return the canonical Invoice JSON schema (v1 contract) for consumers.
+    """
+    try:
+        # Pydantic v2 uses model_json_schema; v1 uses schema
+        if hasattr(Invoice, "model_json_schema"):
+            schema = Invoice.model_json_schema()
+        else:
+            schema = Invoice.schema()
+        return JSONResponse(status_code=200, content=schema)
+    except Exception as e:
+        logger.error(f"Failed to generate Invoice schema: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to generate schema")
 
 @router.get("/invoice/{invoice_id}")
 async def get_invoice_for_validation(
@@ -295,6 +549,10 @@ async def get_invoice_for_validation(
                     "unit_of_measure": item.unit_of_measure,
                     "tax_rate": to_number(item.tax_rate),
                     "tax_amount": to_number(item.tax_amount),
+                    "gst_amount": to_number(getattr(item, "gst_amount", None)),
+                    "pst_amount": to_number(getattr(item, "pst_amount", None)),
+                    "qst_amount": to_number(getattr(item, "qst_amount", None)),
+                    "combined_tax": to_number(getattr(item, "combined_tax", None)),
                     "project_code": item.project_code,
                     "cost_centre_code": item.cost_centre_code,
                     "airport_code": item.airport_code,
@@ -379,28 +637,40 @@ async def validate_invoice(
                         "payment_terms": "payment_terms",
                         "acceptance_percentage": "acceptance_percentage",
                         "tax_registration_number": "tax_registration_number",
+                        "federal_tax": "tax_breakdown",
+                        "provincial_tax": "tax_breakdown",
+                        "combined_tax": "tax_breakdown",
                     }
                     
                     if field_validation.field_name in field_mapping:
                         attr_name = field_mapping[field_validation.field_name]
-                        old_value = getattr(invoice, attr_name, None)
-                        # Handle type conversions
-                        if attr_name in ["subtotal", "tax_amount", "total_amount", "acceptance_percentage"]:
-                            setattr(invoice, attr_name, Decimal(str(field_validation.corrected_value)))
-                        elif attr_name in ["invoice_date", "due_date"]:
-                            from dateutil.parser import parse
-                            setattr(invoice, attr_name, parse(field_validation.corrected_value).date())
-                        elif attr_name in ["vendor_address", "bill_to_address", "remit_to_address"]:
-                            if isinstance(field_validation.corrected_value, dict):
-                                try:
-                                    setattr(invoice, attr_name, Address(**field_validation.corrected_value))
-                                except Exception:
-                                    # store raw dict if not parseable
-                                    setattr(invoice, attr_name, field_validation.corrected_value)
-                            else:
-                                logger.warning(f"Skipping non-dict address correction for {attr_name}")
+                        if attr_name == "tax_breakdown":
+                            tb = invoice.tax_breakdown or {}
+                            old_value = tb.get(field_validation.field_name)
+                            tb[field_validation.field_name] = Decimal(str(field_validation.corrected_value)) if field_validation.corrected_value is not None else None
+                            invoice.tax_breakdown = tb
                         else:
-                            setattr(invoice, attr_name, field_validation.corrected_value)
+                            old_value = getattr(invoice, attr_name, None)
+                            # Handle type conversions
+                            if attr_name in ["subtotal", "tax_amount", "total_amount", "acceptance_percentage"]:
+                                setattr(invoice, attr_name, Decimal(str(field_validation.corrected_value)))
+                            elif attr_name in ["invoice_date", "due_date"]:
+                                from dateutil.parser import parse
+                                setattr(invoice, attr_name, parse(field_validation.corrected_value).date())
+                            elif attr_name in ["vendor_address", "bill_to_address", "remit_to_address"]:
+                                if isinstance(field_validation.corrected_value, dict):
+                                    try:
+                                        setattr(invoice, attr_name, Address(**field_validation.corrected_value))
+                                    except Exception:
+                                        # store raw dict if not parseable
+                                        setattr(invoice, attr_name, field_validation.corrected_value)
+                                else:
+                                    logger.warning(f"Skipping non-dict address correction for {attr_name}")
+                            else:
+                                setattr(invoice, attr_name, field_validation.corrected_value)
+                        if invoice.field_confidence is None:
+                            invoice.field_confidence = {}
+                        invoice.field_confidence[field_validation.field_name] = field_validation.confidence or 0.9
                         corrections_log.append({
                             "invoice_id": invoice.id,
                             "field": field_validation.field_name,
@@ -420,7 +690,7 @@ async def validate_invoice(
                             for field, value in item_validation.corrections.items():
                                 if hasattr(line_item, field):
                                     old_value = getattr(line_item, field, None)
-                                    if field in ["quantity", "unit_price", "amount", "tax_rate", "tax_amount"]:
+                                    if field in ["quantity", "unit_price", "amount", "tax_rate", "tax_amount", "gst_amount", "pst_amount", "qst_amount", "combined_tax"]:
                                         setattr(line_item, field, Decimal(str(value)))
                                     else:
                                         setattr(line_item, field, value)
@@ -434,11 +704,36 @@ async def validate_invoice(
                                     })
                         break
 
+        # Recompute overall confidence after corrections
+        try:
+            fe = FieldExtractor()
+            if invoice.field_confidence:
+                invoice.extraction_confidence = fe._calculate_overall_confidence(invoice.field_confidence)
+        except Exception as conf_err:
+            logger.warning(f"Could not recalculate extraction confidence: {conf_err}")
+
         # Update review status
         invoice.review_status = request.overall_validation_status
         invoice.reviewer = request.reviewer
         invoice.review_timestamp = datetime.utcnow()
         invoice.review_notes = request.validation_notes
+        # Append to review history (stored in review_notes JSON list for simplicity)
+        history_entry = {
+            "status": request.overall_validation_status,
+            "reviewer": request.reviewer,
+            "notes": request.validation_notes,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+        existing_history = []
+        try:
+            if invoice.review_notes:
+                existing_history = json.loads(invoice.review_notes)
+                if not isinstance(existing_history, list):
+                    existing_history = []
+        except Exception:
+            existing_history = []
+        existing_history.append(history_entry)
+        invoice.review_notes = json.dumps(existing_history)
         
         # Update status based on validation
         if request.overall_validation_status == "validated":
@@ -465,7 +760,8 @@ async def validate_invoice(
             success=True,
             invoice_id=request.invoice_id,
             validation_status=request.overall_validation_status,
-            message="Invoice validation completed successfully"
+            message="Invoice validation completed successfully",
+            review_history=existing_history
         )
         
     except HTTPException:
@@ -476,6 +772,62 @@ async def validate_invoice(
             status_code=500,
             detail=f"Internal server error: {str(e)}"
         )
+
+
+@router.get("/invoice/{invoice_id}/history")
+async def get_invoice_history(
+    invoice_id: str,
+    db: AsyncSession = Depends(get_db)
+) -> List[dict]:
+    """Return review/validation history for an invoice."""
+    invoice = await DatabaseService.get_invoice(invoice_id, db=db)
+    if not invoice:
+        raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
+    try:
+        if invoice.review_notes:
+            parsed = json.loads(invoice.review_notes)
+            if isinstance(parsed, list):
+                return parsed
+    except Exception:
+        pass
+    return []
+
+
+@router.post("/invoice/{invoice_id}/reextract")
+async def reextract_invoice(
+    invoice_id: str,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Re-run extraction for an invoice using stored file info.
+    Overwrites fields/line_items/field_confidence and returns updated invoice (HITL view shape).
+    """
+    try:
+        invoice = await DatabaseService.get_invoice(invoice_id, db=db)
+        if not invoice:
+            raise HTTPException(status_code=404, detail=f"Invoice {invoice_id} not found")
+        if not invoice.file_path:
+            raise HTTPException(status_code=400, detail="Missing file_path for invoice")
+
+        extraction_service = _get_extraction_service()
+        from datetime import datetime
+        result = await extraction_service.extract_invoice(
+            invoice_id=invoice_id,
+            file_identifier=invoice.file_path,
+            file_name=invoice.file_name or "invoice.pdf",
+            upload_date=invoice.upload_date or datetime.utcnow(),
+            db=db,
+        )
+        if result.get("status") not in ["extracted"]:
+            raise HTTPException(status_code=500, detail="Re-extraction failed")
+
+        # Return the same shape as GET invoice (reuse existing handler)
+        return await get_invoice_for_validation(invoice_id=invoice_id, db=db)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error re-extracting invoice {invoice_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.get("/invoice/{invoice_id}/pdf")
