@@ -6,6 +6,7 @@ from decimal import Decimal
 import logging
 import json
 import re
+import time
 import hashlib
 from typing import Any, Mapping, Dict
 
@@ -258,70 +259,105 @@ class ExtractionService:
             return
 
         try:
-            # Prepare sanitized DI snapshot for prompt/caching
-            di_snapshot = {
-                "di_fields": di_data or {},
-                "di_field_confidence": di_field_confidence or {},
-                "low_conf_fields": low_conf_fields,
-            }
-            di_snapshot = self._sanitize_for_json(di_snapshot)
+            # group fields to reduce payload; process sequentially with small jitter
+            fc = di_field_confidence or {}
+            groups = [
+                (
+                    "fields",
+                    {
+                        "invoice_number", "invoice_date", "due_date",
+                        "vendor_name", "vendor_id", "vendor_phone",
+                        "customer_name", "customer_id",
+                        "subtotal", "tax_amount", "total_amount",
+                        "currency", "payment_terms", "acceptance_percentage",
+                        "tax_registration_number",
+                    },
+                ),
+                ("addresses", {"vendor_address", "bill_to_address", "remit_to_address"}),
+                ("line_items", {f for f in low_conf_fields if f.startswith("line_items")}),
+            ]
 
+            # Prepare sanitized DI snapshot for caching (common)
+            di_snapshot_base = {
+                "di_fields": di_data or {},
+                "di_field_confidence": fc,
+            }
             try:
                 canonical_di = self.field_extractor.normalize_di_data(di_data or {})
             except Exception:
                 canonical_di = di_data or {}
 
-            prompt = self._build_llm_prompt(canonical_di, low_conf_fields, di_data)
-            if not prompt:
-                logger.info("No prompt built for LLM fallback; skipping.")
-                return
+            for idx, (grp_name, grp_fields) in enumerate(groups):
+                sub_fields = [f for f in low_conf_fields if f in grp_fields]
+                if not sub_fields:
+                    continue
 
-            cache_key = (
-                settings.AOAI_DEPLOYMENT_NAME or "",
-                tuple(sorted(low_conf_fields)),
-                invoice.file_name or invoice.id or "",
-                json.dumps(di_snapshot, sort_keys=True),
-            )
+                di_snapshot = dict(di_snapshot_base)
+                di_snapshot["low_conf_fields"] = sub_fields
+                di_snapshot = self._sanitize_for_json(di_snapshot)
 
-            suggestion_text = self._llm_cache.get(cache_key)
-            if suggestion_text is None:
-                client = AzureOpenAI(
-                    api_key=settings.AOAI_API_KEY,
-                    api_version=settings.AOAI_API_VERSION,
-                    azure_endpoint=settings.AOAI_ENDPOINT,
+                prompt = self._build_llm_prompt(canonical_di, sub_fields, di_data)
+                if not prompt:
+                    logger.info("No prompt built for group %s; skipping.", grp_name)
+                    continue
+
+                cache_key = (
+                    settings.AOAI_DEPLOYMENT_NAME or "",
+                    tuple(sorted(sub_fields)),
+                    invoice.file_name or invoice.id or "",
+                    json.dumps(di_snapshot, sort_keys=True),
                 )
 
-                logger.info("Calling Azure OpenAI chat.completions for LLM fallback.")
-                resp = client.chat.completions.create(
-                    model=settings.AOAI_DEPLOYMENT_NAME,
-                    temperature=0.0,
-                    messages=[
-                        {"role": "system", "content": LLM_SYSTEM_PROMPT},
-                        {"role": "user", "content": prompt},
-                    ],
-                )
+                suggestion_text = self._llm_cache.get(cache_key)
+                if suggestion_text is None:
+                    client = AzureOpenAI(
+                        api_key=settings.AOAI_API_KEY,
+                        api_version=settings.AOAI_API_VERSION,
+                        azure_endpoint=settings.AOAI_ENDPOINT,
+                    )
 
-                if not resp.choices or not resp.choices[0].message or not resp.choices[0].message.content:
-                    logger.warning("LLM fallback returned no content; skipping suggestions.")
-                    return
+                    logger.info("Calling Azure OpenAI chat.completions for group %s.", grp_name)
+                    try:
+                        resp = client.chat.completions.create(
+                            model=settings.AOAI_DEPLOYMENT_NAME,
+                            temperature=0.0,
+                            messages=[
+                                {"role": "system", "content": LLM_SYSTEM_PROMPT},
+                                {"role": "user", "content": prompt},
+                            ],
+                        )
+                    except Exception as call_err:
+                        status = getattr(call_err, "status_code", None)
+                        if status == 429:
+                            logger.warning("LLM fallback hit rate limit (429) on group %s; stopping further LLM calls.", grp_name)
+                            break
+                        logger.error("LLM fallback call failed for group %s: %s", grp_name, call_err, exc_info=True)
+                        continue
 
-                suggestion_text = resp.choices[0].message.content.strip()
-                self._llm_cache[cache_key] = suggestion_text
+                    if not resp.choices or not resp.choices[0].message or not resp.choices[0].message.content:
+                        logger.warning("LLM fallback returned no content for group %s; skipping.", grp_name)
+                        continue
 
-            # Parse and apply suggestions (best-effort even if raw text is not strict JSON)
-            llm_data = self._coerce_llm_json(suggestion_text)
-            if llm_data is None:
-                logger.error("LLM fallback returned non-JSON content; preserving raw text for debugging.")
-                logger.debug("Raw LLM suggestion text: %s", suggestion_text)
-                return
+                    suggestion_text = resp.choices[0].message.content.strip()
+                    self._llm_cache[cache_key] = suggestion_text
 
-            if not isinstance(llm_data, dict):
-                logger.error("LLM fallback JSON is not an object; got %s", type(llm_data))
-                logger.debug("Raw LLM suggestion text: %s", suggestion_text)
-                return
+                llm_data = self._coerce_llm_json(suggestion_text)
+                if llm_data is None:
+                    logger.error("LLM fallback returned non-JSON content for group %s; skipping.", grp_name)
+                    logger.debug("Raw LLM suggestion text: %s", suggestion_text)
+                    continue
 
-            self._apply_llm_suggestions(invoice, llm_data, low_conf_fields)
-            logger.info("LLM fallback suggestions applied successfully.")
+                if not isinstance(llm_data, dict):
+                    logger.error("LLM fallback JSON is not an object for group %s; got %s", grp_name, type(llm_data))
+                    logger.debug("Raw LLM suggestion text: %s", suggestion_text)
+                    continue
+
+                self._apply_llm_suggestions(invoice, llm_data, sub_fields)
+                logger.info("LLM fallback suggestions applied successfully for group %s.", grp_name)
+
+                # small jitter to avoid burst (helps with 429s)
+                if idx < len(groups) - 1:
+                    time.sleep(2.0)
 
         except Exception as e:
             logger.exception("LLM fallback failed: %s", e)

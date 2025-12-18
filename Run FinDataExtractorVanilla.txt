@@ -1,0 +1,31 @@
+File Path
+
+cd FinDataExtractorVanilla
+
+
+Start API
+
+cd C:\Users\Ian\OneDrive\Documents\dev\CATSA\FinDataExtractorVanilla
+$env:PYTHONPATH="$PWD"
+.\venv\Scripts\Activate.ps1
+uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload
+
+
+API Fallback
+
+cd C:\Users\Ian\OneDrive\Documents\dev\CATSA\FinDataExtractorVanilla
+.\venv\Scripts\Activate.ps1
+uvicorn api.main:app --host 127.0.0.1 --port 8000 --reload
+
+
+Start Streamlit
+
+cd FinDataExtractorVanilla
+.\venv\Scripts\Activate.ps1
+streamlit run streamlit_app.py --server.port 8501
+
+
+DB Health
+
+http://127.0.0.1:8000/api/health/db
+http://127.0.0.1:8000/api/ingestion/health/db

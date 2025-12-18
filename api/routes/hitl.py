@@ -691,7 +691,12 @@ async def validate_invoice(
                                 if hasattr(line_item, field):
                                     old_value = getattr(line_item, field, None)
                                     if field in ["quantity", "unit_price", "amount", "tax_rate", "tax_amount", "gst_amount", "pst_amount", "qst_amount", "combined_tax"]:
-                                        setattr(line_item, field, Decimal(str(value)))
+                                        try:
+                                            parsed = None if value in (None, "",) else Decimal(str(value))
+                                            setattr(line_item, field, parsed)
+                                        except Exception as dec_err:
+                                            logger.warning(f"Skipping non-numeric line item correction {field}={value}: {dec_err}")
+                                            continue
                                     else:
                                         setattr(line_item, field, value)
                                     corrections_log.append({
