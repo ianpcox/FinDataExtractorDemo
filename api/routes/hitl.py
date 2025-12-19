@@ -21,6 +21,9 @@ from src.extraction.document_intelligence_client import DocumentIntelligenceClie
 from src.extraction.field_extractor import FieldExtractor
 from src.ingestion.file_handler import FileHandler
 from src.config import settings
+from src.models.db_utils import address_to_dict, line_items_to_json, _sanitize_tax_breakdown
+from src.models.invoice import InvoiceState
+from src.models.decimal_wire import decimal_to_wire, wire_to_decimal
 try:
     from openai import AzureOpenAI
 except ImportError:
@@ -52,11 +55,26 @@ class LineItemValidation(BaseModel):
 class InvoiceValidationRequest(BaseModel):
     """Request to validate an invoice"""
     invoice_id: str
+    expected_review_version: int
     field_validations: Optional[List[FieldValidation]] = None
     line_item_validations: Optional[List[LineItemValidation]] = None
     overall_validation_status: str = Field(default="pending")  # pending, validated, needs_review
     validation_notes: Optional[str] = None
     reviewer: Optional[str] = None
+    clear_fields: Optional[List[str]] = Field(default_factory=list, description="Fields to explicitly clear (e.g., ['line_items', 'tax_breakdown'])")
+
+
+# Allowlist of fields that can be explicitly cleared
+ALLOWED_CLEAR_FIELDS = {
+    "line_items",
+    "tax_breakdown",
+    "review_notes",
+    "po_number",
+    "reference_number",
+    "remittance_address",
+    "payment_terms",
+    "notes",
+}
 
 
 class InvoiceValidationResponse(BaseModel):
@@ -298,18 +316,24 @@ async def llm_fallback_test(
 @router.get("/invoice/schema")
 async def get_invoice_schema():
     """
-    Return the canonical Invoice JSON schema (v1 contract) for consumers.
+    Return the pinned versioned Invoice JSON schema (v1 contract) from disk.
+    This is the source of truth for wire format (not runtime-generated).
     """
     try:
-        # Pydantic v2 uses model_json_schema; v1 uses schema
-        if hasattr(Invoice, "model_json_schema"):
-            schema = Invoice.model_json_schema()
-        else:
-            schema = Invoice.schema()
+        # Load pinned schema from file
+        schema_path = Path(__file__).parent.parent.parent / "schemas" / "invoice.contract.v1.schema.json"
+        if not schema_path.exists():
+            raise HTTPException(status_code=500, detail="Schema file not found")
+        
+        with open(schema_path, "r", encoding="utf-8") as f:
+            schema = json.load(f)
+        
         return JSONResponse(status_code=200, content=schema)
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Failed to generate Invoice schema: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Failed to generate schema")
+        logger.error(f"Failed to load Invoice schema: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to load schema")
 
 @router.get("/invoice/{invoice_id}")
 async def get_invoice_for_validation(
@@ -328,14 +352,17 @@ async def get_invoice_for_validation(
         Invoice data with confidence scores and validation status
     """
     try:
-        # helper to safely convert numeric values
-        def to_number(val, default=None):
+        # Helper to safely convert decimal values to wire format (string)
+        def to_decimal_str(val, default=None):
+            """Convert Decimal values to string for wire representation"""
             try:
                 if val is None:
                     return default
-                if isinstance(val, (int, float)):
-                    return float(val)
-                return float(str(val).replace(",", ""))
+                if isinstance(val, Decimal):
+                    return decimal_to_wire(val)
+                # If it's already a string or number, convert via Decimal for consistency
+                d = wire_to_decimal(val)
+                return decimal_to_wire(d) if d is not None else default
             except Exception:
                 return default
         
@@ -388,13 +415,14 @@ async def get_invoice_for_validation(
             "file_name": to_str(invoice.file_name, "Not extracted"),
             "file_path": to_str(invoice.file_path, None),
             "upload_date": to_date_str(invoice.upload_date),
-            "extraction_confidence": to_number(invoice.extraction_confidence, 0.0),
+            "extraction_confidence": decimal_to_wire(invoice.extraction_confidence) if invoice.extraction_confidence else "0.0",
             "extraction_timestamp": to_date_str(invoice.extraction_timestamp),
             "low_confidence_fields": low_conf_fields,
             "low_confidence_triggered": bool(low_conf_fields),
             "review_status": to_str(invoice.review_status, "pending_review"),
             "reviewer": to_str(invoice.reviewer, None),
             "review_timestamp": to_date_str(invoice.review_timestamp),
+            "review_version": invoice.review_version if hasattr(invoice, "review_version") else 0,
             "fields": {
                 "invoice_number": {
                     "value": to_str(invoice.invoice_number, "Not extracted"),
@@ -457,17 +485,17 @@ async def get_invoice_for_validation(
                     "validated": False
                 },
                 "subtotal": {
-                    "value": to_number(invoice.subtotal),
+                    "value": to_decimal_str(invoice.subtotal),
                     "confidence": get_conf("subtotal"),
                     "validated": False
                 },
                 "tax_amount": {
-                    "value": to_number(invoice.tax_amount),
+                    "value": to_decimal_str(invoice.tax_amount),
                     "confidence": get_conf("total_tax"),
                     "validated": False
                 },
                 "total_amount": {
-                    "value": to_number(invoice.total_amount),
+                    "value": to_decimal_str(invoice.total_amount),
                     "confidence": get_conf("invoice_total"),
                     "validated": False
                 },
@@ -482,7 +510,7 @@ async def get_invoice_for_validation(
                     "validated": False
                 },
                 "acceptance_percentage": {
-                    "value": to_number(getattr(invoice, "acceptance_percentage", None)),
+                    "value": to_decimal_str(getattr(invoice, "acceptance_percentage", None)),
                     "confidence": get_conf("acceptance_percentage"),
                     "validated": False
                 },
@@ -542,17 +570,17 @@ async def get_invoice_for_validation(
                 {
                     "line_number": item.line_number,
                     "description": to_str(item.description, "Not extracted"),
-                    "quantity": to_number(item.quantity),
-                    "unit_price": to_number(item.unit_price),
-                    "amount": to_number(item.amount, default=0.0),
+                    "quantity": to_decimal_str(item.quantity),
+                    "unit_price": to_decimal_str(item.unit_price),
+                    "amount": to_decimal_str(item.amount, default="0.0"),
                     "confidence": item.confidence,
                     "unit_of_measure": item.unit_of_measure,
-                    "tax_rate": to_number(item.tax_rate),
-                    "tax_amount": to_number(item.tax_amount),
-                    "gst_amount": to_number(getattr(item, "gst_amount", None)),
-                    "pst_amount": to_number(getattr(item, "pst_amount", None)),
-                    "qst_amount": to_number(getattr(item, "qst_amount", None)),
-                    "combined_tax": to_number(getattr(item, "combined_tax", None)),
+                    "tax_rate": to_decimal_str(item.tax_rate),
+                    "tax_amount": to_decimal_str(item.tax_amount),
+                    "gst_amount": to_decimal_str(getattr(item, "gst_amount", None)),
+                    "pst_amount": to_decimal_str(getattr(item, "pst_amount", None)),
+                    "qst_amount": to_decimal_str(getattr(item, "qst_amount", None)),
+                    "combined_tax": to_decimal_str(getattr(item, "combined_tax", None)),
                     "project_code": item.project_code,
                     "cost_centre_code": item.cost_centre_code,
                     "airport_code": item.airport_code,
@@ -601,6 +629,33 @@ async def validate_invoice(
                 status_code=404,
                 detail=f"Invoice {request.invoice_id} not found"
             )
+
+        # Enforce state: only EXTRACTED or VALIDATED may be edited; block PROCESSING
+        if invoice.processing_state not in [InvoiceState.EXTRACTED.value, InvoiceState.VALIDATED.value]:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error_code": "INVALID_STATE_TRANSITION",
+                    "message": f"Invoice state {invoice.processing_state} cannot be validated",
+                    "invoice_id": invoice.id,
+                    "current_state": invoice.processing_state,
+                    "attempted_to_state": InvoiceState.VALIDATED.value,
+                },
+            )
+
+        # Validate clear_fields against allowlist
+        if request.clear_fields:
+            disallowed_clears = set(request.clear_fields) - ALLOWED_CLEAR_FIELDS
+            if disallowed_clears:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "error_code": "INVALID_CLEAR_FIELDS",
+                        "message": f"Cannot clear protected fields: {sorted(disallowed_clears)}",
+                        "disallowed_fields": sorted(disallowed_clears),
+                        "allowed_fields": sorted(ALLOWED_CLEAR_FIELDS),
+                    },
+                )
 
         corrections_log = []
 
@@ -679,19 +734,41 @@ async def validate_invoice(
                             "corrected_at": datetime.utcnow().isoformat()
                         })
 
-        # Apply line item validations
+        # Apply line item validations (including deletions)
+        to_delete_lines = set()
         if request.line_item_validations:
             for item_validation in request.line_item_validations:
                 # Find corresponding line item
                 for line_item in invoice.line_items:
                     if line_item.line_number == item_validation.line_number:
+                        # Handle delete flag
+                        if item_validation.corrections and item_validation.corrections.get("delete"):
+                            to_delete_lines.add(line_item.line_number)
+                            try:
+                                old_snapshot = line_item.model_dump(mode="json")
+                            except Exception:
+                                old_snapshot = str(line_item)
+                            corrections_log.append({
+                                "invoice_id": invoice.id,
+                                "line_number": line_item.line_number,
+                                "field": "delete",
+                                "old_value": old_snapshot,
+                                "new_value": None,
+                                "corrected_at": datetime.utcnow().isoformat()
+                            })
+                            break
                         if item_validation.validated and item_validation.corrections:
                             # Apply corrections
                             for field, value in item_validation.corrections.items():
                                 if hasattr(line_item, field):
                                     old_value = getattr(line_item, field, None)
                                     if field in ["quantity", "unit_price", "amount", "tax_rate", "tax_amount", "gst_amount", "pst_amount", "qst_amount", "combined_tax"]:
-                                        setattr(line_item, field, Decimal(str(value)))
+                                        try:
+                                            parsed = None if value in (None, "",) else Decimal(str(value))
+                                            setattr(line_item, field, parsed)
+                                        except Exception as dec_err:
+                                            logger.warning(f"Skipping non-numeric line item correction {field}={value}: {dec_err}")
+                                            continue
                                     else:
                                         setattr(line_item, field, value)
                                     corrections_log.append({
@@ -702,27 +779,81 @@ async def validate_invoice(
                                         "new_value": value,
                                         "corrected_at": datetime.utcnow().isoformat()
                                     })
+                            try:
+                                current_conf = line_item.confidence if line_item.confidence is not None else 0.0
+                                line_item.confidence = max(current_conf, 0.99)
+                            except Exception:
+                                line_item.confidence = 0.99
                         break
+        if to_delete_lines:
+            invoice.line_items = [li for li in invoice.line_items if li.line_number not in to_delete_lines]
+
+        patch_fields: Dict[str, Any] = {}
 
         # Recompute overall confidence after corrections
         try:
             fe = FieldExtractor()
             if invoice.field_confidence:
                 invoice.extraction_confidence = fe._calculate_overall_confidence(invoice.field_confidence)
+                patch_fields["extraction_confidence"] = invoice.extraction_confidence
         except Exception as conf_err:
             logger.warning(f"Could not recalculate extraction confidence: {conf_err}")
 
-        # Update review status
+        if invoice.field_confidence is not None:
+            patch_fields["field_confidence"] = invoice.field_confidence
+
+        # Collect patches for updated collections/addresses
+        if invoice.tax_breakdown is not None:
+            patch_fields["tax_breakdown"] = _sanitize_tax_breakdown(invoice.tax_breakdown)
+        if invoice.vendor_address is not None:
+            patch_fields["vendor_address"] = address_to_dict(invoice.vendor_address)
+        if invoice.bill_to_address is not None:
+            patch_fields["bill_to_address"] = address_to_dict(invoice.bill_to_address)
+        if invoice.remit_to_address is not None:
+            patch_fields["remit_to_address"] = address_to_dict(invoice.remit_to_address)
+        if request.line_item_validations:
+            patch_fields["line_items"] = line_items_to_json(invoice.line_items)
+
+        # Scalars potentially updated
+        scalar_fields = [
+            "invoice_number",
+            "invoice_date",
+            "due_date",
+            "vendor_name",
+            "vendor_id",
+            "vendor_phone",
+            "customer_name",
+            "customer_id",
+            "entity",
+            "contract_id",
+            "standing_offer_number",
+            "po_number",
+            "period_start",
+            "period_end",
+            "subtotal",
+            "tax_amount",
+            "total_amount",
+            "currency",
+            "acceptance_percentage",
+            "tax_registration_number",
+            "payment_terms",
+            "remit_to_name",
+        ]
+        for f_name in scalar_fields:
+            val = getattr(invoice, f_name, None)
+            if val is not None:
+                patch_fields[f_name] = val
+
+        # Review metadata and history
+        now = datetime.utcnow()
         invoice.review_status = request.overall_validation_status
         invoice.reviewer = request.reviewer
-        invoice.review_timestamp = datetime.utcnow()
-        invoice.review_notes = request.validation_notes
-        # Append to review history (stored in review_notes JSON list for simplicity)
+        invoice.review_timestamp = now
         history_entry = {
             "status": request.overall_validation_status,
             "reviewer": request.reviewer,
             "notes": request.validation_notes,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": now.isoformat()
         }
         existing_history = []
         try:
@@ -734,15 +865,63 @@ async def validate_invoice(
             existing_history = []
         existing_history.append(history_entry)
         invoice.review_notes = json.dumps(existing_history)
-        
+
+        patch_fields["review_status"] = invoice.review_status
+        patch_fields["reviewer"] = invoice.reviewer
+        patch_fields["review_timestamp"] = invoice.review_timestamp
+        patch_fields["review_notes"] = invoice.review_notes
+
         # Update status based on validation
         if request.overall_validation_status == "validated":
-            invoice.status = "validated"
+            invoice.status = InvoiceState.VALIDATED.value
+            invoice.processing_state = InvoiceState.VALIDATED.value
         elif request.overall_validation_status == "needs_review":
             invoice.status = "in_review"
-        
-        # Save updated invoice
-        await DatabaseService.save_invoice(invoice, db=db)
+        patch_fields["status"] = invoice.status
+        if invoice.processing_state == InvoiceState.VALIDATED.value:
+            patch_fields["processing_state"] = invoice.processing_state
+
+        # Apply explicit clear_fields
+        # Convention: list fields → [], dict fields → {}, optional scalars → None
+        # Note: SQLAlchemy JSON columns handle serialization automatically
+        if request.clear_fields:
+            for field_name in request.clear_fields:
+                if field_name == "line_items":
+                    # line_items is JSON column; SQLAlchemy handles serialization
+                    # Use line_items_to_json to get the proper format
+                    from src.models.db_utils import line_items_to_json
+                    patch_fields["line_items"] = line_items_to_json([])
+                    logger.info(f"Explicitly clearing line_items for invoice {invoice.id}")
+                elif field_name == "tax_breakdown":
+                    # tax_breakdown is JSON column; pass dict directly
+                    patch_fields["tax_breakdown"] = {}
+                    logger.info(f"Explicitly clearing tax_breakdown for invoice {invoice.id}")
+                elif field_name in ["review_notes", "notes", "po_number", "reference_number", "payment_terms"]:
+                    patch_fields[field_name] = None
+                    logger.info(f"Explicitly clearing {field_name} for invoice {invoice.id}")
+                elif field_name == "remittance_address":
+                    # JSON field - clear to {}
+                    patch_fields[field_name] = {}
+                    logger.info(f"Explicitly clearing {field_name} for invoice {invoice.id}")
+
+        success = await DatabaseService.update_with_review_version(
+            invoice_id=invoice.id,
+            patch=patch_fields,
+            expected_review_version=request.expected_review_version,
+            db=db,
+        )
+        if not success:
+            current = await DatabaseService.get_invoice(invoice.id, db=db)
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error_code": "STALE_WRITE",
+                    "message": "Invoice was updated by someone else.",
+                    "retryable": False,
+                    "current_review_version": current.review_version if current else None,
+                    "invoice_id": invoice.id,
+                },
+            )
 
         # Persist corrections log for training (jsonl)
         if corrections_log:

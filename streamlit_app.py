@@ -136,11 +136,20 @@ def load_invoice_list(status_filter: Optional[str] = None) -> list:
 
 
 def load_invoice(invoice_id: str) -> Optional[Dict[str, Any]]:
-    """Load invoice details from API"""
+    """Load invoice details from API (cache-busted to avoid stale data)."""
     try:
-        response = requests.get(f"{API_BASE_URL}/api/hitl/invoice/{invoice_id}")
+        response = requests.get(
+            f"{API_BASE_URL}/api/hitl/invoice/{invoice_id}",
+            params={"_ts": time.time()},
+        )
         if response.status_code == 200:
-            return response.json()
+            invoice_data = response.json()
+            # Store review_version in session state for optimistic locking
+            if "invoice_review_version" not in st.session_state:
+                st.session_state["invoice_review_version"] = {}
+            review_version = int(invoice_data.get("review_version", 0))
+            st.session_state["invoice_review_version"][invoice_id] = review_version
+            return invoice_data
         else:
             st.error(f"Error loading invoice: {response.status_code}")
             return None
@@ -191,8 +200,14 @@ def check_db_health() -> bool:
         return False
 
 
-def _post_validation_payload(payload: dict) -> bool:
-    """POST validation payload; return True on 200."""
+def _post_validation_payload(payload: dict) -> tuple[bool, Optional[dict]]:
+    """
+    POST validation payload.
+    Returns: (success: bool, error_detail: Optional[dict])
+    - On 200: (True, None)
+    - On 409 STALE_WRITE: (False, error_detail_dict)
+    - On other errors: (False, None)
+    """
     try:
         resp = requests.post(
             f"{API_BASE_URL}/api/hitl/invoice/validate",
@@ -200,12 +215,37 @@ def _post_validation_payload(payload: dict) -> bool:
             timeout=30,
         )
         if resp.status_code == 200:
-            return True
-        st.error(f"Validation failed: {resp.status_code} - {resp.text}")
-        return False
+            return (True, None)
+        elif resp.status_code == 409:
+            # Optimistic locking conflict - someone else updated the invoice
+            try:
+                resp_json = resp.json()
+                # Handle both {"detail": {...}} and flat dict formats
+                if "detail" in resp_json and isinstance(resp_json["detail"], dict):
+                    detail = resp_json["detail"]
+                else:
+                    detail = resp_json
+                
+                error_code = detail.get("error_code", "CONFLICT")
+                message = detail.get("message", "Invoice was updated by someone else.")
+                current_version = detail.get("current_review_version")
+                
+                # Return error detail for caller to handle
+                return (False, {
+                    "error_code": error_code,
+                    "message": message,
+                    "current_review_version": current_version,
+                    "invoice_id": detail.get("invoice_id"),
+                })
+            except Exception as parse_err:
+                st.error(f"Conflict (409): {resp.text}")
+                return (False, None)
+        else:
+            st.error(f"Validation failed: {resp.status_code} - {resp.text}")
+            return (False, None)
     except Exception as e:
         st.error(f"Error submitting validation: {e}")
-        return False
+        return (False, None)
 
 
 def _enqueue_pending(payload: dict):
@@ -222,7 +262,7 @@ def _retry_pending_queue():
     succeeded = []
     failed = []
     for idx, payload in enumerate(list(queue)):
-        ok = _post_validation_payload(payload)
+        ok, _ = _post_validation_payload(payload)  # Ignore error_detail for retries
         if ok:
             succeeded.append(idx)
         else:
@@ -280,7 +320,7 @@ def reset_invoice_state(invoice_id: str, invoice_data: dict):
 
 def submit_validation(invoice_id: str, field_validations: list, line_item_validations: list,
                      overall_status: str, reviewer: str, notes: str) -> bool:
-    """Submit invoice validation"""
+    """Submit invoice validation (legacy/helper function)"""
     payload = {
         "invoice_id": invoice_id,
         "field_validations": field_validations,
@@ -289,7 +329,8 @@ def submit_validation(invoice_id: str, field_validations: list, line_item_valida
         "reviewer": reviewer,
         "validation_notes": notes
     }
-    return _post_validation_payload(payload)
+    success, _ = _post_validation_payload(payload)
+    return success
 
 
 def main():
@@ -514,11 +555,11 @@ def main():
 
     with col_main:
         with st.form("invoice_review_form"):
-            tab1, tab2, tab3, tab4 = st.tabs(["Fields", "Line Items", "Addresses", "Validation"])
+            tab1, tab2, tab3, tab4, tab5 = st.tabs(["Company and Vendor", "Financial", "Line Items", "Addresses", "Validation"])
 
-        # Tab 1: Fields
+        # Tab 1: Company and Vendor
             with tab1:
-                st.subheader("Extracted Fields")
+                st.subheader("Company and Vendor")
                 
                 fields = invoice_data.get("fields", {})
                 
@@ -526,18 +567,6 @@ def main():
                 header_fields = ["invoice_number", "invoice_date", "due_date", "po_number", "standing_offer_number"]
                 vendor_fields = ["vendor_name", "vendor_id", "vendor_phone"]
                 customer_fields = ["customer_name", "customer_id"]
-                financial_fields = [
-                    "subtotal",
-                    "tax_amount",
-                    "total_amount",
-                    "currency",
-                    "payment_terms",
-                    "acceptance_percentage",
-                    "tax_registration_number",
-                    "federal_tax",
-                    "provincial_tax",
-                    "combined_tax",
-                ]
                 
                 # Header Information
                 st.markdown("#### Header Information")
@@ -611,20 +640,37 @@ def main():
                             st.markdown(f'<span class="{conf_class}">{icon} {format_confidence(confidence)}</span>', 
                                       unsafe_allow_html=True)
                 
-                # Financial Information
-                st.markdown("#### Financial Information")
+                # (Addresses moved to tab4)
+
+    
+            # Tab 2: Financial
+            with tab2:
+                st.subheader("Financial Information")
+                fields = invoice_data.get("fields", {}) or {}
+                financial_fields = [
+                    "subtotal",
+                    "tax_amount",
+                    "total_amount",
+                    "currency",
+                    "payment_terms",
+                    "acceptance_percentage",
+                    "tax_registration_number",
+                    "federal_tax",
+                    "provincial_tax",
+                    "combined_tax",
+                ]
                 financial_cols = st.columns(3)
                 tax_breakdown = invoice_data.get("tax_breakdown", {}) or {}
-                
+
                 for i, field_name in enumerate(financial_fields):
                     field_data = fields.get(field_name) or {"value": tax_breakdown.get(field_name), "confidence": 0.0}
                     value = field_data.get("value")
                     confidence = field_data.get("confidence", 0.0)
-                    
+
                     with financial_cols[i % 3]:
                         icon = get_confidence_icon(confidence)
                         conf_class = get_confidence_color(confidence)
-                        
+
                         label = field_name.replace("_", " ").title()
                         if field_name in ["subtotal", "tax_amount", "total_amount", "acceptance_percentage", "federal_tax", "provincial_tax", "combined_tax"]:
                             st.number_input(
@@ -641,14 +687,13 @@ def main():
                                 key=f"field_{selected_invoice_id}_{field_name}",
                                 help=f"Confidence: {format_confidence(confidence)}"
                             )
-                        st.markdown(f'<span class="{conf_class}">{icon} {format_confidence(confidence)}</span>', 
-                                  unsafe_allow_html=True)
-                
-                # (Addresses moved to tab3)
+                        st.markdown(
+                            f'<span class="{conf_class}">{icon} {format_confidence(confidence)}</span>',
+                            unsafe_allow_html=True,
+                        )
 
-    
-            # Tab 2: Line Items
-        with tab2:
+            # Tab 3: Line Items
+        with tab3:
             st.subheader("Line Items")
             
             line_items = st.session_state.get("edited_line_items", [])
@@ -733,6 +778,10 @@ def main():
                     ln = item.get("line_number")
                     line_total, subtotal = compute_display_values(item)
                     with st.expander(f"Line {ln}: {item.get('description', '')[:50]}"):
+                        delete_key = f"item_{selected_invoice_id}_{ln}_delete"
+                        delete_flag = st.checkbox("Delete (X)", key=delete_key, value=bool(st.session_state.get(delete_key, False)))
+                        if delete_flag:
+                            st.warning("Marked for deletion; will be removed on save/submit.")
                         col1, col2 = st.columns(2)
                         
                         with col1:
@@ -761,8 +810,8 @@ def main():
             else:
                 st.info("No line items found.")
     
-        # Tab 3: Addresses
-        with tab3:
+        # Tab 4: Addresses
+        with tab4:
             addresses = st.session_state.get("edited_addresses", {})
             if addresses:
                 st.subheader("Addresses")
@@ -785,9 +834,9 @@ def main():
             else:
                 st.info("No addresses available.")
     
-        # Tab 4: Validation
-        with tab4:
-            with tab4:
+        # Tab 5: Validation
+        with tab5:
+            with tab5:
                 st.subheader("Submit Validation")
                 
                 reviewer_name = st.text_input("Reviewer Name", value="", placeholder="Enter your name", key="reviewer_name")
@@ -835,7 +884,8 @@ def main():
                             field_validations.append({
                                 "field_name": fname,
                                 "value": orig_val,
-                                "confidence": field_data.get("confidence", 0.0),
+                                # Manual correction => treat as confident
+                                "confidence": 1.0,
                                 "validated": True,
                                 "corrected_value": new_val,
                                 "validation_notes": "",
@@ -854,7 +904,7 @@ def main():
                         field_validations.append({
                             "field_name": addr_key,
                             "value": None,
-                            "confidence": 0.9,
+                            "confidence": 1.0,
                             "validated": True,
                             "corrected_value": value,
                             "validation_notes": ""
@@ -866,6 +916,42 @@ def main():
                         ln = item.get("line_number")
                         orig = original_items.get(ln, {}) or {}
                         corrections = {}
+                        delete_flag = st.session_state.get(f"item_{selected_invoice_id}_{ln}_delete", False)
+
+                        def _safe_float(val):
+                            try:
+                                return float(val)
+                            except Exception:
+                                return None
+
+                        qty_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_qty", item.get("quantity"))
+                        price_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_price", item.get("unit_price"))
+                        gst_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_gst", item.get("gst_amount"))
+                        pstqst_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_pstqst", item.get("pst_amount") if item.get("pst_amount") is not None else item.get("qst_amount"))
+                        combined_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_combined", item.get("combined_tax"))
+                        tax_amount_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_tax_amount", item.get("tax_amount"))
+                        amount_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_amount", item.get("amount"))
+                        desc_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_desc", item.get("description") or "") or ""
+
+                        numeric_values = [
+                            _safe_float(qty_val),
+                            _safe_float(price_val),
+                            _safe_float(gst_val),
+                            _safe_float(pstqst_val),
+                            _safe_float(combined_val),
+                            _safe_float(tax_amount_val),
+                            _safe_float(amount_val),
+                        ]
+                        all_zero_numeric = all(v in (None, 0.0) for v in numeric_values)
+                        should_delete = delete_flag or (all_zero_numeric and desc_val.strip() == "")
+                        if should_delete:
+                            line_item_validations.append({
+                                "line_number": ln,
+                                "validated": True,
+                                "corrections": {"delete": True},
+                                "validation_notes": ""
+                            })
+                            continue
 
                         def maybe_add(key_short: str, canon_key: str):
                             new_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_{key_short}")
@@ -882,12 +968,12 @@ def main():
                         maybe_add("qty", "quantity")
                         maybe_add("price", "unit_price")
                         maybe_add("gst", "gst_amount")
-                            # PST/QST combined input (store as pst_amount only)
+                        # PST/QST combined input (store as pst_amount only)
                         pstqst_val = st.session_state.get(f"item_{selected_invoice_id}_{ln}_pstqst")
-                            if pstqst_val is not None and pstqst_val != orig.get("pst_amount"):
-                                corrections["pst_amount"] = pstqst_val
-                                # clear qst_amount if present
-                                corrections["qst_amount"] = None
+                        if pstqst_val is not None and pstqst_val != orig.get("pst_amount"):
+                            corrections["pst_amount"] = pstqst_val
+                            # clear qst_amount if present
+                            corrections["qst_amount"] = None
                         maybe_add("combined", "combined_tax")
 
                         # derive line_total (amount) for submission if changed
@@ -910,7 +996,7 @@ def main():
                                     f"item_{selected_invoice_id}_{ln}_tax_amount",
                                     f"item_{selected_invoice_id}_{ln}_combined",
                                     f"item_{selected_invoice_id}_{ln}_gst",
-                                        f"item_{selected_invoice_id}_{ln}_pstqst",
+                                    f"item_{selected_invoice_id}_{ln}_pstqst",
                                 ]:
                                     val = st.session_state.get(key)
                                     if val not in [None, ""]:
@@ -939,25 +1025,56 @@ def main():
                         st.warning("Please enter your name as reviewer.")
                         return False
                     field_validations, line_item_validations = _build_validation_payload()
+                    # Get current review_version from session state (updated on load)
+                    expected_version = st.session_state.get("invoice_review_version", {}).get(
+                        selected_invoice_id, 
+                        invoice_data.get("review_version", 0)
+                    )
                     payload = {
                         "invoice_id": selected_invoice_id,
+                        "expected_review_version": int(expected_version),
                         "field_validations": field_validations,
                         "line_item_validations": line_item_validations,
                         "overall_validation_status": status_value,
                         "reviewer": reviewer_value,
                         "validation_notes": notes_value,
                     }
-                    success = _post_validation_payload(payload)
+                    # DEBUG: Log payload to verify expected_review_version is included
+                    st.write(f"DEBUG: Sending expected_review_version={payload['expected_review_version']}")
+                    success, error_detail = _post_validation_payload(payload)
+                    
                     if success:
+                        # Success: reload normally
                         st.cache_data.clear()
                         st.success("Changes saved to database.")
                         updated_invoice = load_invoice(selected_invoice_id)
                         if updated_invoice:
                             reset_invoice_state(selected_invoice_id, updated_invoice)
                         st.rerun()
+                    elif error_detail and error_detail.get("error_code") == "STALE_WRITE":
+                        # 409 Conflict: auto-reload invoice with latest version
+                        st.error(
+                            f"**Concurrent Edit Detected**: {error_detail.get('message', 'Invoice was updated by someone else.')}"
+                        )
+                        st.warning(
+                            f"**Reloading latest version** (version {error_detail.get('current_review_version', 'unknown')}).\n\n"
+                            f"Please review the changes made by the other user and re-apply your edits if still needed."
+                        )
+                        
+                        # Clear cache and reload invoice
+                        st.cache_data.clear()
+                        updated_invoice = load_invoice(selected_invoice_id)
+                        if updated_invoice:
+                            reset_invoice_state(selected_invoice_id, updated_invoice)
+                            # review_version already updated by load_invoice()
+                        
+                        # Trigger rerun to refresh UI with new data
+                        st.rerun()
                     else:
+                        # Network/other error: queue for retry
                         st.warning("Save failed; queued locally. Retry when DB is reachable.")
                         _enqueue_pending(payload)
+                    
                     return success
 
                 # Primary submit
@@ -971,12 +1088,28 @@ def main():
 
         # Explicit save button outside the form to persist edits without re-filling the form
         st.markdown("---")
-        if st.button("Save Changes (persist to DB)"):
-            _persist_changes(
-                st.session_state.get("validation_status", "pending"),
-                st.session_state.get("reviewer_name", ""),
-                st.session_state.get("validation_notes", ""),
-            )
+        
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            if st.button("Save Changes (persist to DB)", type="primary"):
+                _persist_changes(
+                    st.session_state.get("validation_status", "pending"),
+                    st.session_state.get("reviewer_name", ""),
+                    st.session_state.get("validation_notes", ""),
+                )
+        
+        with col2:
+            # Show reload button if there was a conflict
+            if st.session_state.get("last_conflict"):
+                if st.button("🔄 Reload Invoice (Get Latest)", type="secondary"):
+                    # Clear conflict and reload
+                    st.session_state.pop("last_conflict", None)
+                    st.cache_data.clear()
+                    updated_invoice = load_invoice(selected_invoice_id)
+                    if updated_invoice:
+                        reset_invoice_state(selected_invoice_id, updated_invoice)
+                    st.success("Invoice reloaded with latest changes.")
+                    st.rerun()
 
         # Review history
         st.markdown("---")

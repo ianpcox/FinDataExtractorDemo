@@ -38,7 +38,7 @@ class TimesheetData(BaseModel):
     representative_name: Optional[str] = None
     signature_present: bool = False
     comments: Optional[str] = None
-    shifts: List[TimesheetShift] = []
+    shifts: List[TimesheetShift] = Field(default_factory=list)
 
 
 class PerDiemTravelExtension(BaseModel):

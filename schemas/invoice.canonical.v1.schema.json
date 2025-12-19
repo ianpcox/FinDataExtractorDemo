@@ -229,6 +229,15 @@
     "reviewer": { "type": ["string", "null"] },
     "review_timestamp": { "anyOf": [{ "$ref": "#/$defs/isoDateTime" }, { "type": "null" }] },
     "review_notes": { "type": ["string", "null"] },
+    "review_version": { "type": "integer", "default": 0, "description": "Optimistic locking version for concurrent edit protection" },
+
+    "processing_state": { 
+      "type": "string", 
+      "enum": ["PENDING", "PROCESSING", "EXTRACTED", "FAILED", "VALIDATED", "STAGED"],
+      "default": "PENDING",
+      "description": "State machine status for extraction and validation workflow"
+    },
+    "content_sha256": { "type": ["string", "null"], "description": "SHA256 hash of file content for idempotency and caching" },
 
     "bv_approver": { "type": ["string", "null"] },
     "bv_approval_date": { "anyOf": [{ "$ref": "#/$defs/isoDateTime" }, { "type": "null" }] },
@@ -236,7 +245,10 @@
 
     "fa_approver": { "type": ["string", "null"] },
     "fa_approval_date": { "anyOf": [{ "$ref": "#/$defs/isoDateTime" }, { "type": "null" }] },
-    "fa_approval_notes": { "type": ["string", "null"] }
+    "fa_approval_notes": { "type": ["string", "null"] },
+
+    "created_at": { "anyOf": [{ "$ref": "#/$defs/isoDateTime" }, { "type": "null" }], "description": "Immutable creation timestamp (auto-generated)" },
+    "updated_at": { "anyOf": [{ "$ref": "#/$defs/isoDateTime" }, { "type": "null" }], "description": "Last update timestamp (auto-updated)" }
   }
 }
 

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "subscriptionId": {
+      "value": "REPLACE_WITH_TARGET_SUBSCRIPTION_ID"
+    },
+    "resourceGroupName": {
+      "value": "REPLACE_WITH_TARGET_RESOURCE_GROUP_NAME"
+    },
+    "location": {
+      "value": "REPLACE_WITH_TARGET_REGION"
+    },
+    "namingPrefix": {
+      "value": "prod"
+    },
+    "namingSuffix": {
+      "value": ""
+    },
+    "tags": {
+      "value": {
+        "Environment": "Production",
+        "ManagedBy": "NetOps",
+        "ExportedFrom": "REPLACE_WITH_SOURCE_SUBSCRIPTION_ID",
+        "ExportDate": "REPLACE_WITH_EXPORT_TIMESTAMP",
+        "CostCenter": "REPLACE_WITH_COST_CENTER",
+        "Owner": "REPLACE_WITH_OWNER_EMAIL"
+      }
+    },
+    "skuOverrides": {
+      "value": {
+        "comment": "Override SKU sizes if target region doesn't support original SKUs",
+        "example": {
+          "storageAccountType": "Standard_LRS",
+          "vmSize": "Standard_D2s_v3",
+          "sqlServiceObjective": "S2"
+        }
+      }
+    },
+    "securitySettings": {
+      "value": {
+        "enableDefenderForCloud": true,
+        "enableDiagnosticSettings": true,
+        "enablePrivateEndpoints": true
+      }
+    }
+  }
+}
+
