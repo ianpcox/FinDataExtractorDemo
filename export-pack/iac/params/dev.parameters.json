@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "subscriptionId": {
+      "value": "REPLACE_WITH_TARGET_SUBSCRIPTION_ID"
+    },
+    "resourceGroupName": {
+      "value": "REPLACE_WITH_TARGET_RESOURCE_GROUP_NAME"
+    },
+    "location": {
+      "value": "REPLACE_WITH_TARGET_REGION"
+    },
+    "namingPrefix": {
+      "value": "dev"
+    },
+    "namingSuffix": {
+      "value": ""
+    },
+    "tags": {
+      "value": {
+        "Environment": "Development",
+        "ManagedBy": "NetOps",
+        "ExportedFrom": "REPLACE_WITH_SOURCE_SUBSCRIPTION_ID",
+        "ExportDate": "REPLACE_WITH_EXPORT_TIMESTAMP"
+      }
+    },
+    "skuOverrides": {
+      "value": {
+        "comment": "Override SKU sizes if target region doesn't support original SKUs",
+        "example": {
+          "storageAccountType": "Standard_LRS",
+          "vmSize": "Standard_D2s_v3"
+        }
+      }
+    }
+  }
+}
+
