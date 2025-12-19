@@ -23,12 +23,17 @@ The export pack performs the following operations in sequence:
 out/
 └── YYYYMMDD-HHMMSS/
     ├── export_summary.json          # Overall export summary
+    ├── ENVIRONMENT_PARITY_CHECKLIST.md  # Auto-generated checklist (NEW)
     ├── logs/
     │   ├── export_YYYYMMDD-HHMMSS.jsonl  # Structured log
     │   └── export_YYYYMMDD-HHMMSS.txt     # Transcript
     └── subscription_<name>_<id>/
         ├── metadata/
-        │   └── subscription_metadata.json
+        │   ├── subscription_metadata.json
+        │   ├── identity_stubs.json (if -ExportAADStubs)  # NEW
+        │   └── recreate_aad_apps.ps1 (if -ExportAADStubs)  # NEW
+        ├── network_gaps_report.md (if -ExportNetworkGaps)  # NEW
+        ├── quota_sku_checklist.md (if -ExportQuotaCheck)  # NEW
         └── resourceGroups/
             └── <resource-group-name>/
                 ├── inventory/
@@ -63,19 +68,34 @@ out/
                 │       ├── server.json
                 │       ├── firewall_rules.json
                 │       ├── databases.json
-                │       └── export_data.ps1 (operator-assisted)
+                │       └── export_data.ps1 (operator-assisted, enhanced)
                 ├── storage/
                 │   └── <account-name>/
                 │       ├── account.json
-                │       └── migrate_data.ps1 (operator-assisted)
+                │       ├── migrate_data.ps1 (operator-assisted, enhanced)
+                │       └── azcopy_migrate_enhanced.ps1 (NEW)
                 ├── redis/
                 │   └── <cache-name>/
                 │       └── cache.json
-                └── monitor/
-                    ├── workspaces/
-                    ├── data_collection_rules.json
-                    ├── metric_alerts.json
-                    └── action_groups.json
+                ├── monitor/
+                │   ├── workspaces/
+                │   │   └── <workspace>/
+                │   │       ├── workbooks/ (if -ExportWorkbooks)  # NEW
+                │   │       │   └── export_workbooks.ps1
+                │   │       └── savedsearches/ (if -ExportWorkbooks)  # NEW
+                │   │           └── export_saved_searches.ps1
+                │   ├── data_collection_rules.json
+                │   ├── metric_alerts.json
+                │   └── action_groups.json
+                ├── keyvault/ (if -ExportKeyVaultSecrets)  # NEW
+                │   └── <vault-name>/
+                │       ├── vault.json
+                │       ├── secret_names.json
+                │       └── export_secrets.ps1 (operator-assisted)
+                ├── network/ (if -ExportNetworkGaps)  # NEW
+                │   ├── network_gaps.json
+                │   └── network_gaps_report.md
+                └── classic_resources_report.md (if -ExportClassicReport)  # NEW
 ```
 
 ## What Was Exported
@@ -108,14 +128,27 @@ These exports require secrets/keys that cannot be automatically retrieved. Helpe
    - Exports: Model deployments and configuration
 
 3. **SQL Database Data**
-   - Location: `sql/<server-name>/export_data.ps1`
+   - Location: `sql/<server-name>/export_data.ps1` (enhanced with validation)
    - Requires: Storage SAS token, SQL admin credentials
    - Exports: BACPAC files for database migration
+   - Includes: Import commands and validation steps
 
 4. **Storage Data Migration**
-   - Location: `storage/<account-name>/migrate_data.ps1`
+   - Location: `storage/<account-name>/migrate_data.ps1` (enhanced)
    - Requires: Source storage key/SAS, target storage SAS
-   - Generates: AzCopy command stubs for data migration
+   - Generates: AzCopy command stubs with checksum verification
+   - Includes: Enhanced migration script with progress tracking
+
+5. **Key Vault Secrets** (Opt-In: `-ExportKeyVaultSecrets`)
+   - Location: `keyvault/<vault-name>/export_secrets.ps1`
+   - Requires: Key Vault access permissions
+   - Exports: Secret values to local JSON (encrypted option available)
+   - ⚠️ **WARNING**: Exports secret VALUES. Handle with extreme care.
+
+6. **Monitor Workbooks** (Opt-In: `-ExportWorkbooks`)
+   - Location: `monitor/workspaces/<workspace>/workbooks/export_workbooks.ps1`
+   - Requires: Log Analytics workspace access
+   - Exports: Workbooks and saved searches to JSON
 
 ## What Cannot Be Exported Automatically
 
@@ -234,14 +267,50 @@ When recreating resources in the target tenant, follow this order:
    - Private endpoint DNS
    - Custom domains and certificates
 
+## New Features (Enhanced Exports)
+
+### Environment Parity Checklist
+- **Location**: `ENVIRONMENT_PARITY_CHECKLIST.md` (in output root)
+- **Purpose**: Comprehensive checklist of all operator-required actions
+- **Includes**: Infrastructure, data migration, secrets, identity, networking, monitoring, validation
+- **Auto-generated**: Based on detected services and enabled export options
+
+### Key Vault Secret Export (Opt-In)
+- **Enable**: Use `-ExportKeyVaultSecrets` switch
+- **Output**: Per-vault scripts in `keyvault/<vault-name>/export_secrets.ps1`
+- **Security**: Requires explicit confirmation, secure prompts, optional encryption
+- **Warning**: Exports secret VALUES - handle with extreme care
+
+### Azure AD App Stubs (Opt-In)
+- **Enable**: Use `-ExportAADStubs` switch
+- **Output**: `metadata/identity_stubs.json` and `recreate_aad_apps.ps1`
+- **Purpose**: Document discovered app registrations/service principals for recreation
+
+### Network Gaps Report (Opt-In)
+- **Enable**: Use `-ExportNetworkGaps` switch
+- **Output**: `network_gaps_report.md` per subscription
+- **Includes**: Private endpoints, DNS zones, VNet peerings, route tables, NSG summaries
+
+### Quota/SKU Checklist (Opt-In)
+- **Enable**: Use `-ExportQuotaCheck` switch
+- **Output**: `quota_sku_checklist.md` per subscription
+- **Purpose**: Validate target region quotas and SKU availability before deployment
+
+### Classic Resource Detection (Opt-In)
+- **Enable**: Use `-ExportClassicReport` switch
+- **Output**: `classic_resources_report.md` per resource group
+- **Purpose**: Identify classic/ASM resources requiring migration
+
 ## Next Steps
 
 1. Review `export_summary.json` for overall status
-2. Check logs in `logs/` directory for detailed execution history
-3. Review identified services in each resource group's `inventory/identified_services.json`
-4. Execute operator-assisted scripts for services requiring secrets
-5. Review ARM/Bicep templates for parameterization needs
-6. Follow `TARGET_REBUILD_GUIDE.md` for deployment instructions
+2. Review `ENVIRONMENT_PARITY_CHECKLIST.md` for complete action list
+3. Check logs in `logs/` directory for detailed execution history
+4. Review identified services in each resource group's `inventory/identified_services.json`
+5. Execute operator-assisted scripts for services requiring secrets
+6. Review network gaps and quota checklists if generated
+7. Review ARM/Bicep templates for parameterization needs
+8. Follow `TARGET_REBUILD_GUIDE.md` for deployment instructions
 
 ## Support and Troubleshooting
 

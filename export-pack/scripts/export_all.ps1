@@ -34,6 +34,24 @@ param(
     [switch]$UseAdminKubeconfig = $false,
     
     [Parameter(Mandatory=$false)]
+    [switch]$ExportKeyVaultSecrets = $false,
+    
+    [Parameter(Mandatory=$false)]
+    [switch]$ExportAADStubs = $false,
+    
+    [Parameter(Mandatory=$false)]
+    [switch]$ExportNetworkGaps = $false,
+    
+    [Parameter(Mandatory=$false)]
+    [switch]$ExportQuotaCheck = $false,
+    
+    [Parameter(Mandatory=$false)]
+    [switch]$ExportWorkbooks = $false,
+    
+    [Parameter(Mandatory=$false)]
+    [switch]$ExportClassicReport = $false,
+    
+    [Parameter(Mandatory=$false)]
     [switch]$DryRun = $false
 )
 
@@ -59,6 +77,12 @@ Write-Log "INFO" "Azure Export Pack - Starting export" @{
     Timestamp = $timestamp
     OutputPath = $outputPath
     DryRun = $DryRun
+    ExportKeyVaultSecrets = $ExportKeyVaultSecrets
+    ExportAADStubs = $ExportAADStubs
+    ExportNetworkGaps = $ExportNetworkGaps
+    ExportQuotaCheck = $ExportQuotaCheck
+    ExportWorkbooks = $ExportWorkbooks
+    ExportClassicReport = $ExportClassicReport
 }
 
 # Check prerequisites
@@ -80,6 +104,12 @@ if (-not $DryRun) {
 . "$scriptRoot\lib\storage_export.ps1"
 . "$scriptRoot\lib\redis_export.ps1"
 . "$scriptRoot\lib\monitor_export.ps1"
+. "$scriptRoot\lib\keyvault_export.ps1"
+. "$scriptRoot\lib\aad_export.ps1"
+. "$scriptRoot\lib\network_gaps.ps1"
+. "$scriptRoot\lib\quota_check.ps1"
+. "$scriptRoot\lib\classic_detection.ps1"
+. "$scriptRoot\lib\parity_checklist.ps1"
 
 # Determine subscriptions to export
 $subscriptionsToExport = @()
@@ -141,6 +171,31 @@ foreach ($subId in $subscriptionsToExport) {
         if (-not $DryRun) {
             Export-SubscriptionInventory -SubscriptionId $subId -SubscriptionName $subName -OutputPath $subOutputPath
             Export-SubscriptionRBAC -SubscriptionId $subId -OutputPath $subOutputPath
+            
+            # AAD stubs (subscription-level, opt-in)
+            if ($ExportAADStubs) {
+                Export-AADStubs -SubscriptionId $subId -OutputPath $subOutputPath
+            }
+            
+            # Network gaps (subscription-level, opt-in)
+            if ($ExportNetworkGaps) {
+                Export-NetworkGaps -SubscriptionId $subId -OutputPath $subOutputPath
+            }
+            
+            # Quota check (subscription-level, opt-in)
+            if ($ExportQuotaCheck) {
+                # Collect all resources from all RGs in subscription
+                $allResources = @()
+                foreach ($rg in $resourceGroups) {
+                    $rgResources = Get-AzureResources -ResourceGroupName $rg.name -SubscriptionId $subId
+                    if ($rgResources) {
+                        $allResources += $rgResources
+                    }
+                }
+                if ($allResources.Count -gt 0) {
+                    Export-QuotaCheck -SubscriptionId $subId -OutputPath $subOutputPath -Resources $allResources
+                }
+            }
         }
         
         # Get resource groups
@@ -302,10 +357,41 @@ foreach ($subId in $subscriptionsToExport) {
                         Export-MonitorResources -ResourceGroupName $rgName `
                             -SubscriptionId $subId -OutputPath $rgOutputPath
                         
+                        # Export workbooks if requested
+                        if ($ExportWorkbooks) {
+                            if ($services.LogAnalytics) {
+                                foreach ($ws in $services.LogAnalytics) {
+                                    $wsName = ($ws.id -split '/')[-1]
+                                    Export-MonitorWorkbooks -WorkspaceName $wsName `
+                                        -ResourceGroupName $rgName -SubscriptionId $subId -OutputPath $rgOutputPath
+                                }
+                            }
+                        }
+                        
                         if (-not $exportSummary.ServicesExported.ContainsKey("Monitor")) {
                             $exportSummary.ServicesExported["Monitor"] = 0
                         }
                         $exportSummary.ServicesExported["Monitor"]++
+                    }
+                    
+                    # Key Vault secrets (opt-in)
+                    if ($ExportKeyVaultSecrets -and $services.KeyVault) {
+                        foreach ($kv in $services.KeyVault) {
+                            $kvName = ($kv.id -split '/')[-1]
+                            Export-KeyVaultSecrets -VaultName $kvName `
+                                -ResourceGroupName $rgName -SubscriptionId $subId -OutputPath $rgOutputPath
+                            
+                            if (-not $exportSummary.ServicesExported.ContainsKey("KeyVault")) {
+                                $exportSummary.ServicesExported["KeyVault"] = 0
+                            }
+                            $exportSummary.ServicesExported["KeyVault"]++
+                        }
+                    }
+                    
+                    # Classic resource detection (opt-in, per RG)
+                    if ($ExportClassicReport -and $inventory.Resources) {
+                        Export-ClassicResources -SubscriptionId $subId `
+                            -OutputPath $rgOutputPath -Resources $inventory.Resources
                     }
                 }
                 
@@ -336,10 +422,21 @@ foreach ($subId in $subscriptionsToExport) {
     }
 }
 
-# Save export summary
+# Save export summary and generate parity checklist
 if (-not $DryRun) {
     $summaryPath = Join-Path $outputPath "export_summary.json"
     Save-JsonFile -Path $summaryPath -Data $exportSummary
+    
+    # Generate environment parity checklist
+    $options = @{
+        ExportKeyVaultSecrets = $ExportKeyVaultSecrets
+        ExportAADStubs = $ExportAADStubs
+        ExportNetworkGaps = $ExportNetworkGaps
+        ExportQuotaCheck = $ExportQuotaCheck
+        ExportWorkbooks = $ExportWorkbooks
+        ExportClassicReport = $ExportClassicReport
+    }
+    Generate-ParityChecklist -ExportSummary $exportSummary -OutputPath $outputPath -Options $options
     
     Write-Log "SUCCESS" "Export completed" @{
         TotalSubscriptions = $exportSummary.Subscriptions.Count

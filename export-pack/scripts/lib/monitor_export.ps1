@@ -120,5 +120,203 @@ function Export-MonitorResources {
     Write-Log "SUCCESS" "Monitor resources export completed" @{ ResourceGroup = $ResourceGroupName }
 }
 
+function Export-MonitorWorkbooks {
+    param(
+        [string]$WorkspaceName,
+        [string]$ResourceGroupName,
+        [string]$SubscriptionId,
+        [string]$OutputPath
+    )
+    
+    Write-Log "INFO" "Exporting Monitor workbooks and saved searches" @{
+        Workspace = $WorkspaceName
+        ResourceGroup = $ResourceGroupName
+    }
+    
+    Set-AzureSubscription -SubscriptionId $SubscriptionId
+    
+    $workspacePath = Join-Path $OutputPath "workspaces" (Get-SafeFileName $WorkspaceName)
+    if (-not (Test-Path $workspacePath)) {
+        New-Item -ItemType Directory -Path $workspacePath -Force | Out-Null
+    }
+    
+    $workbooksPath = Join-Path $workspacePath "workbooks"
+    $savedSearchesPath = Join-Path $workspacePath "savedsearches"
+    
+    if (-not (Test-Path $workbooksPath)) {
+        New-Item -ItemType Directory -Path $workbooksPath -Force | Out-Null
+    }
+    if (-not (Test-Path $savedSearchesPath)) {
+        New-Item -ItemType Directory -Path $savedSearchesPath -Force | Out-Null
+    }
+    
+    # Get workspace resource ID
+    try {
+        $workspace = az monitor log-analytics workspace show --workspace-name $WorkspaceName --resource-group $ResourceGroupName --output json 2>&1 | ConvertFrom-Json
+        $workspaceId = $workspace.id
+        $workspaceResourceId = $workspace.customerId
+    }
+    catch {
+        Write-Log "WARN" "Failed to get workspace details" @{ Error = $_.Exception.Message }
+        return
+    }
+    
+    # Generate operator-assisted script for workbooks
+    Generate-WorkbookExportScript -WorkspaceName $WorkspaceName -ResourceGroupName $ResourceGroupName `
+        -SubscriptionId $SubscriptionId -WorkspaceId $workspaceId -OutputPath $workbooksPath
+    
+    # Generate operator-assisted script for saved searches
+    Generate-SavedSearchExportScript -WorkspaceName $WorkspaceName -ResourceGroupName $ResourceGroupName `
+        -SubscriptionId $SubscriptionId -WorkspaceResourceId $workspaceResourceId -OutputPath $savedSearchesPath
+    
+    Write-Log "SUCCESS" "Workbook/saved search export scripts generated" @{ Workspace = $WorkspaceName }
+}
+
+function Generate-WorkbookExportScript {
+    param(
+        [string]$WorkspaceName,
+        [string]$ResourceGroupName,
+        [string]$SubscriptionId,
+        [string]$WorkspaceId,
+        [string]$OutputPath
+    )
+    
+    $scriptPath = Join-Path $OutputPath "export_workbooks.ps1"
+    
+    $scriptContent = @"
+# Log Analytics Workbook Export Script
+# Exports workbooks from Log Analytics workspace
+
+param(
+    [Parameter(Mandatory=`$true)]
+    [string]`$WorkspaceName = "$WorkspaceName",
+    
+    [Parameter(Mandatory=`$true)]
+    [string]`$ResourceGroupName = "$ResourceGroupName",
+    
+    [Parameter(Mandatory=`$true)]
+    [string]`$SubscriptionId = "$SubscriptionId"
+)
+
+`$ErrorActionPreference = "Stop"
+
+Write-Host "Exporting Log Analytics Workbooks" -ForegroundColor Cyan
+Write-Host "=================================" -ForegroundColor Cyan
+Write-Host ""
+
+az account set --subscription `$SubscriptionId | Out-Null
+
+# Get workspace details
+`$workspace = az monitor log-analytics workspace show --workspace-name `$WorkspaceName --resource-group `$ResourceGroupName --output json | ConvertFrom-Json
+`$workspaceId = `$workspace.id
+
+# Get access token for REST API
+`$token = az account get-access-token --query accessToken -o tsv
+`$headers = @{
+    "Authorization" = "Bearer `$token"
+    "Content-Type" = "application/json"
+}
+
+# List workbooks
+`$uri = "https://management.azure.com`$workspaceId/workbooks?api-version=2023-06-01"
+`$workbooks = Invoke-RestMethod -Uri `$uri -Method Get -Headers `$headers
+
+if (`$workbooks.value) {
+    Write-Host "Found `$(`$workbooks.value.Count) workbooks" -ForegroundColor Green
+    
+    foreach (`$workbook in `$workbooks.value) {
+        `$workbookName = `$workbook.name
+        `$safeName = `$workbookName -replace '[^\w\-]', '_'
+        `$outputFile = Join-Path `$PSScriptRoot "`$safeName.json"
+        
+        Write-Host "Exporting workbook: `$workbookName" -ForegroundColor Gray
+        
+        # Get full workbook details
+        `$workbookUri = "https://management.azure.com`$workspaceId/workbooks/`$workbookName?api-version=2023-06-01"
+        `$workbookDetails = Invoke-RestMethod -Uri `$workbookUri -Method Get -Headers `$headers
+        
+        `$workbookDetails | ConvertTo-Json -Depth 20 | Set-Content -Path `$outputFile -Encoding UTF8
+        Write-Host "  ✓ Saved to `$outputFile" -ForegroundColor Green
+    }
+}
+else {
+    Write-Host "No workbooks found" -ForegroundColor Yellow
+}
+
+Write-Host ""
+Write-Host "Workbook export completed." -ForegroundColor Green
+"@
+    
+    Set-Content -Path $scriptPath -Value $scriptContent -Encoding UTF8
+    Write-Log "INFO" "Generated workbook export script" @{ Path = $scriptPath }
+}
+
+function Generate-SavedSearchExportScript {
+    param(
+        [string]$WorkspaceName,
+        [string]$ResourceGroupName,
+        [string]$SubscriptionId,
+        [string]$WorkspaceResourceId,
+        [string]$OutputPath
+    )
+    
+    $scriptPath = Join-Path $OutputPath "export_saved_searches.ps1"
+    
+    $scriptContent = @"
+# Log Analytics Saved Search Export Script
+# Exports saved searches from Log Analytics workspace
+
+param(
+    [Parameter(Mandatory=`$true)]
+    [string]`$WorkspaceName = "$WorkspaceName",
+    
+    [Parameter(Mandatory=`$true)]
+    [string]`$ResourceGroupName = "$ResourceGroupName",
+    
+    [Parameter(Mandatory=`$true)]
+    [string]`$SubscriptionId = "$SubscriptionId"
+)
+
+`$ErrorActionPreference = "Stop"
+
+Write-Host "Exporting Log Analytics Saved Searches" -ForegroundColor Cyan
+Write-Host "======================================" -ForegroundColor Cyan
+Write-Host ""
+
+az account set --subscription `$SubscriptionId | Out-Null
+
+# Get workspace customer ID
+`$workspace = az monitor log-analytics workspace show --workspace-name `$WorkspaceName --resource-group `$ResourceGroupName --output json | ConvertFrom-Json
+`$customerId = `$workspace.customerId
+
+# Get access token
+`$token = az account get-access-token --query accessToken -o tsv
+`$headers = @{
+    "Authorization" = "Bearer `$token"
+    "Content-Type" = "application/json"
+}
+
+# List saved searches via REST API
+`$uri = "https://api.loganalytics.io/v1/workspaces/`$customerId/savedSearches"
+`$savedSearches = Invoke-RestMethod -Uri `$uri -Method Get -Headers `$headers
+
+if (`$savedSearches.value) {
+    Write-Host "Found `$(`$savedSearches.value.Count) saved searches" -ForegroundColor Green
+    
+    `$savedSearches.value | ConvertTo-Json -Depth 20 | Set-Content -Path (Join-Path `$PSScriptRoot "saved_searches.json") -Encoding UTF8
+    Write-Host "Saved searches exported to saved_searches.json" -ForegroundColor Green
+}
+else {
+    Write-Host "No saved searches found" -ForegroundColor Yellow
+}
+
+Write-Host ""
+Write-Host "Saved search export completed." -ForegroundColor Green
+"@
+    
+    Set-Content -Path $scriptPath -Value $scriptContent -Encoding UTF8
+    Write-Log "INFO" "Generated saved search export script" @{ Path = $scriptPath }
+}
+
 # Functions available when dot-sourced
 

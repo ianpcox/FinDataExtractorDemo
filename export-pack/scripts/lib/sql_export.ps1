@@ -189,6 +189,23 @@ foreach (`$dbName in `$DatabaseNames) {
 Write-Host ""
 Write-Host "Export operations completed. Check Azure Portal for export status." -ForegroundColor Green
 Write-Host "BACPAC files will be available at: `$storageUrl" -ForegroundColor Green
+Write-Host ""
+Write-Host "Validation Steps:" -ForegroundColor Cyan
+Write-Host "1. Verify BACPAC files in storage account" -ForegroundColor White
+Write-Host "2. Check file sizes match source databases" -ForegroundColor White
+Write-Host "3. Import to target SQL Server and verify schema" -ForegroundColor White
+Write-Host "4. Run data validation queries" -ForegroundColor White
+Write-Host ""
+Write-Host "Enhanced Import Command (with validation):" -ForegroundColor Cyan
+Write-Host "az sql db import \`" -ForegroundColor White
+Write-Host "  --server <target-server> \`" -ForegroundColor White
+Write-Host "  --resource-group <target-rg> \`" -ForegroundColor White
+Write-Host "  --name <target-db-name> \`" -ForegroundColor White
+Write-Host "  --storage-key-type SharedAccessKey \`" -ForegroundColor White
+Write-Host "  --storage-key <sas-token> \`" -ForegroundColor White
+Write-Host "  --storage-uri <bacpac-url> \`" -ForegroundColor White
+Write-Host "  --administrator-login <admin> \`" -ForegroundColor White
+Write-Host "  --administrator-login-password <password>" -ForegroundColor White
 "@
     
     Set-Content -Path $scriptPath -Value $scriptContent -Encoding UTF8

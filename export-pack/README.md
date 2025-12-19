@@ -40,6 +40,10 @@ This pack provides comprehensive, read-only export capabilities for Azure resour
 - Storage Accounts
 - Redis Caches
 - Log Analytics and Monitor resources
+- Key Vaults (with opt-in secret export scripts)
+- Azure AD app registrations (stubs)
+- Network resources (gaps report)
+- Classic/ASM resource detection
 
 ## Quick Start
 
@@ -73,13 +77,19 @@ This pack provides comprehensive, read-only export capabilities for Azure resour
 .\scripts\export_all.ps1 -DryRun
 ```
 
-### Example: Export Two Subscriptions
+### Example: Export Two Subscriptions with All Enhancements
 
 ```powershell
 .\scripts\export_all.ps1 `
     -Subscriptions "Development", "Production" `
     -IncludeAksWorkloads `
     -IncludeSearchSchema `
+    -ExportKeyVaultSecrets `
+    -ExportAADStubs `
+    -ExportNetworkGaps `
+    -ExportQuotaCheck `
+    -ExportWorkbooks `
+    -ExportClassicReport `
     -OutputRoot "./exports"
 ```
 
@@ -99,6 +109,12 @@ This pack provides comprehensive, read-only export capabilities for Azure resour
 | `-IncludeStorageInventory` | switch | true | Export storage inventory |
 | `-OutputRoot` | string | "./out" | Root directory for export output |
 | `-UseAdminKubeconfig` | switch | false | Use admin kubeconfig for AKS |
+| `-ExportKeyVaultSecrets` | switch | false | Generate Key Vault secret export scripts (opt-in) |
+| `-ExportAADStubs` | switch | false | Export Azure AD app registration stubs |
+| `-ExportNetworkGaps` | switch | false | Generate network gaps report |
+| `-ExportQuotaCheck` | switch | false | Generate quota/SKU feasibility checklist |
+| `-ExportWorkbooks` | switch | false | Export Monitor workbooks and saved searches |
+| `-ExportClassicReport` | switch | false | Detect and report classic/ASM resources |
 | `-DryRun` | switch | false | Print commands without executing |
 
 ## Output Structure
@@ -107,11 +123,16 @@ This pack provides comprehensive, read-only export capabilities for Azure resour
 out/
 └── YYYYMMDD-HHMMSS/
     ├── export_summary.json
+    ├── ENVIRONMENT_PARITY_CHECKLIST.md
     ├── logs/
     │   ├── export_*.jsonl
     │   └── export_*.txt
     └── subscription_<name>_<id>/
         ├── metadata/
+        │   ├── identity_stubs.json (if -ExportAADStubs)
+        │   └── recreate_aad_apps.ps1
+        ├── network_gaps_report.md (if -ExportNetworkGaps)
+        ├── quota_sku_checklist.md (if -ExportQuotaCheck)
         └── resourceGroups/
             └── <rg-name>/
                 ├── inventory/
@@ -124,8 +145,33 @@ out/
                 ├── sql/
                 ├── storage/
                 ├── redis/
-                └── monitor/
+                ├── monitor/
+                │   └── workspaces/
+                │       └── <workspace>/
+                │           ├── workbooks/ (if -ExportWorkbooks)
+                │           └── savedsearches/ (if -ExportWorkbooks)
+                ├── keyvault/ (if -ExportKeyVaultSecrets)
+                │   └── <vault-name>/
+                │       └── export_secrets.ps1
+                ├── network/ (if -ExportNetworkGaps)
+                └── classic_resources_report.md (if -ExportClassicReport)
 ```
+
+## New Enhancements
+
+### P0 Features (Critical)
+- **Environment Parity Checklist**: Auto-generated checklist of all operator-required actions
+- **Key Vault Secret Export**: Opt-in scripts to securely export secret values (operator-assisted)
+
+### P1 Features (High Value)
+- **Azure AD App Stubs**: Discover and document app registrations/service principals
+- **Network Gaps Report**: Identify private endpoints, DNS zones, peerings, route tables
+- **Quota/SKU Checklist**: Validate target region quotas and SKU availability
+
+### P2 Features (Enhancements)
+- **Monitor Workbooks**: Export Log Analytics workbooks and saved searches
+- **Enhanced Data Helpers**: Improved AzCopy/BACPAC scripts with checksum validation
+- **Classic Resource Detection**: Identify classic/ASM resources requiring migration
 
 ## Documentation
 
@@ -133,6 +179,7 @@ out/
 - **[NETOPS_HANDOFF.md](docs/NETOPS_HANDOFF.md)**: Guide for NetOps teams
 - **[LIMITATIONS.md](docs/LIMITATIONS.md)**: Known limitations and workarounds
 - **[TARGET_REBUILD_GUIDE.md](docs/TARGET_REBUILD_GUIDE.md)**: Step-by-step rebuild instructions
+- **[ENHANCEMENT_EVALUATION.md](docs/ENHANCEMENT_EVALUATION.md)**: Evaluation of enhancement approaches
 
 ## Security
 
@@ -191,6 +238,29 @@ For services requiring secrets, the pack generates operator-assisted scripts tha
 - Data Collection Rules/Endpoints
 - Alert rules
 - Action groups
+- Workbooks and saved searches (opt-in)
+
+### Key Vault (Opt-In)
+- Vault configuration
+- Secret names (no values)
+- Operator-assisted secret export scripts (opt-in via `-ExportKeyVaultSecrets`)
+
+### Azure AD (Opt-In)
+- App registration and service principal stubs
+- Discovered from RBAC assignments
+- Recreation script templates
+
+### Network Gaps (Opt-In)
+- Private endpoints
+- Private DNS zones
+- VNet peerings
+- Route tables
+- NSG summaries
+
+### Classic Resources (Opt-In)
+- Detection of classic/ASM resources
+- Suggested ARM equivalents
+- Migration guidance
 
 ## Troubleshooting
 

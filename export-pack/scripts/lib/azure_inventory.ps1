@@ -133,6 +133,7 @@ function Export-ResourceGroupInventory {
         LogAnalytics = "Microsoft.OperationalInsights/workspaces"
         Monitor = "Microsoft.Monitor/accounts"
         Insights = "Microsoft.Insights/components"
+        KeyVault = "Microsoft.KeyVault/vaults"
     }
     
     $identifiedServices = @{}

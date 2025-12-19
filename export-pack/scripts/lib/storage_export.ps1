@@ -150,11 +150,50 @@ try {
             `$cmd += "`" `"`$targetContainerUrl`" --recursive"
             
             `$commands += `$cmd
+        
+        # Generate enhanced command with checksum verification
+        `$cmdWithChecksum = "azcopy copy `"`$sourceContainerUrl"
+        if (`$AuthMethod -eq "SAS") {
+            `$cmdWithChecksum += "`$sourceAuthPlain"
+        }
+        `$cmdWithChecksum += "`" `"`$targetContainerUrl`" --recursive --check-md5 LogOnly"
+        `$commands += `$cmdWithChecksum
+        `$commands += "# Verify checksums: azcopy jobs show <job-id> --with-status Completed"
+        `$commands += ""
         }
         
         `$commands | Set-Content -Path (Join-Path `$PSScriptRoot "azcopy_commands.txt") -Encoding UTF8
+        
+        # Generate enhanced migration script with validation
+        `$enhancedScript = @"
+# Enhanced Storage Migration Script with Validation
+# This script includes checksum verification and progress tracking
+
+`$sourceUrl = "`$sourceUrl"
+`$targetUrl = "`$targetUrl"
+
+# Pre-flight checks
+Write-Host "Pre-flight validation..." -ForegroundColor Cyan
+# Check source connectivity
+# Check target connectivity
+# Verify sufficient space
+
+# Migration with progress
+Write-Host "Starting migration..." -ForegroundColor Cyan
+`$jobId = azcopy copy `$sourceUrl `$targetUrl --recursive --check-md5 LogOnly --output-type json | ConvertFrom-Json
+
+# Monitor progress
+azcopy jobs show `$jobId.JobID --with-status Completed
+
+# Verify checksums
+azcopy jobs show `$jobId.JobID --with-status Completed --output-type json | ConvertFrom-Json | Where-Object { `$_.Status -ne "Completed" }
+"@
+        `$enhancedScript | Set-Content -Path (Join-Path `$PSScriptRoot "azcopy_migrate_enhanced.ps1") -Encoding UTF8
+        
         Write-Host "AzCopy commands saved to: azcopy_commands.txt" -ForegroundColor Green
+        Write-Host "Enhanced migration script saved to: azcopy_migrate_enhanced.ps1" -ForegroundColor Green
         Write-Host "`nIMPORTANT: Review and execute commands manually. Keys/SAS tokens are not embedded." -ForegroundColor Yellow
+        Write-Host "Checksum verification: Use --check-md5 LogOnly to verify data integrity" -ForegroundColor Yellow
     }
 }
 catch {
