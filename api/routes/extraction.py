@@ -149,3 +149,57 @@ async def get_extraction_result(
         detail="Not implemented - would query database for extraction result"
     )
 
+
+@router.post("/extraction/ai-extract/{invoice_id}")
+async def run_ai_extraction(
+    invoice_id: str = Path(..., description="Invoice ID to improve"),
+    confidence_threshold: float = 0.7,
+    extraction_service: ExtractionService = Depends(get_extraction_service)
+):
+    """
+    Manually trigger AI extraction to improve low-confidence fields
+    
+    This endpoint runs LLM-based extraction on fields that scored below
+    the confidence threshold during the initial Document Intelligence extraction.
+    
+    Args:
+        invoice_id: Invoice ID to improve
+        confidence_threshold: Minimum confidence threshold (0.0-1.0)
+        
+    Returns:
+        AI extraction result with improved fields
+    """
+    try:
+        if not 0.0 <= confidence_threshold <= 1.0:
+            raise HTTPException(
+                status_code=400,
+                detail="confidence_threshold must be between 0.0 and 1.0"
+            )
+        
+        result = await extraction_service.run_ai_extraction(
+            invoice_id=invoice_id,
+            confidence_threshold=confidence_threshold
+        )
+        
+        if result["status"] == "error":
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "message": "AI extraction error",
+                    "errors": result.get("errors", [])
+                }
+            )
+        
+        return JSONResponse(
+            status_code=200,
+            content=jsonable_encoder(result)
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in AI extraction: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )

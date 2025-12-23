@@ -8,6 +8,7 @@ import json
 import re
 import hashlib
 from typing import Any, Mapping, Dict
+import time
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
@@ -17,15 +18,48 @@ from .field_extractor import FieldExtractor
 from src.ingestion.file_handler import FileHandler
 from src.models.invoice import Invoice
 from src.services.db_service import DatabaseService
-from src.services.progress_tracker import progress_tracker, ProcessingStep
+from src.services.validation_service import ValidationService
 from src.models.db_utils import address_to_dict, line_items_to_json, _sanitize_tax_breakdown
 from src.config import settings
 try:
     from openai import AzureOpenAI
+    from openai import RateLimitError, APIError
 except ImportError:
     AzureOpenAI = None
+    RateLimitError = None
+    APIError = None
 
 logger = logging.getLogger(__name__)
+
+# Canonical field names - single source of truth
+CANONICAL_FIELDS = {
+    # Header
+    "invoice_number", "invoice_date", "due_date", "invoice_type", "reference_number",
+    # Vendor
+    "vendor_name", "vendor_id", "vendor_phone", "vendor_fax", "vendor_email", 
+    "vendor_website", "vendor_address",
+    # Vendor Tax IDs
+    "gst_number", "qst_number", "pst_number", "business_number",
+    # Customer
+    "customer_name", "customer_id", "customer_phone", "customer_email", 
+    "customer_fax", "bill_to_address",
+    # Remit-To
+    "remit_to_address", "remit_to_name",
+    # Contract
+    "entity", "contract_id", "standing_offer_number", "po_number",
+    # Dates
+    "period_start", "period_end", "shipping_date", "delivery_date",
+    # Financial
+    "subtotal", "discount_amount", "shipping_amount", "handling_fee", "deposit_amount",
+    # Canadian Taxes
+    "gst_amount", "gst_rate", "hst_amount", "hst_rate", 
+    "qst_amount", "qst_rate", "pst_amount", "pst_rate",
+    # Total
+    "tax_amount", "total_amount", "currency", "tax_breakdown",
+    # Payment
+    "payment_terms", "payment_method", "payment_due_upon", 
+    "acceptance_percentage", "tax_registration_number",
+}
 
 LLM_SYSTEM_PROMPT = """
 You are a specialized invoice extraction QA assistant for CATSA.
@@ -44,9 +78,22 @@ Your task:
 5. Output ONLY a single JSON object whose keys are exactly the field names from `low_conf_fields`, with their corrected (or null) values.
 6. Do NOT include explanations, comments, or extra properties.
 
+CANONICAL FIELD NAMES (use these EXACTLY):
+Header: invoice_number, invoice_date, due_date, invoice_type, reference_number
+Vendor: vendor_name, vendor_id, vendor_phone, vendor_fax, vendor_email, vendor_website, vendor_address
+Vendor Tax IDs: gst_number, qst_number, pst_number, business_number
+Customer: customer_name, customer_id, customer_phone, customer_email, customer_fax, bill_to_address
+Remit-To: remit_to_address, remit_to_name
+Contract: entity, contract_id, standing_offer_number, po_number
+Dates: period_start, period_end, shipping_date, delivery_date
+Financial: subtotal, discount_amount, shipping_amount, handling_fee, deposit_amount
+Canadian Taxes: gst_amount, gst_rate, hst_amount, hst_rate, qst_amount, qst_rate, pst_amount, pst_rate
+Total: tax_amount, total_amount, currency
+Payment: payment_terms, payment_method, payment_due_upon, acceptance_percentage, tax_registration_number
+
 Formatting rules:
 - Dates must be ISO 8601 date strings: "YYYY-MM-DD".
-- Monetary amounts must be numeric, using "." as the decimal separator. Keep the original magnitude and currency implied by the invoice.
+- Monetary amounts must be numeric strings, using "." as the decimal separator (e.g., "1234.56").
 - Trim whitespace and normalize casing where appropriate, but do not rewrite vendor names beyond obvious OCR fixes.
 - For address fields (vendor_address, bill_to_address, remit_to_address), return an object with keys: street, city, province, postal_code, country. Use null or empty for unknown subfields.
 """
@@ -74,6 +121,7 @@ class ExtractionService:
         )
         self.file_handler = file_handler or FileHandler()
         self.field_extractor = field_extractor or FieldExtractor()
+        self.validation_service = ValidationService()
         # Simple in-memory cache to avoid re-spending tokens for identical requests
         self._llm_cache: Dict[Tuple[str, Tuple[str, ...], str, str], str] = {}
     
@@ -102,14 +150,9 @@ class ExtractionService:
         
         try:
             logger.info(f"Starting extraction for invoice: {invoice_id}")
-            
-            # Start extraction step (continues from ingestion at 50%)
-            await progress_tracker.start(invoice_id, ProcessingStep.EXTRACTION, "Starting extraction...")
-            await progress_tracker.update(invoice_id, 50, "Starting extraction...")
 
             claimed = await DatabaseService.claim_for_extraction(invoice_id)
             if not claimed:
-                await progress_tracker.error(invoice_id, "Invoice is already processing", ProcessingStep.EXTRACTION)
                 return {
                     "invoice_id": invoice_id,
                     "status": "conflict",
@@ -118,16 +161,10 @@ class ExtractionService:
             
             # Step 1: Download PDF
             logger.info(f"Downloading PDF: {file_identifier}")
-            await progress_tracker.update(invoice_id, 52, "Downloading PDF file...")
-            # In demo mode with local files, download is instant - no need for threadpool
-            if settings.DEMO_MODE and not self.file_handler.use_azure:
-                file_content = self.file_handler.download_file(file_identifier)
-            else:
-                file_content = await run_in_threadpool(self.file_handler.download_file, file_identifier)
+            file_content = await run_in_threadpool(self.file_handler.download_file, file_identifier)
             
             if not file_content:
                 errors.append("Failed to download file")
-                await progress_tracker.error(invoice_id, "Failed to download file", ProcessingStep.EXTRACTION)
                 return {
                     "invoice_id": invoice_id,
                     "status": "error",
@@ -136,27 +173,20 @@ class ExtractionService:
             
             # Step 2: Analyze with Document Intelligence
             logger.info(f"Analyzing invoice with Document Intelligence: {invoice_id}")
-            await progress_tracker.update(invoice_id, 55, "Analyzing document with Azure Document Intelligence...")
-            # In demo mode, mock client is instant - no need for threadpool
-            if settings.DEMO_MODE:
-                doc_intelligence_data = self.doc_intelligence_client.analyze_invoice(file_content)
-            else:
-                doc_intelligence_data = await run_in_threadpool(
-                    self.doc_intelligence_client.analyze_invoice,
-                    file_content,
-                )
+            doc_intelligence_data = await run_in_threadpool(
+                self.doc_intelligence_client.analyze_invoice,
+                file_content,
+            )
             
             if not doc_intelligence_data or doc_intelligence_data.get("error"):
-                error_msg = doc_intelligence_data.get("error", "Document Intelligence analysis failed")
-                errors.append(error_msg)
-                await progress_tracker.error(invoice_id, error_msg, ProcessingStep.EXTRACTION)
+                errors.append(
+                    doc_intelligence_data.get("error", "Document Intelligence analysis failed")
+                )
                 return {
                     "invoice_id": invoice_id,
                     "status": "upstream_error",
                     "errors": errors
                 }
-            
-            await progress_tracker.update(invoice_id, 65, "Document analysis complete, mapping fields...")
             
             # Step 3: Extract text for subtype detection (optional, for better subtype extraction)
             invoice_text = None  # Could extract from PDF if needed
@@ -175,17 +205,12 @@ class ExtractionService:
             invoice.id = invoice_id
             invoice.status = "extracted"
             
-            await progress_tracker.update(invoice_id, 70, "Fields mapped, saving to database...")
-            
             # Step 5: Save to database
             logger.info(f"Saving extracted invoice to database: {invoice_id}")
             patch = self._invoice_to_patch(invoice)
             ok = await DatabaseService.set_extraction_result(invoice_id, patch, db=db)
             if not ok:
                 raise ValueError("Failed to persist extraction result; state mismatch")
-            
-            await progress_tracker.update(invoice_id, 75, "Extraction complete, checking for LLM evaluation...")
-            await progress_tracker.complete_step(invoice_id, ProcessingStep.EXTRACTION, "Extraction complete")
             
             # Prepare JSON-serializable payload
             invoice_dict = invoice.model_dump(mode="json")
@@ -221,48 +246,20 @@ class ExtractionService:
             seen = set()
             low_conf_fields = [x for x in low_conf_fields if not (x in seen or seen.add(x))]
 
-            llm_changed = False
-            # Skip LLM fallback in demo mode or if disabled
-            if settings.DEMO_MODE or not getattr(settings, "USE_LLM_FALLBACK", False):
-                if low_conf_fields:
-                    logger.info("Demo mode or LLM disabled - skipping LLM fallback for %d low-confidence fields", len(low_conf_fields))
-                await progress_tracker.update(invoice_id, 100, "No LLM evaluation needed (demo mode or disabled)")
-            elif not low_conf_fields:
-                logger.info("No fields below low_conf_threshold=%.2f, skipping LLM fallback", low_conf_threshold)
-                await progress_tracker.update(invoice_id, 100, "No LLM evaluation needed")
+            # LLM fallback is now MANUAL only - don't run automatically during extraction
+            # User will trigger it via HITL "Run AI Extract" button
+            if not low_conf_fields:
+                logger.info("No fields below low_conf_threshold=%.2f", low_conf_threshold)
             else:
-                await progress_tracker.start(invoice_id, ProcessingStep.LLM_EVALUATION, f"Evaluating {len(low_conf_fields)} low-confidence fields with LLM...")
-                await progress_tracker.update(invoice_id, 75, f"Starting LLM evaluation for {len(low_conf_fields)} fields...")
-                invoice_before_llm = invoice.model_dump(mode="json")
-                try:
-                    await run_in_threadpool(
-                        self._run_low_confidence_fallback,
-                        invoice,
-                        low_conf_fields,
-                        doc_intelligence_data,
-                        fc,
-                    )
-                    llm_changed = invoice.model_dump(mode="json") != invoice_before_llm
-                    await progress_tracker.update(invoice_id, 95, "LLM evaluation complete")
-                    await progress_tracker.complete_step(invoice_id, ProcessingStep.LLM_EVALUATION, "LLM evaluation complete")
-                except Exception as e:
-                    logger.exception("LLM fallback failed; continuing with DI-only invoice: %s", e)
-                    await progress_tracker.error(invoice_id, f"LLM evaluation failed: {str(e)}", ProcessingStep.LLM_EVALUATION)
-
-            # Final save after LLM post-processing only when there was a change
-            if llm_changed:
-                logger.info("Saving extracted invoice to database (after LLM) for: %s", invoice_id)
-                await progress_tracker.update(invoice_id, 98, "Saving LLM-enhanced results...")
-                patch = self._invoice_to_patch(invoice)
-                ok2 = await DatabaseService.set_extraction_result(invoice_id, patch, db=db)
-                if not ok2:
-                    raise ValueError("Failed to persist post-LLM extraction result; state mismatch")
-            else:
-                logger.info("Skipping post-LLM save; no LLM changes detected.")
+                logger.info(f"Identified {len(low_conf_fields)} low-confidence fields for potential AI extraction: {low_conf_fields[:5]}...")
+            
             invoice_dict = invoice.model_dump(mode="json")
-
-            await progress_tracker.update(invoice_id, 100, "Processing complete")
-            await progress_tracker.complete(invoice_id, "Invoice processing completed successfully")
+            
+            # Run business rule validation
+            validation_result = self.validation_service.validate(invoice)
+            logger.info(
+                f"Invoice {invoice_id} validation: {validation_result['passed_rules']}/{validation_result['total_rules']} rules passed"
+            )
 
             result = {
                 "invoice_id": invoice_id,
@@ -273,7 +270,8 @@ class ExtractionService:
                 "extraction_timestamp": extraction_ts,
                 "errors": [],
                 "low_confidence_fields": low_conf_fields,
-                "low_confidence_triggered": bool(low_conf_fields)
+                "low_confidence_triggered": bool(low_conf_fields),
+                "validation": validation_result
             }
             
             logger.info(f"Extraction completed successfully for invoice: {invoice_id}")
@@ -282,12 +280,133 @@ class ExtractionService:
         except Exception as e:
             logger.error(f"Error extracting invoice {invoice_id}: {e}", exc_info=True)
             errors.append(str(e))
-            await progress_tracker.error(invoice_id, str(e), ProcessingStep.EXTRACTION)
             await DatabaseService.set_extraction_failed(invoice_id, "; ".join(errors), db=db)
             return {
                 "invoice_id": invoice_id,
                 "status": "error",
                 "errors": errors
+            }
+    
+    async def run_ai_extraction(
+        self,
+        invoice_id: str,
+        confidence_threshold: float = 0.7,
+        db: Optional[Any] = None
+    ) -> Dict[str, Any]:
+        """
+        Manually trigger AI extraction for low-confidence fields
+        
+        Args:
+            invoice_id: Invoice ID to improve
+            confidence_threshold: Minimum confidence threshold (fields below will be processed)
+            db: Optional async DB session
+            
+        Returns:
+            Dictionary with AI extraction results
+        """
+        try:
+            logger.info(f"Starting manual AI extraction for invoice: {invoice_id}")
+            
+            # Get current invoice from database
+            invoice_dict = await DatabaseService.get_invoice(invoice_id, db=db)
+            if not invoice_dict:
+                return {
+                    "invoice_id": invoice_id,
+                    "status": "error",
+                    "errors": ["Invoice not found"]
+                }
+            
+            # Convert to Invoice model
+            invoice = Invoice(**invoice_dict)
+            
+            # Get field confidence
+            fc = invoice.field_confidence or {}
+            
+            # Identify low-confidence fields
+            low_conf_fields = []
+            for field_name, confidence in fc.items():
+                if confidence is not None and confidence < confidence_threshold:
+                    low_conf_fields.append(field_name)
+            
+            # Also check required fields with no value or confidence
+            required = [
+                "invoice_number", "invoice_date", "vendor_name", "total_amount",
+                "vendor_address", "bill_to_address", "remit_to_address",
+            ]
+            for field in required:
+                val = getattr(invoice, field, None)
+                conf = fc.get(field)
+                if (val in (None, "", {}) or conf is None or conf < confidence_threshold) and field not in low_conf_fields:
+                    low_conf_fields.append(field)
+            
+            if not low_conf_fields:
+                logger.info(f"No low-confidence fields found for invoice {invoice_id}")
+                return {
+                    "invoice_id": invoice_id,
+                    "status": "success",
+                    "message": "All fields have sufficient confidence",
+                    "fields_improved": 0,
+                    "low_confidence_fields": []
+                }
+            
+            logger.info(f"Processing {len(low_conf_fields)} low-confidence fields: {low_conf_fields}")
+            
+            # Get original DI data - we need the content for LLM context
+            # For now, we'll work with what we have in the invoice
+            # TODO: Store original DI data with bounding boxes for better LLM context
+            di_data = {
+                "content": invoice_dict.get("content") or "",
+                "invoice_number": invoice.invoice_number,
+                "vendor_name": invoice.vendor_name,
+                "total_amount": str(invoice.total_amount) if invoice.total_amount else None,
+            }
+            
+            # Store before state
+            invoice_before = invoice.model_dump(mode="json")
+            
+            # Run LLM fallback
+            await run_in_threadpool(
+                self._run_low_confidence_fallback,
+                invoice,
+                low_conf_fields,
+                di_data,
+                fc,
+            )
+            
+            # Check what changed
+            invoice_after = invoice.model_dump(mode="json")
+            fields_improved = []
+            for field in low_conf_fields:
+                before_val = invoice_before.get(field)
+                after_val = invoice_after.get(field)
+                if before_val != after_val:
+                    fields_improved.append(field)
+            
+            # Save updated invoice
+            if fields_improved:
+                logger.info(f"AI extraction improved {len(fields_improved)} fields: {fields_improved}")
+                patch = self._invoice_to_patch(invoice)
+                ok = await DatabaseService.set_extraction_result(invoice_id, patch, db=db)
+                if not ok:
+                    raise ValueError("Failed to persist AI extraction result")
+            else:
+                logger.info("AI extraction did not improve any fields")
+            
+            return {
+                "invoice_id": invoice_id,
+                "status": "success",
+                "fields_improved": len(fields_improved),
+                "improved_fields": fields_improved,
+                "low_confidence_fields": low_conf_fields,
+                "invoice": invoice.model_dump(mode="json")
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in AI extraction for {invoice_id}: {e}", exc_info=True)
+            return {
+                "invoice_id": invoice_id,
+                "status": "error",
+                "errors": [str(e)]
             }
     
     def _run_low_confidence_fallback(
@@ -375,21 +494,66 @@ class ExtractionService:
                     )
 
                     logger.info("Calling Azure OpenAI chat.completions for group %s.", grp_name)
-                    try:
-                        resp = client.chat.completions.create(
-                            model=settings.AOAI_DEPLOYMENT_NAME,
-                            temperature=0.0,
-                            messages=[
-                                {"role": "system", "content": LLM_SYSTEM_PROMPT},
-                                {"role": "user", "content": prompt},
-                            ],
-                        )
-                    except Exception as call_err:
-                        status = getattr(call_err, "status_code", None)
-                        if status == 429:
-                            logger.warning("LLM fallback hit rate limit (429) on group %s; stopping further LLM calls.", grp_name)
+                    
+                    # Retry logic for OpenAI calls
+                    max_retries = 3
+                    initial_delay = 1.0
+                    max_delay = 60.0
+                    exponential_base = 2.0
+                    
+                    for attempt in range(max_retries + 1):
+                        try:
+                            resp = client.chat.completions.create(
+                                model=settings.AOAI_DEPLOYMENT_NAME,
+                                temperature=0.0,
+                                messages=[
+                                    {"role": "system", "content": LLM_SYSTEM_PROMPT},
+                                    {"role": "user", "content": prompt},
+                                ],
+                            )
+                            break  # Success, exit retry loop
+                            
+                        except Exception as call_err:
+                            status = getattr(call_err, "status_code", None)
+                            
+                            # Rate limit error (429) - always retry with backoff
+                            if status == 429 or (RateLimitError and isinstance(call_err, RateLimitError)):
+                                if attempt < max_retries:
+                                    delay = min(initial_delay * (exponential_base ** attempt), max_delay)
+                                    # Try to get retry_after from error if available
+                                    try:
+                                        retry_after = getattr(call_err, "retry_after", None)
+                                        if retry_after:
+                                            delay = max(delay, float(retry_after))
+                                    except (ValueError, AttributeError):
+                                        pass
+                                    
+                                    logger.warning(
+                                        f"LLM fallback hit rate limit (429) on group {grp_name}, "
+                                        f"attempt {attempt + 1}/{max_retries}, backing off for {delay:.2f}s"
+                                    )
+                                    time.sleep(delay)
+                                    continue
+                                else:
+                                    logger.warning("LLM fallback hit rate limit (429) on group %s after max retries; stopping further LLM calls.", grp_name)
+                                    break
+                            
+                            # Other API errors - retry if not max attempts
+                            elif APIError and isinstance(call_err, APIError) and attempt < max_retries:
+                                delay = min(initial_delay * (exponential_base ** attempt), max_delay)
+                                logger.warning(
+                                    f"LLM fallback API error on group {grp_name}, "
+                                    f"attempt {attempt + 1}/{max_retries}: {call_err}, retrying in {delay:.2f}s"
+                                )
+                                time.sleep(delay)
+                                continue
+                            
+                            # Non-retryable error or max retries reached
+                            logger.error("LLM fallback call failed for group %s: %s", grp_name, call_err, exc_info=True)
                             break
-                        logger.error("LLM fallback call failed for group %s: %s", grp_name, call_err, exc_info=True)
+                    else:
+                        # All retries exhausted without success
+                        logger.error("LLM fallback exhausted all retries for group %s", grp_name)
                         continue
 
                     if not resp.choices or not resp.choices[0].message or not resp.choices[0].message.content:
@@ -469,6 +633,7 @@ class ExtractionService:
     def _apply_llm_suggestions(self, invoice: Invoice, suggestions: Any, low_conf_fields: List[str]):
         """
         Apply LLM suggestions to the invoice. Accepts either raw text or a parsed dict.
+        Validates that LLM only returns canonical field names.
         """
         if isinstance(suggestions, str):
             llm_suggestions = self._coerce_llm_json(suggestions)
@@ -482,18 +647,24 @@ class ExtractionService:
             logger.warning("LLM suggestions could not be coerced to JSON; skipping apply.")
             return
 
-        logger.info("LLM suggestions: %s", llm_suggestions)
+        # Validate LLM output - only canonical fields allowed
+        invalid_fields = set(llm_suggestions.keys()) - CANONICAL_FIELDS
+        if invalid_fields:
+            logger.warning(f"LLM returned non-canonical fields (ignoring them): {invalid_fields}")
+            # Remove non-canonical fields
+            llm_suggestions = {k: v for k, v in llm_suggestions.items() if k in CANONICAL_FIELDS}
+        
+        if not llm_suggestions:
+            logger.info("No valid canonical fields in LLM suggestions after validation")
+            return
+
+        logger.info("LLM suggestions (validated): %s", llm_suggestions)
 
         before = invoice.model_dump()
         for field, value in llm_suggestions.items():
             try:
+                # Field names from LLM should already be canonical
                 target_field = field
-                if field == "payment_term":
-                    target_field = "payment_terms"
-                if field == "invoice_total":
-                    target_field = "total_amount"
-                if field == "purchase_order":
-                    target_field = "po_number"
 
                 # Allow explicit null to clear a low-confidence field
                 if value is None:

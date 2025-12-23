@@ -120,30 +120,79 @@ class Invoice(BaseModel):
     invoice_number: Optional[str] = None
     invoice_date: Optional[date] = None
     due_date: Optional[date] = None
+    invoice_type: Optional[str] = None  # Original, Revised, Credit Note, Debit Note
+    reference_number: Optional[str] = None  # Additional tracking/reference number
+    
+    # Vendor Information
     vendor_name: Optional[str] = None
     vendor_id: Optional[str] = None
     vendor_phone: Optional[str] = None
+    vendor_fax: Optional[str] = None
+    vendor_email: Optional[str] = None
+    vendor_website: Optional[str] = None
     vendor_address: Optional[Address] = None
-    bill_to_address: Optional[Address] = None
-    remit_to_address: Optional[Address] = None
-    remit_to_name: Optional[str] = None
+    
+    # Vendor Tax Registration Numbers
+    gst_number: Optional[str] = None  # GST/HST registration number
+    qst_number: Optional[str] = None  # Quebec sales tax number
+    pst_number: Optional[str] = None  # Provincial sales tax number (BC, SK, MB)
+    business_number: Optional[str] = None  # CRA Business Number (BN)
+    
+    # Customer/Bill-To Information
     customer_name: Optional[str] = None
     customer_id: Optional[str] = None
+    customer_phone: Optional[str] = None
+    customer_email: Optional[str] = None
+    customer_fax: Optional[str] = None
+    bill_to_address: Optional[Address] = None
+    
+    # Remit-To Information
+    remit_to_address: Optional[Address] = None
+    remit_to_name: Optional[str] = None
+    
+    # Entity/Contract Information
     entity: Optional[str] = None
     contract_id: Optional[str] = None
     standing_offer_number: Optional[str] = None
     po_number: Optional[str] = None
+    # Dates and Delivery
     period_start: Optional[date] = None
     period_end: Optional[date] = None
+    shipping_date: Optional[date] = None
+    delivery_date: Optional[date] = None
+    
+    # Financial Totals
     subtotal: Optional[Decimal] = None
-    tax_breakdown: Optional[Dict[str, Decimal]] = None  # Tax type -> amount
-    tax_amount: Optional[Decimal] = None
+    discount_amount: Optional[Decimal] = None
+    shipping_amount: Optional[Decimal] = None
+    handling_fee: Optional[Decimal] = None
+    
+    # Tax Information - Canadian specific
+    gst_amount: Optional[Decimal] = None  # Federal GST (5%)
+    gst_rate: Optional[Decimal] = None
+    hst_amount: Optional[Decimal] = None  # Harmonized Sales Tax (13-15%)
+    hst_rate: Optional[Decimal] = None
+    qst_amount: Optional[Decimal] = None  # Quebec Sales Tax (9.975%)
+    qst_rate: Optional[Decimal] = None
+    pst_amount: Optional[Decimal] = None  # Provincial Sales Tax
+    pst_rate: Optional[Decimal] = None
+    
+    tax_breakdown: Optional[Dict[str, Decimal]] = None  # Tax type -> amount (legacy/flexible)
+    tax_amount: Optional[Decimal] = None  # Total tax
+    
     total_amount: Optional[Decimal] = None
+    deposit_amount: Optional[Decimal] = None  # Advance payment/deposit
+    
     acceptance_percentage: Optional[Decimal] = None
-    tax_registration_number: Optional[str] = None
+    tax_registration_number: Optional[str] = None  # Generic tax reg number
     currency: str = "CAD"
+    
+    # Payment Information
+    payment_terms: Optional[str] = None  # "Net 30", "Due on Receipt", etc.
+    payment_method: Optional[str] = None  # EFT, Cheque, Wire Transfer, Credit Card
+    payment_due_upon: Optional[str] = None  # Payment terms description
+    
     line_items: List[LineItem] = Field(default_factory=list)
-    payment_terms: Optional[str] = None
     
     # Subtype and Extensions
     invoice_subtype: Optional[InvoiceSubtype] = InvoiceSubtype.STANDARD_INVOICE

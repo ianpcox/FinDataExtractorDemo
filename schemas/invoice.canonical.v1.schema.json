@@ -162,20 +162,35 @@
     },
 
     "invoice_number": { "type": ["string", "null"] },
+    "invoice_type": { "type": ["string", "null"], "description": "Type of invoice (e.g., Standard, Credit Note, Debit Note)" },
+    "reference_number": { "type": ["string", "null"], "description": "Additional reference or tracking number" },
     "invoice_date": { "anyOf": [{ "$ref": "#/$defs/isoDate" }, { "type": "null" }] },
     "due_date": { "anyOf": [{ "$ref": "#/$defs/isoDate" }, { "type": "null" }] },
+    "shipping_date": { "anyOf": [{ "$ref": "#/$defs/isoDate" }, { "type": "null" }], "description": "Date when goods/services were shipped" },
+    "delivery_date": { "anyOf": [{ "$ref": "#/$defs/isoDate" }, { "type": "null" }], "description": "Date when goods/services were delivered" },
 
     "vendor_name": { "type": ["string", "null"] },
     "vendor_id": { "type": ["string", "null"] },
     "vendor_phone": { "type": ["string", "null"] },
+    "vendor_fax": { "type": ["string", "null"], "description": "Vendor fax number" },
+    "vendor_email": { "type": ["string", "null"], "description": "Vendor email address" },
+    "vendor_website": { "type": ["string", "null"], "description": "Vendor website URL" },
 
     "vendor_address": { "anyOf": [{ "$ref": "#/$defs/Address" }, { "type": "null" }] },
     "bill_to_address": { "anyOf": [{ "$ref": "#/$defs/Address" }, { "type": "null" }] },
     "remit_to_address": { "anyOf": [{ "$ref": "#/$defs/Address" }, { "type": "null" }] },
     "remit_to_name": { "type": ["string", "null"] },
 
+    "business_number": { "type": ["string", "null"], "description": "Canadian Business Number (BN)" },
+    "gst_number": { "type": ["string", "null"], "description": "GST Registration Number" },
+    "qst_number": { "type": ["string", "null"], "description": "QST Registration Number (Quebec)" },
+    "pst_number": { "type": ["string", "null"], "description": "PST Registration Number (Provincial)" },
+
     "customer_name": { "type": ["string", "null"] },
     "customer_id": { "type": ["string", "null"] },
+    "customer_phone": { "type": ["string", "null"], "description": "Customer phone number" },
+    "customer_email": { "type": ["string", "null"], "description": "Customer email address" },
+    "customer_fax": { "type": ["string", "null"], "description": "Customer fax number" },
 
     "entity": { "type": ["string", "null"] },
     "contract_id": { "type": ["string", "null"] },
@@ -186,6 +201,20 @@
     "period_end": { "anyOf": [{ "$ref": "#/$defs/isoDate" }, { "type": "null" }] },
 
     "subtotal": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }] },
+    "discount_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "Total discount applied" },
+    "shipping_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "Shipping and freight charges" },
+    "handling_fee": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "Handling or processing fee" },
+    "deposit_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "Deposit or prepayment amount" },
+    
+    "gst_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "GST (Goods and Services Tax) amount" },
+    "gst_rate": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "GST rate as decimal (e.g., 0.05 for 5%)" },
+    "hst_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "HST (Harmonized Sales Tax) amount" },
+    "hst_rate": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "HST rate as decimal (e.g., 0.13 for 13%)" },
+    "qst_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "QST (Quebec Sales Tax) amount" },
+    "qst_rate": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "QST rate as decimal (e.g., 0.09975 for 9.975%)" },
+    "pst_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "PST (Provincial Sales Tax) amount" },
+    "pst_rate": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "PST rate as decimal (e.g., 0.07 for 7%)" },
+    
     "tax_breakdown": {
       "anyOf": [
         {
@@ -202,6 +231,8 @@
     "tax_registration_number": { "type": ["string", "null"] },
     "currency": { "type": "string", "default": "CAD" },
     "payment_terms": { "type": ["string", "null"] },
+    "payment_method": { "type": ["string", "null"], "description": "Payment method (e.g., Check, Wire Transfer, Credit Card)" },
+    "payment_due_upon": { "type": ["string", "null"], "description": "Payment due condition (e.g., Receipt, Net 30, End of Month)" },
 
     "line_items": {
       "type": "array",

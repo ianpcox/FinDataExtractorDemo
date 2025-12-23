@@ -27,14 +27,29 @@ class FieldExtractor:
     DI_TO_CANONICAL = {
         "InvoiceId": "invoice_number",
         "InvoiceDate": "invoice_date",
+        "InvoiceType": "invoice_type",
+        "ReferenceNumber": "reference_number",
         "DueDate": "due_date",
+        "ShippingDate": "shipping_date",
+        "DeliveryDate": "delivery_date",
         "VendorName": "vendor_name",
         "VendorId": "vendor_id",
         "VendorPhoneNumber": "vendor_phone",
         "VendorPhone": "vendor_phone",
+        "VendorFax": "vendor_fax",
+        "VendorFaxNumber": "vendor_fax",
+        "VendorEmail": "vendor_email",
+        "VendorWebsite": "vendor_website",
         "VendorAddress": "vendor_address",
+        "BusinessNumber": "business_number",
+        "GSTNumber": "gst_number",
+        "QSTNumber": "qst_number",
+        "PSTNumber": "pst_number",
         "CustomerName": "customer_name",
         "CustomerId": "customer_id",
+        "CustomerPhone": "customer_phone",
+        "CustomerEmail": "customer_email",
+        "CustomerFax": "customer_fax",
         "CustomerAddress": "bill_to_address",
         "BillToAddress": "bill_to_address",
         "RemitToAddress": "remit_to_address",
@@ -48,12 +63,26 @@ class FieldExtractor:
         "ServiceStartDate": "period_start",
         "ServiceEndDate": "period_end",
         "SubTotal": "subtotal",
+        "DiscountAmount": "discount_amount",
+        "ShippingAmount": "shipping_amount",
+        "HandlingFee": "handling_fee",
+        "DepositAmount": "deposit_amount",
+        "GSTAmount": "gst_amount",
+        "GSTRate": "gst_rate",
+        "HSTAmount": "hst_amount",
+        "HSTRate": "hst_rate",
+        "QSTAmount": "qst_amount",
+        "QSTRate": "qst_rate",
+        "PSTAmount": "pst_amount",
+        "PSTRate": "pst_rate",
         "TotalTax": "tax_amount",
         "InvoiceTotal": "total_amount",
         "CurrencyCode": "currency",
         "Currency": "currency",
         "PaymentTerm": "payment_terms",
         "PaymentTerms": "payment_terms",
+        "PaymentMethod": "payment_method",
+        "PaymentDueUpon": "payment_due_upon",
         "AcceptancePercentage": "acceptance_percentage",
         "TaxRegistrationNumber": "tax_registration_number",
         "SalesTaxNumber": "tax_registration_number",
@@ -83,13 +112,19 @@ class FieldExtractor:
 
         # Allow already canonical keys in the input to pass through
         for key in [
-            "invoice_number", "invoice_date", "due_date", "vendor_name", "vendor_id",
-            "vendor_phone", "vendor_address", "customer_name", "customer_id",
+            "invoice_number", "invoice_type", "reference_number", "invoice_date", "due_date", 
+            "shipping_date", "delivery_date", "vendor_name", "vendor_id",
+            "vendor_phone", "vendor_fax", "vendor_email", "vendor_website", "vendor_address", 
+            "business_number", "gst_number", "qst_number", "pst_number",
+            "customer_name", "customer_id", "customer_phone", "customer_email", "customer_fax",
             "bill_to_address", "remit_to_address", "remit_to_name", "entity",
             "contract_id", "standing_offer_number", "po_number", "period_start",
-            "period_end", "subtotal", "tax_breakdown", "tax_amount", "total_amount",
+            "period_end", "subtotal", "discount_amount", "shipping_amount", "handling_fee", 
+            "deposit_amount", "gst_amount", "gst_rate", "hst_amount", "hst_rate",
+            "qst_amount", "qst_rate", "pst_amount", "pst_rate",
+            "tax_breakdown", "tax_amount", "total_amount",
             "currency", "acceptance_percentage", "tax_registration_number",
-            "payment_terms", "items", "content"
+            "payment_terms", "payment_method", "payment_due_upon", "items", "content"
         ]:
             if key in di_data and key not in canonical:
                 canonical[key] = di_data[key]
@@ -145,11 +180,24 @@ class FieldExtractor:
         )
         if invoice.invoice_number is None:
             invoice.invoice_number = doc_intelligence_data.get("invoice_id") or doc_intelligence_data.get("InvoiceId")
+        
+        invoice.invoice_type = self._get_field_value(
+            canonical_data.get("invoice_type"), field_confidence.get("invoice_type")
+        )
+        invoice.reference_number = self._get_field_value(
+            canonical_data.get("reference_number"), field_confidence.get("reference_number")
+        )
         invoice.invoice_date = self._parse_date(
             canonical_data.get("invoice_date"), field_confidence.get("invoice_date")
         )
         invoice.due_date = self._parse_date(
             canonical_data.get("due_date"), field_confidence.get("due_date")
+        )
+        invoice.shipping_date = self._parse_date(
+            canonical_data.get("shipping_date"), field_confidence.get("shipping_date")
+        )
+        invoice.delivery_date = self._parse_date(
+            canonical_data.get("delivery_date"), field_confidence.get("delivery_date")
         )
         
         # Vendor information
@@ -159,9 +207,35 @@ class FieldExtractor:
         invoice.vendor_id = self._get_field_value(
             canonical_data.get("vendor_id"), field_confidence.get("vendor_id")
         )
+        invoice.vendor_phone = self._get_field_value(
+            canonical_data.get("vendor_phone"), field_confidence.get("vendor_phone")
+        )
+        invoice.vendor_fax = self._get_field_value(
+            canonical_data.get("vendor_fax"), field_confidence.get("vendor_fax")
+        )
+        invoice.vendor_email = self._get_field_value(
+            canonical_data.get("vendor_email"), field_confidence.get("vendor_email")
+        )
+        invoice.vendor_website = self._get_field_value(
+            canonical_data.get("vendor_website"), field_confidence.get("vendor_website")
+        )
         vendor_address = canonical_data.get("vendor_address")
         if vendor_address:
             invoice.vendor_address = self._map_address(vendor_address)
+        
+        # Vendor tax IDs
+        invoice.business_number = self._get_field_value(
+            canonical_data.get("business_number"), field_confidence.get("business_number")
+        )
+        invoice.gst_number = self._get_field_value(
+            canonical_data.get("gst_number"), field_confidence.get("gst_number")
+        )
+        invoice.qst_number = self._get_field_value(
+            canonical_data.get("qst_number"), field_confidence.get("qst_number")
+        )
+        invoice.pst_number = self._get_field_value(
+            canonical_data.get("pst_number"), field_confidence.get("pst_number")
+        )
         
         # Customer information
         invoice.customer_name = self._get_field_value(
@@ -169,6 +243,15 @@ class FieldExtractor:
         )
         invoice.customer_id = self._get_field_value(
             canonical_data.get("customer_id"), field_confidence.get("customer_id")
+        )
+        invoice.customer_phone = self._get_field_value(
+            canonical_data.get("customer_phone"), field_confidence.get("customer_phone")
+        )
+        invoice.customer_email = self._get_field_value(
+            canonical_data.get("customer_email"), field_confidence.get("customer_email")
+        )
+        invoice.customer_fax = self._get_field_value(
+            canonical_data.get("customer_fax"), field_confidence.get("customer_fax")
         )
         invoice.entity = self._get_field_value(
             canonical_data.get("entity"), field_confidence.get("entity")
@@ -202,6 +285,45 @@ class FieldExtractor:
         invoice.subtotal = self._parse_decimal(
             canonical_data.get("subtotal"), field_confidence.get("subtotal")
         )
+        invoice.discount_amount = self._parse_decimal(
+            canonical_data.get("discount_amount"), field_confidence.get("discount_amount")
+        )
+        invoice.shipping_amount = self._parse_decimal(
+            canonical_data.get("shipping_amount"), field_confidence.get("shipping_amount")
+        )
+        invoice.handling_fee = self._parse_decimal(
+            canonical_data.get("handling_fee"), field_confidence.get("handling_fee")
+        )
+        invoice.deposit_amount = self._parse_decimal(
+            canonical_data.get("deposit_amount"), field_confidence.get("deposit_amount")
+        )
+        
+        # Canadian tax fields
+        invoice.gst_amount = self._parse_decimal(
+            canonical_data.get("gst_amount"), field_confidence.get("gst_amount")
+        )
+        invoice.gst_rate = self._parse_decimal(
+            canonical_data.get("gst_rate"), field_confidence.get("gst_rate")
+        )
+        invoice.hst_amount = self._parse_decimal(
+            canonical_data.get("hst_amount"), field_confidence.get("hst_amount")
+        )
+        invoice.hst_rate = self._parse_decimal(
+            canonical_data.get("hst_rate"), field_confidence.get("hst_rate")
+        )
+        invoice.qst_amount = self._parse_decimal(
+            canonical_data.get("qst_amount"), field_confidence.get("qst_amount")
+        )
+        invoice.qst_rate = self._parse_decimal(
+            canonical_data.get("qst_rate"), field_confidence.get("qst_rate")
+        )
+        invoice.pst_amount = self._parse_decimal(
+            canonical_data.get("pst_amount"), field_confidence.get("pst_amount")
+        )
+        invoice.pst_rate = self._parse_decimal(
+            canonical_data.get("pst_rate"), field_confidence.get("pst_rate")
+        )
+        
         invoice.tax_amount = self._parse_decimal(
             canonical_data.get("tax_amount"), field_confidence.get("tax_amount")
         )
@@ -221,9 +343,23 @@ class FieldExtractor:
         currency = canonical_data.get("currency")
         invoice.currency = self._normalize_currency(currency) if currency else "CAD"
         
-        # Payment terms
+        # Payment information
         invoice.payment_terms = self._get_field_value(
             canonical_data.get("payment_terms"), field_confidence.get("payment_terms")
+        )
+        invoice.payment_method = self._get_field_value(
+            canonical_data.get("payment_method"), field_confidence.get("payment_method")
+        )
+        invoice.payment_due_upon = self._get_field_value(
+            canonical_data.get("payment_due_upon"), field_confidence.get("payment_due_upon")
+        )
+        
+        # Additional financial fields
+        invoice.acceptance_percentage = self._parse_decimal(
+            canonical_data.get("acceptance_percentage"), field_confidence.get("acceptance_percentage")
+        )
+        invoice.tax_registration_number = self._get_field_value(
+            canonical_data.get("tax_registration_number"), field_confidence.get("tax_registration_number")
         )
         
         # Line items
@@ -613,8 +749,14 @@ class FieldExtractor:
             "DueDate": "due_date",
             "VendorName": "vendor_name",
             "VendorPhoneNumber": "vendor_phone",
+            "VendorPhone": "vendor_phone",
+            "VendorAddress": "vendor_address",
             "CustomerName": "customer_name",
             "CustomerId": "customer_id",
+            "CustomerAddress": "bill_to_address",
+            "BillToAddress": "bill_to_address",
+            "RemitToAddress": "remit_to_address",
+            "RemittanceAddress": "remit_to_address",
             "SubTotal": "subtotal",
             "TotalTax": "tax_amount",
             "InvoiceTotal": "total_amount",
@@ -622,6 +764,8 @@ class FieldExtractor:
             "PaymentTerm": "payment_terms",
             "ContractId": "standing_offer_number",
             "StandingOfferNumber": "standing_offer_number",
+            "CurrencyCode": "currency",
+            "Currency": "currency",
         }
 
         # Legacy/normalized snake-case keys seen in the pipeline
@@ -634,12 +778,12 @@ class FieldExtractor:
         }
 
         canonical_allowlist = {
-            "invoice_number", "invoice_date", "due_date",
-            "vendor_name", "vendor_phone",
-            "customer_name", "customer_id",
+            "invoice_number", "invoice_id", "invoice_date", "due_date",
+            "vendor_name", "vendor_id", "vendor_phone", "vendor_address",
+            "customer_name", "customer_id", "bill_to_address", "remit_to_address",
             "subtotal", "tax_amount", "total_amount",
-            "po_number", "payment_terms",
-            "standing_offer_number",
+            "po_number", "payment_terms", "currency",
+            "standing_offer_number", "contract_id",
         }
 
         out: Dict[str, float] = {}
