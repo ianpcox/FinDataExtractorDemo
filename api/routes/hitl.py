@@ -933,7 +933,6 @@ async def validate_invoice(
                 if field_name == "line_items":
                     # line_items is JSON column; SQLAlchemy handles serialization
                     # Use line_items_to_json to get the proper format
-                    from src.models.db_utils import line_items_to_json
                     patch_fields["line_items"] = line_items_to_json([])
                     logger.info(f"Explicitly clearing line_items for invoice {invoice.id}")
                 elif field_name == "tax_breakdown":
@@ -948,6 +947,7 @@ async def validate_invoice(
                     patch_fields[field_name] = {}
                     logger.info(f"Explicitly clearing {field_name} for invoice {invoice.id}")
 
+        logger.info(f"Attempting to update invoice {invoice.id} with review_version {request.expected_review_version}, patch fields: {list(patch_fields.keys())}")
         success = await DatabaseService.update_with_review_version(
             invoice_id=invoice.id,
             patch=patch_fields,
@@ -955,6 +955,7 @@ async def validate_invoice(
             db=db,
         )
         if not success:
+            logger.warning(f"Update failed for invoice {invoice.id}: stale write (expected review_version {request.expected_review_version})")
             current = await DatabaseService.get_invoice(invoice.id, db=db)
             raise HTTPException(
                 status_code=409,
@@ -1042,7 +1043,13 @@ async def reextract_invoice(
             db=db,
         )
         if result.get("status") not in ["extracted"]:
-            raise HTTPException(status_code=500, detail="Re-extraction failed")
+            status = result.get("status", "unknown")
+            errors = result.get("errors", [])
+            error_msg = f"Re-extraction failed with status: {status}"
+            if errors:
+                error_msg += f". Errors: {', '.join(str(e) for e in errors)}"
+            logger.error(f"Re-extraction failed for invoice {invoice_id}: {error_msg}")
+            raise HTTPException(status_code=500, detail=error_msg)
 
         # Return the same shape as GET invoice (reuse existing handler)
         return await get_invoice_for_validation(invoice_id=invoice_id, db=db)

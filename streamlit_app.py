@@ -6,6 +6,7 @@ Web UI for reviewing and validating extracted invoice data
 import streamlit as st
 import requests
 import json
+import time
 from datetime import datetime
 from typing import Dict, Any, Optional
 import io
@@ -84,21 +85,30 @@ st.markdown(
 )
 
 
+def _to_float(val, default: float = 0.0) -> float:
+    try:
+        return float(val)
+    except Exception:
+        return default
+
+
 def get_confidence_color(confidence: float) -> str:
-    """Get CSS class for confidence level"""
-    if confidence >= 0.9:
+    """Get CSS class for confidence level (tolerates string inputs)"""
+    conf = _to_float(confidence, 0.0)
+    if conf >= 0.9:
         return "confidence-high"
-    elif confidence >= 0.7:
+    elif conf >= 0.7:
         return "confidence-medium"
     else:
         return "confidence-low"
 
 
 def get_confidence_icon(confidence: float) -> str:
-    """Get icon for confidence level"""
-    if confidence >= 0.9:
+    """Get icon for confidence level (tolerates string inputs)"""
+    conf = _to_float(confidence, 0.0)
+    if conf >= 0.9:
         return "[OK]"
-    elif confidence >= 0.7:
+    elif conf >= 0.7:
         return "[WARN]"
     else:
         return "[LOW]"
@@ -363,6 +373,15 @@ def main():
             f'<div class="section-title">Human-in-the-Loop interface for reviewing extracted invoice data</div>',
             unsafe_allow_html=True,
         )
+        # Reviewer name entry (persist in session state)
+        if "reviewer_name" not in st.session_state:
+            st.session_state["reviewer_name"] = ""
+        st.text_input(
+            "Reviewer Name",
+            key="reviewer_name",
+            placeholder="Enter your name",
+            help="Your name will be used for validation submissions.",
+        )
     
     # Sidebar
     with st.sidebar:
@@ -504,18 +523,28 @@ def main():
         st.info("No invoices found. Upload invoices using the API or demo scripts.")
         return
     
-    # Invoice selector with null default
+    # Invoice selector with null default; prefer auto-selection of most recent/newly ingested invoice
     invoice_options = {
         f"{inv['invoice_number'] or 'N/A'} - {inv['vendor_name'] or 'Unknown'} - ${inv['total_amount'] or 0:,.2f}": inv['invoice_id']
         for inv in invoices
     }
     placeholder_label = "— Select an invoice —"
     option_labels = [placeholder_label] + list(invoice_options.keys())
-    
+
+    # If we have a stored selection (set after upload/extract), pre-select it
+    preferred_id = st.session_state.get("selected_invoice_id")
+    preferred_label = None
+    if preferred_id:
+        for lbl, inv_id in invoice_options.items():
+            if inv_id == preferred_id:
+                preferred_label = lbl
+                break
+    select_index = option_labels.index(preferred_label) if preferred_label in option_labels else 0
+
     selected_invoice_label = st.selectbox(
         "Select Invoice",
         option_labels,
-        index=0
+        index=select_index
     )
     
     if selected_invoice_label == placeholder_label:
@@ -523,6 +552,7 @@ def main():
         return
     
     selected_invoice_id = invoice_options[selected_invoice_label]
+    st.session_state["selected_invoice_id"] = selected_invoice_id
     
     # Load invoice details
     with st.spinner("Loading invoice..."):
@@ -1280,7 +1310,7 @@ def main():
             with tab5:
                 st.subheader("Submit Validation")
                 
-                reviewer_name = st.text_input("Reviewer Name", value="", placeholder="Enter your name", key="reviewer_name")
+                reviewer_name = st.session_state.get("reviewer_name", "")
                 
                 validation_status = st.selectbox(
                     "Validation Status",

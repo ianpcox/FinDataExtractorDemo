@@ -315,9 +315,18 @@ class DatabaseService:
                 )
             )
             result = await session.execute(stmt)
-            await session.commit()
+            rowcount = result.rowcount or 0
             
-            return (result.rowcount or 0) > 0  # True if updated, False if stale
+            if rowcount > 0:
+                # Flush before commit to ensure changes are written
+                await session.flush()
+                await session.commit()
+                logger.info(f"Successfully updated invoice {invoice_id} with review_version {expected_review_version} -> {expected_review_version + 1}, {len(valid_patch)} fields updated")
+            else:
+                await session.rollback()  # No changes, rollback to clean state
+                logger.warning(f"Update failed for invoice {invoice_id}: expected review_version {expected_review_version} but current version differs (stale write)")
+            
+            return rowcount > 0  # True if updated, False if stale
         except Exception as e:
             await session.rollback()
             logger.error(f"Optimistic update failed for invoice {invoice_id}: {e}", exc_info=True)

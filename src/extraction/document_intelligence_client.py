@@ -82,6 +82,10 @@ class DocumentIntelligenceClient:
         exponential_base = 2.0
         
         try:
+            # In demo mode, use mock client directly (no Azure SDK poller)
+            if settings.DEMO_MODE:
+                return self.client.analyze_invoice(file_content)
+
             # Analyze document - Document Intelligence handles bytes directly
             poller = self.client.begin_analyze_document(
                 model_id=self.model_id,

@@ -1,6 +1,6 @@
 """Simplified API routes for invoice data extraction"""
 
-from fastapi import APIRouter, HTTPException, Depends, Path
+from fastapi import APIRouter, HTTPException, Depends, Path, Query
 from fastapi.responses import JSONResponse
 from fastapi.encoders import jsonable_encoder
 import logging
@@ -27,8 +27,8 @@ def get_extraction_service() -> ExtractionService:
 @router.post("/extraction/extract/{invoice_id}")
 async def extract_invoice(
     invoice_id: str = Path(..., description="Invoice ID to extract"),
-    file_identifier: str = None,
-    file_name: str = None,
+    file_identifier: str = Query(None, description="File path (local) or blob name (Azure)"),
+    file_name: str = Query(None, description="Original file name"),
     extraction_service: ExtractionService = Depends(get_extraction_service)
 ):
     """
