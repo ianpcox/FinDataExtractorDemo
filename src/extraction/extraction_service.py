@@ -20,6 +20,7 @@ from src.models.invoice import Invoice
 from src.services.db_service import DatabaseService
 from src.services.validation_service import ValidationService
 from src.models.db_utils import address_to_dict, line_items_to_json, _sanitize_tax_breakdown
+from src.services.progress_tracker import progress_tracker, ProcessingStep
 from src.config import settings
 try:
     from openai import AzureOpenAI
@@ -246,15 +247,65 @@ class ExtractionService:
             seen = set()
             low_conf_fields = [x for x in low_conf_fields if not (x in seen or seen.add(x))]
 
-            # LLM fallback is now MANUAL only - don't run automatically during extraction
-            # User will trigger it via HITL "Run AI Extract" button
+            llm_changed = False
             if not low_conf_fields:
-                logger.info("No fields below low_conf_threshold=%.2f", low_conf_threshold)
+                logger.info("No fields below low_conf_threshold=%.2f, skipping LLM fallback", low_conf_threshold)
+                await progress_tracker.update(invoice_id, 100, "No LLM evaluation needed")
             else:
-                logger.info(f"Identified {len(low_conf_fields)} low-confidence fields for potential AI extraction: {low_conf_fields[:5]}...")
-            
+                aoai_ready = self._has_aoai_config()
+                use_llm = bool(getattr(settings, "USE_LLM_FALLBACK", False))
+                use_demo_llm = settings.DEMO_MODE and not aoai_ready
+
+                if not use_llm and not use_demo_llm:
+                    logger.info("LLM fallback disabled; skipping %d low-confidence fields", len(low_conf_fields))
+                    await progress_tracker.update(invoice_id, 100, "LLM evaluation disabled")
+                else:
+                    await progress_tracker.start(
+                        invoice_id,
+                        ProcessingStep.LLM_EVALUATION,
+                        f"Evaluating {len(low_conf_fields)} low-confidence fields with LLM...",
+                    )
+                    await progress_tracker.update(
+                        invoice_id,
+                        75,
+                        f"Starting {'mock' if use_demo_llm else 'LLM'} evaluation for {len(low_conf_fields)} fields...",
+                    )
+                    invoice_before_llm = invoice.model_dump(mode="json")
+                    try:
+                        if use_demo_llm:
+                            self._run_mock_llm_fallback(
+                                invoice,
+                                low_conf_fields,
+                                doc_intelligence_data,
+                                fc,
+                            )
+                        else:
+                            await run_in_threadpool(
+                                self._run_low_confidence_fallback,
+                                invoice,
+                                low_conf_fields,
+                                doc_intelligence_data,
+                                fc,
+                            )
+                        llm_changed = invoice.model_dump(mode="json") != invoice_before_llm
+                        await progress_tracker.update(invoice_id, 95, "LLM evaluation complete")
+                        await progress_tracker.complete_step(invoice_id, ProcessingStep.LLM_EVALUATION, "LLM evaluation complete")
+                    except Exception as e:
+                        logger.exception("LLM fallback failed; continuing with DI-only invoice: %s", e)
+                        await progress_tracker.error(invoice_id, f"LLM evaluation failed: {str(e)}", ProcessingStep.LLM_EVALUATION)
+
+            # Final save after LLM post-processing only when there was a change
+            if llm_changed:
+                logger.info("Saving extracted invoice to database (after LLM) for: %s", invoice_id)
+                await progress_tracker.update(invoice_id, 98, "Saving LLM-enhanced results...")
+                patch = self._invoice_to_patch(invoice)
+                ok2 = await DatabaseService.set_extraction_result(invoice_id, patch, db=db)
+                if not ok2:
+                    raise ValueError("Failed to persist post-LLM extraction result; state mismatch")
+            else:
+                logger.info("Skipping post-LLM save; no LLM changes detected.")
             invoice_dict = invoice.model_dump(mode="json")
-            
+
             # Run business rule validation
             validation_result = self.validation_service.validate(invoice)
             logger.info(
@@ -579,6 +630,89 @@ class ExtractionService:
 
         except Exception as e:
             logger.exception("LLM fallback failed: %s", e)
+
+    def _run_mock_llm_fallback(
+        self,
+        invoice: Invoice,
+        low_conf_fields: List[str],
+        di_data: Dict[str, Any],
+        di_field_confidence: Optional[Dict[str, float]] = None,
+    ) -> None:
+        """Demo-mode LLM fallback that uses deterministic heuristics (no external calls)."""
+        logger.info("Running mock LLM fallback for low confidence fields: %s", low_conf_fields)
+        if not low_conf_fields:
+            return
+
+        canonical = self.field_extractor.normalize_di_data(di_data or {})
+        di_raw = di_data or {}
+
+        def _first_value(*values):
+            for val in values:
+                if val not in (None, "", {}):
+                    return val
+            return None
+
+        def _promote_confidence(field_name: str) -> None:
+            if invoice.field_confidence is None:
+                invoice.field_confidence = {}
+            current = invoice.field_confidence.get(field_name, 0.0)
+            invoice.field_confidence[field_name] = max(float(current or 0.0), 0.9)
+
+        for field in low_conf_fields:
+            try:
+                if field in {"vendor_address", "bill_to_address", "remit_to_address"}:
+                    addr_data = _first_value(canonical.get(field), di_raw.get(field))
+                    if addr_data:
+                        setattr(invoice, field, self.field_extractor._map_address(addr_data))
+                        _promote_confidence(field)
+                    continue
+
+                if field in {"invoice_date", "due_date", "period_start", "period_end"}:
+                    parsed = self.field_extractor._parse_date(canonical.get(field))
+                    if parsed:
+                        setattr(invoice, field, parsed)
+                        _promote_confidence(field)
+                    continue
+
+                if field in {"subtotal", "tax_amount", "total_amount", "acceptance_percentage"}:
+                    parsed = self.field_extractor._parse_decimal(canonical.get(field))
+                    if parsed is not None:
+                        setattr(invoice, field, parsed)
+                        _promote_confidence(field)
+                    continue
+
+                candidate = _first_value(
+                    canonical.get(field),
+                    di_raw.get(field),
+                    di_raw.get("invoice_id") if field == "invoice_number" else None,
+                    di_raw.get("InvoiceId") if field == "invoice_number" else None,
+                    di_raw.get("purchase_order") if field == "po_number" else None,
+                    di_raw.get("PurchaseOrder") if field == "po_number" else None,
+                    di_raw.get("payment_term") if field == "payment_terms" else None,
+                    di_raw.get("PaymentTerm") if field == "payment_terms" else None,
+                )
+                if candidate not in (None, "", {}):
+                    setattr(invoice, field, candidate)
+                    _promote_confidence(field)
+            except Exception as err:
+                logger.warning("Mock LLM fallback skipped field %s: %s", field, err)
+
+        try:
+            if invoice.field_confidence:
+                invoice.extraction_confidence = self.field_extractor._calculate_overall_confidence(
+                    invoice.field_confidence
+                )
+        except Exception:
+            pass
+
+    def _has_aoai_config(self) -> bool:
+        """Return True if AOAI client/config is available for real LLM fallback."""
+        return bool(
+            AzureOpenAI is not None
+            and settings.AOAI_ENDPOINT
+            and settings.AOAI_API_KEY
+            and settings.AOAI_DEPLOYMENT_NAME
+        )
 
     def _build_llm_prompt(
         self,

@@ -115,8 +115,14 @@ def get_confidence_icon(confidence: float) -> str:
 
 
 def format_confidence(confidence: float) -> str:
-    """Format confidence as percentage"""
-    return f"{confidence:.1%}"
+    """Format confidence as percentage (tolerates string inputs)"""
+    conf = _to_float(confidence, None)
+    if conf is None:
+        return "N/A"
+    try:
+        return f"{conf:.1%}"
+    except Exception:
+        return "N/A"
 
 
 def load_invoice_list(status_filter: Optional[str] = None) -> list:
@@ -205,6 +211,15 @@ def check_db_health() -> bool:
     """Ping DB health endpoint."""
     try:
         resp = requests.get(f"{API_BASE_URL}/api/ingestion/health/db", timeout=10)
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
+def check_api_health() -> bool:
+    """Ping API health endpoint."""
+    try:
+        resp = requests.get(f"{API_BASE_URL}/health", timeout=5)
         return resp.status_code == 200
     except Exception:
         return False
@@ -373,7 +388,10 @@ def main():
             f'<div class="section-title">Human-in-the-Loop interface for reviewing extracted invoice data</div>',
             unsafe_allow_html=True,
         )
-        # Reviewer name entry (persist in session state)
+    
+    # Sidebar
+    with st.sidebar:
+        # Reviewer name at top of sidebar
         if "reviewer_name" not in st.session_state:
             st.session_state["reviewer_name"] = ""
         st.text_input(
@@ -382,9 +400,7 @@ def main():
             placeholder="Enter your name",
             help="Your name will be used for validation submissions.",
         )
-    
-    # Sidebar
-    with st.sidebar:
+        
         st.title("Invoice Review")
         st.markdown("---")
         
@@ -489,12 +505,18 @@ def main():
         
         # Backend Health (Compact)
         st.markdown("### ⚙️ System Status")
+        api_ok = check_api_health()
         db_ok = check_db_health()
-        if db_ok:
-            st.success("✓ Database connected", icon="✅")
-        else:
-            st.error("✗ Database unreachable", icon="⚠️")
-            st.caption("Saves will be queued locally")
+        st.markdown(
+            """
+            <div style="display:flex;flex-direction:column;gap:0.25rem;">
+            """,
+            unsafe_allow_html=True,
+        )
+        st.container().success("API Server: running" if api_ok else "API Server: down", icon="✅" if api_ok else "⚠️")
+        st.container().success("Database: connected" if db_ok else "Database: unreachable", icon="✅" if db_ok else "⚠️")
+        st.container().info("UI: active (current session)", icon="💻")
+        st.markdown("</div>", unsafe_allow_html=True)
         
         # Collapsible Instructions
         with st.expander("ℹ️ How to Use"):
@@ -617,6 +639,64 @@ def main():
             st.warning("Could not inline-load the PDF. Use the link above to open/download.")
 
     with col_main:
+        # Handle buttons outside form (buttons can't be inside forms)
+        line_items_for_add = st.session_state.get("edited_line_items", [])
+        
+        # Add line item button
+        add_line_clicked = st.button("➕ Add line item", key=f"add_line_item_{selected_invoice_id}")
+        if add_line_clicked:
+            existing_numbers = [item.get("line_number", 0) for item in line_items_for_add]
+            next_line_number = max(existing_numbers or [0]) + 1
+            new_item = {
+                "line_number": next_line_number,
+                "description": "",
+                "quantity": None,
+                "unit_price": None,
+                "amount": None,
+                "tax_amount": None,
+                "gst_amount": None,
+                "pst_amount": None,
+                "qst_amount": None,
+                "combined_tax": None,
+                "confidence": 0.99,
+            }
+            st.session_state["edited_line_items"] = line_items_for_add + [new_item]
+            st.session_state[f"item_{selected_invoice_id}_{next_line_number}_desc"] = ""
+            st.session_state[f"item_{selected_invoice_id}_{next_line_number}_qty"] = 0.0
+            st.session_state[f"item_{selected_invoice_id}_{next_line_number}_price"] = 0.0
+            st.session_state[f"item_{selected_invoice_id}_{next_line_number}_gst"] = 0.0
+            st.session_state[f"item_{selected_invoice_id}_{next_line_number}_pstqst"] = 0.0
+            st.session_state[f"item_{selected_invoice_id}_{next_line_number}_combined"] = 0.0
+            st.session_state[f"item_{selected_invoice_id}_{next_line_number}_amount"] = 0.0
+            st.session_state[f"item_{selected_invoice_id}_{next_line_number}_subtotal"] = 0.0
+            st.rerun()
+        
+        # Clean empty lines button (only show if there are line items)
+        if line_items_for_add:
+            clean_empty_clicked = st.button("🧹 Clean Empty Lines", help="Remove line items that are empty across all fields", key=f"clean_empty_{selected_invoice_id}")
+            if clean_empty_clicked:
+                empty_count = 0
+                for item in line_items_for_add:
+                    ln = item.get("line_number")
+                    desc = item.get("description", "")
+                    qty = item.get("quantity")
+                    price = item.get("unit_price")
+                    amount = item.get("amount")
+                    is_empty = (
+                        (not desc or desc.strip() == "") and
+                        (qty is None or qty == 0) and
+                        (price is None or price == 0) and
+                        (amount is None or amount == 0)
+                    )
+                    if is_empty:
+                        st.session_state[f"item_{selected_invoice_id}_{ln}_delete"] = True
+                        empty_count += 1
+                if empty_count > 0:
+                    st.success(f"Marked {empty_count} empty line item(s) for deletion. Submit to save changes.")
+                else:
+                    st.info("No empty line items found.")
+                st.rerun()
+        
         with st.form("invoice_review_form"):
             tab1, tab2, tab3, tab4, tab5 = st.tabs(["Company and Vendor", "Financial", "Line Items", "Addresses", "Validation"])
 
@@ -1080,44 +1160,18 @@ def main():
             # Tab 3: Line Items
         with tab3:
             st.subheader("Line Items")
+            st.info("💡 Use the '➕ Add line item' button above the form to add new line items.")
             
             line_items = st.session_state.get("edited_line_items", [])
             
             if line_items:
-                # Add cleanup button for null/empty line items
-                col_summary, col_cleanup = st.columns([3, 1])
-                with col_summary:
-                    # Count marked for deletion
-                    marked_for_deletion = sum(1 for item in line_items if st.session_state.get(f"item_{selected_invoice_id}_{item.get('line_number')}_delete", False))
-                    st.markdown(f"**Total Line Items:** {len(line_items)} ({marked_for_deletion} marked for deletion)")
-                
-                with col_cleanup:
-                    if st.button("🧹 Clean Empty Lines", help="Remove line items that are empty across all fields"):
-                        # Identify empty line items
-                        empty_count = 0
-                        for item in line_items:
-                            ln = item.get("line_number")
-                            desc = item.get("description", "")
-                            qty = item.get("quantity")
-                            price = item.get("unit_price")
-                            amount = item.get("amount")
-                            
-                            # Check if all important fields are empty/zero/null
-                            is_empty = (
-                                (not desc or desc.strip() == "") and
-                                (qty is None or qty == 0) and
-                                (price is None or price == 0) and
-                                (amount is None or amount == 0)
-                            )
-                            
-                            if is_empty:
-                                st.session_state[f"item_{selected_invoice_id}_{ln}_delete"] = True
-                                empty_count += 1
-                        
-                        if empty_count > 0:
-                            st.success(f"Marked {empty_count} empty line item(s) for deletion. Submit to save changes.")
-                        else:
-                            st.info("No empty line items found.")
+                # Display summary (cleanup button is now outside the form)
+                marked_for_deletion = sum(
+                    1 for item in line_items
+                    if st.session_state.get(f"item_{selected_invoice_id}_{item.get('line_number')}_delete", False)
+                )
+                st.markdown(f"**Total Line Items:** {len(line_items)} ({marked_for_deletion} marked for deletion)")
+                st.info("💡 Use the '🧹 Clean Empty Lines' button above the form to clean up empty line items.")
                 
                 def safe_num(val, default=0.0):
                     try:
@@ -1305,8 +1359,7 @@ def main():
             else:
                 st.info("No addresses available.")
     
-        # Tab 5: Validation
-        with tab5:
+            # Tab 5: Validation
             with tab5:
                 st.subheader("Submit Validation")
                 
@@ -1565,7 +1618,7 @@ def main():
         st.markdown("---")
         
         # Count low-confidence fields
-        field_confidence = invoice_dict.get("field_confidence", {})
+        field_confidence = invoice_data.get("field_confidence", {})
         low_conf_threshold = 0.7
         low_conf_count = sum(1 for conf in field_confidence.values() if conf and conf < low_conf_threshold)
         

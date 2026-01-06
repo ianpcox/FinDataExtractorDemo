@@ -25,6 +25,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.on_event("startup")
+async def _init_database() -> None:
+    """Ensure database tables exist (demo-friendly)."""
+    from src.models.database import Base, engine
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
 
 @app.get("/")
 async def root():
