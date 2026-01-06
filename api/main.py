@@ -43,7 +43,7 @@ async def health():
 
 
 # Import routes
-from api.routes import ingestion, extraction, matching, overlay, hitl, staging, azure_import
+from api.routes import ingestion, extraction, matching, overlay, hitl, staging, azure_import, progress
 app.include_router(ingestion.router, prefix="/api", tags=["ingestion"])
 app.include_router(extraction.router, prefix="/api", tags=["extraction"])
 app.include_router(matching.router, prefix="/api", tags=["matching"])
@@ -51,6 +51,7 @@ app.include_router(overlay.router, prefix="/api", tags=["overlay"])
 app.include_router(hitl.router, prefix="/api", tags=["hitl"])
 app.include_router(staging.router, prefix="/api", tags=["staging"])
 app.include_router(azure_import.router, prefix="/api", tags=["azure-import"])
+app.include_router(progress.router, prefix="/api", tags=["progress"])
 
 
 if __name__ == "__main__":

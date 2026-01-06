@@ -7,6 +7,7 @@ from azure.core.exceptions import AzureError
 import logging
 
 from src.config import settings
+from src.extraction.mock_document_intelligence_client import MockDocumentIntelligenceClient
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +27,13 @@ class DocumentIntelligenceClient:
             endpoint: Document Intelligence endpoint URL
             api_key: API key for authentication
         """
+        # In demo mode, use mock client instead
+        if settings.DEMO_MODE:
+            self.client = MockDocumentIntelligenceClient()
+            self.model_id = "mock-invoice-model"
+            logger.info("Document Intelligence client initialized in DEMO MODE")
+            return
+        
         endpoint = endpoint or settings.AZURE_FORM_RECOGNIZER_ENDPOINT
         api_key = api_key or settings.AZURE_FORM_RECOGNIZER_KEY
         
@@ -64,6 +72,11 @@ class DocumentIntelligenceClient:
             Dictionary with extracted invoice data
         """
         try:
+            # In demo mode, mock client returns data directly (not Azure SDK format)
+            if settings.DEMO_MODE:
+                invoice_data = self.client.analyze_invoice(file_content)
+                return invoice_data
+            
             # Analyze document - Document Intelligence handles bytes directly
             poller = self.client.begin_analyze_document(
                 model_id=self.model_id,
