@@ -8,6 +8,10 @@
   "$defs": {
     "confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
     "isoDateTime": { "type": "string", "format": "date-time" },
+    "decimalString": {
+      "type": ["string", "null"],
+      "description": "Decimal value represented as string (not float) to preserve precision. Example: '123.45'"
+    },
     "InvoiceSubtype": {
       "type": "string",
       "enum": ["STANDARD_INVOICE", "SHIFT_SERVICE_INVOICE", "PER_DIEM_TRAVEL_INVOICE"]
@@ -74,7 +78,26 @@
     "LineItemView": {
       "type": "object",
       "additionalProperties": true,
-      "description": "v1: reuse canonical LineItem shape; allow extension for per-cell overlays later."
+      "description": "v1: Line item with decimal fields as strings for wire contract stability.",
+      "properties": {
+        "line_number": { "type": ["integer", "null"] },
+        "description": { "type": ["string", "null"] },
+        "quantity": { "$ref": "#/$defs/decimalString" },
+        "unit_price": { "$ref": "#/$defs/decimalString" },
+        "amount": { "$ref": "#/$defs/decimalString" },
+        "tax_rate": { "$ref": "#/$defs/decimalString" },
+        "tax_amount": { "$ref": "#/$defs/decimalString" },
+        "gst_amount": { "$ref": "#/$defs/decimalString" },
+        "pst_amount": { "$ref": "#/$defs/decimalString" },
+        "qst_amount": { "$ref": "#/$defs/decimalString" },
+        "combined_tax": { "$ref": "#/$defs/decimalString" },
+        "confidence": { "anyOf": [{ "$ref": "#/$defs/confidence" }, { "type": "null" }] },
+        "unit_of_measure": { "type": ["string", "null"] },
+        "project_code": { "type": ["string", "null"] },
+        "cost_centre_code": { "type": ["string", "null"] },
+        "airport_code": { "type": ["string", "null"] },
+        "validated": { "type": "boolean" }
+      }
     }
   },
 

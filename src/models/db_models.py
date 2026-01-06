@@ -60,6 +60,9 @@ class Invoice(Base):
     extraction_confidence = Column(Float, nullable=True)
     field_confidence = Column(JSON, nullable=True)
     extraction_timestamp = Column(DateTime, nullable=True)
+    review_version = Column(Integer, nullable=False, default=0)
+    processing_state = Column(String(32), nullable=False, default="PENDING")
+    content_sha256 = Column(String(128), nullable=True)
     
     # Review
     review_status = Column(String(50), nullable=True)

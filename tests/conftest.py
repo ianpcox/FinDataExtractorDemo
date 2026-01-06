@@ -3,6 +3,8 @@
 import pytest
 import os
 import sys
+import tempfile
+from pathlib import Path
 from typing import Generator, AsyncGenerator
 from datetime import datetime, date
 from decimal import Decimal
@@ -14,26 +16,9 @@ from src.config import settings
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-from src.models.database import Base
+from src.models.database import Base, get_db
 from src.models.db_models import Invoice as InvoiceDB
 from src.models.invoice import Invoice, LineItem, Address, InvoiceSubtype
-
-
-# Test database setup (SQLite in-memory)
-TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
-
-test_engine = create_async_engine(
-    TEST_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-    echo=False
-)
-
-TestingSessionLocal = async_sessionmaker(
-    test_engine,
-    class_=AsyncSession,
-    expire_on_commit=False
-)
 
 
 @pytest.fixture(autouse=True)
@@ -44,27 +29,135 @@ def disable_llm_fallback(monkeypatch):
 
 
 @pytest.fixture(scope="function")
-async def db_session() -> AsyncGenerator[AsyncSession, None]:
+async def db_engine(tmp_path):
     """
-    Create a fresh database session for each test
+    Create a fresh test database engine for each test using a temp file.
+    This ensures complete isolation between tests - no shared state.
+    """
+    # Create temp sqlite file (not :memory: for better integration test isolation)
+    db_file = tmp_path / "test_db.sqlite"
+    test_db_url = f"sqlite+aiosqlite:///{db_file}"
     
-    Yields:
-        Async database session
-    """
-    # Create tables
-    async with test_engine.begin() as conn:
+    # Create async engine
+    engine = create_async_engine(
+        test_db_url,
+        connect_args={"check_same_thread": False},
+        poolclass=StaticPool,
+        echo=False
+    )
+    
+    # Create all tables
+    async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     
-    # Create session
+    yield engine
+    
+    # Cleanup: dispose engine and remove temp file
+    await engine.dispose()
+    if db_file.exists():
+        db_file.unlink()
+
+
+@pytest.fixture(scope="function")
+async def db_session(db_engine) -> AsyncGenerator[AsyncSession, None]:
+    """
+    Create a fresh database session for each test.
+    Uses the isolated db_engine fixture to ensure no state leakage.
+    
+    Yields:
+        Async database session bound to per-test isolated DB
+    """
+    # Create session factory bound to this test's engine
+    TestingSessionLocal = async_sessionmaker(
+        db_engine,
+        class_=AsyncSession,
+        expire_on_commit=False
+    )
+    
+    # Create and yield session
     async with TestingSessionLocal() as session:
         try:
             yield session
         finally:
+            await session.rollback()  # Ensure clean state
             await session.close()
+
+
+@pytest.fixture(scope="function")
+def test_client(db_engine):
+    """
+    Create a FastAPI TestClient with dependency override for isolated DB.
     
-    # Drop tables after test
-    async with test_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+    CRITICAL: This fixture ensures all API routes use the per-test isolated DB
+    by overriding the get_db() dependency that routes import.
+    
+    This prevents test pollution and ensures deterministic test behavior.
+    """
+    from fastapi.testclient import TestClient
+    from api.main import app
+    
+    # Create session factory for this test's isolated DB
+    TestingSessionLocal = async_sessionmaker(
+        db_engine,
+        class_=AsyncSession,
+        expire_on_commit=False
+    )
+    
+    # Override get_db dependency to use test DB
+    async def override_get_db():
+        async with TestingSessionLocal() as session:
+            try:
+                yield session
+            finally:
+                await session.close()
+    
+    # Apply override to the EXACT get_db function that routes import
+    app.dependency_overrides[get_db] = override_get_db
+    
+    # Create test client
+    client = TestClient(app)
+    
+    yield client
+    
+    # Cleanup: clear dependency overrides to prevent leakage to other tests
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture(scope="function")
+async def async_client(db_engine):
+    """
+    Create an async httpx client for true concurrent ASGI requests.
+    
+    CRITICAL: This fixture is required for concurrency tests that use asyncio.gather().
+    TestClient is synchronous and cannot test true concurrent behavior.
+    """
+    import httpx
+    from api.main import app
+    
+    # Create session factory for this test's isolated DB
+    TestingSessionLocal = async_sessionmaker(
+        db_engine,
+        class_=AsyncSession,
+        expire_on_commit=False
+    )
+    
+    # Override get_db dependency to use test DB
+    async def override_get_db():
+        async with TestingSessionLocal() as session:
+            try:
+                yield session
+            finally:
+                await session.close()
+    
+    # Apply override to the EXACT get_db function that routes import
+    app.dependency_overrides[get_db] = override_get_db
+    
+    # Create async client using ASGI transport
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        yield client
+    
+    # Cleanup: clear dependency overrides
+    app.dependency_overrides.clear()
 
 
 @pytest.fixture

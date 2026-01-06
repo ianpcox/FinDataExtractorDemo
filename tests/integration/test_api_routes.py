@@ -1,10 +1,8 @@
 """Integration tests for API routes"""
 
 import pytest
-from fastapi.testclient import TestClient
 from unittest.mock import patch, AsyncMock, MagicMock
 
-from api.main import app
 from src.erp.staging_service import ERPPayloadFormat
 
 
@@ -13,28 +11,23 @@ from src.erp.staging_service import ERPPayloadFormat
 class TestAPIRoutes:
     """Test API routes"""
     
-    @pytest.fixture
-    def client(self):
-        """Create test client"""
-        return TestClient(app)
-    
-    def test_root_endpoint(self, client):
+    def test_root_endpoint(self, test_client):
         """Test root endpoint"""
-        response = client.get("/")
+        response = test_client.get("/")
         assert response.status_code == 200
         data = response.json()
         assert "message" in data
         assert "status" in data
     
-    def test_health_endpoint(self, client):
+    def test_health_endpoint(self, test_client):
         """Test health check endpoint"""
-        response = client.get("/health")
+        response = test_client.get("/health")
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "healthy"
     
     @patch('api.routes.ingestion.IngestionService')
-    def test_upload_invoice(self, mock_service, client):
+    def test_upload_invoice(self, mock_service, test_client):
         """Test invoice upload endpoint"""
         # Mock ingestion service
         mock_instance = AsyncMock()
@@ -49,7 +42,7 @@ class TestAPIRoutes:
         # Create test file
         files = {"file": ("test_invoice.pdf", b"%PDF-1.4\n...", "application/pdf")}
         
-        response = client.post("/api/ingestion/upload", files=files)
+        response = test_client.post("/api/ingestion/upload", files=files)
         
         # Note: This may need adjustment based on actual route implementation
         # For now, just verify endpoint exists
@@ -61,7 +54,7 @@ class TestAPIRoutes:
         self,
         mock_get_invoice,
         mock_staging_service,
-        client,
+        test_client,
     ):
         """Sending format=null should not 500 (defaults format)."""
         mock_get_invoice.return_value = MagicMock(id="inv-123")
@@ -76,7 +69,7 @@ class TestAPIRoutes:
         }
         mock_staging_service.return_value = mock_instance
 
-        response = client.post(
+        response = test_client.post(
             "/api/staging/stage",
             json={"invoice_id": "inv-123", "format": None},
         )
