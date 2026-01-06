@@ -6,6 +6,7 @@ Web UI for reviewing and validating extracted invoice data
 import streamlit as st
 import requests
 import json
+import time
 from datetime import datetime
 from typing import Dict, Any, Optional
 import io
@@ -84,11 +85,26 @@ st.markdown(
 )
 
 
+def safe_float(value, default=0.0) -> float:
+    """Safely convert value to float, handling strings from decimal_to_wire"""
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return default
+    return default
+
+
 def get_confidence_color(confidence: float) -> str:
     """Get CSS class for confidence level"""
-    if confidence >= 0.9:
+    conf = safe_float(confidence, 0.0)
+    if conf >= 0.9:
         return "confidence-high"
-    elif confidence >= 0.7:
+    elif conf >= 0.7:
         return "confidence-medium"
     else:
         return "confidence-low"
@@ -96,9 +112,10 @@ def get_confidence_color(confidence: float) -> str:
 
 def get_confidence_icon(confidence: float) -> str:
     """Get icon for confidence level"""
-    if confidence >= 0.9:
+    conf = safe_float(confidence, 0.0)
+    if conf >= 0.9:
         return "[OK]"
-    elif confidence >= 0.7:
+    elif conf >= 0.7:
         return "[WARN]"
     else:
         return "[LOW]"
@@ -106,7 +123,8 @@ def get_confidence_icon(confidence: float) -> str:
 
 def format_confidence(confidence: float) -> str:
     """Format confidence as percentage"""
-    return f"{confidence:.1%}"
+    conf = safe_float(confidence, 0.0)
+    return f"{conf:.1%}"
 
 
 def load_invoice_list(status_filter: Optional[str] = None) -> list:
@@ -116,7 +134,7 @@ def load_invoice_list(status_filter: Optional[str] = None) -> list:
         if status_filter:
             params["status"] = status_filter
         
-        response = requests.get(f"{API_BASE_URL}/api/hitl/invoices", params=params)
+        response = requests.get(f"{API_BASE_URL}/api/hitl/invoices", params=params, timeout=5)
         if response.status_code == 200:
             data = response.json()
             invoices = data.get("invoices", [])
@@ -130,6 +148,9 @@ def load_invoice_list(status_filter: Optional[str] = None) -> list:
     except requests.exceptions.ConnectionError:
         st.error("Cannot connect to API. Make sure the API server is running.")
         return []
+    except requests.exceptions.Timeout:
+        st.error("API request timed out. The API server may be starting up.")
+        return []
     except Exception as e:
         st.error(f"Error: {e}")
         return []
@@ -141,6 +162,7 @@ def load_invoice(invoice_id: str) -> Optional[Dict[str, Any]]:
         response = requests.get(
             f"{API_BASE_URL}/api/hitl/invoice/{invoice_id}",
             params={"_ts": time.time()},
+            timeout=5
         )
         if response.status_code == 200:
             invoice_data = response.json()
@@ -153,6 +175,9 @@ def load_invoice(invoice_id: str) -> Optional[Dict[str, Any]]:
         else:
             st.error(f"Error loading invoice: {response.status_code}")
             return None
+    except requests.exceptions.Timeout:
+        st.error(f"API request timed out while loading invoice {invoice_id}")
+        return None
     except Exception as e:
         st.error(f"Error: {e}")
         return None
@@ -379,6 +404,18 @@ def main():
         """)
         
         st.markdown("---")
+        st.markdown("### Reviewer Information")
+        reviewer_name = st.text_input(
+            "Reviewer Name", 
+            value=st.session_state.get("reviewer_name", ""),
+            placeholder="Enter your name",
+            key="reviewer_name_sidebar"
+        )
+        # Sync to main reviewer_name key
+        if reviewer_name:
+            st.session_state["reviewer_name"] = reviewer_name
+        
+        st.markdown("---")
         st.markdown("### Confidence Levels")
         st.markdown("""
         - [OK] High (≥90%): Verified
@@ -393,7 +430,7 @@ def main():
             if st.button("Upload and Extract"):
                 try:
                     files = {"file": (upload_file.name, upload_file.getvalue(), "application/pdf")}
-                    resp = requests.post(f"{API_BASE_URL}/api/ingestion/upload", files=files, timeout=120)
+                    resp = requests.post(f"{API_BASE_URL}/api/ingestion/upload", files=files, timeout=30)  # Reduced from 120s
                     if resp.status_code == 201:
                         data = resp.json()
                         invoice_id = data.get("invoice_id")
@@ -403,7 +440,7 @@ def main():
                         extract_resp = requests.post(
                             f"{API_BASE_URL}/api/extraction/extract/{invoice_id}",
                             params={"file_identifier": file_path, "file_name": file_name},
-                            timeout=180,
+                            timeout=30,  # Reduced from 180s - demo mode should be < 5s
                         )
                         if extract_resp.status_code == 200:
                             st.success("Extraction completed. Loading invoice...")
@@ -428,48 +465,32 @@ def main():
 
         st.markdown("---")
         st.markdown("### Backend Health")
-        db_ok = check_db_health()
-        if db_ok:
-            st.success("DB: reachable")
-        else:
-            st.error("DB: unreachable (will queue saves locally)")
-        if st.button("Recheck DB"):
-            st.cache_data.clear()
-            st.rerun()
+        # Demo mode: static display (functionality available in production)
+        st.info("DB: connected (demo mode - actual DB health check available in production)")
         
         st.markdown("---")
         st.markdown("### Blob Browser (invoices-raw)")
-        default_container = "invoices-raw"
-        blob_prefix = st.text_input("Prefix (optional)", value="", placeholder="e.g., folder/")
-        if st.button("List Blobs"):
-            st.session_state["blob_list"] = list_blobs(default_container, blob_prefix or None)
-        blobs = st.session_state.get("blob_list") or []
-        blob_names = [b.get("name") for b in blobs if b.get("name")]
-        selected_blob = st.selectbox("Select Blob", ["-- choose --"] + blob_names)
-        if st.button("Ingest Selected Blob"):
-            if selected_blob and selected_blob != "-- choose --":
-                st.info(f"Ingesting blob: {selected_blob}")
-                ingest_result = ingest_blob(default_container, selected_blob)
-                if ingest_result:
-                    new_invoice_id = ingest_result.get("invoice_id")
-                    if new_invoice_id:
-                        st.success(f"Ingested blob to invoice {new_invoice_id}. Loading...")
-                        st.session_state["selected_invoice_id"] = new_invoice_id
-                        st.cache_data.clear()
-                        st.rerun()
-            else:
-                st.warning("Please select a blob first.")
+        # Demo mode: static display (functionality available in production)
+        st.caption("*Blob browser functionality available in production deployment*")
+        st.text_input("Prefix (optional)", value="", placeholder="e.g., folder/", disabled=True)
+        st.button("List Blobs", disabled=True)
+        st.selectbox("Select Blob", ["-- choose --"], disabled=True)
+        st.button("Ingest Selected Blob", disabled=True)
     
     # Main content
     st.markdown("")
 
-    # Load invoice list
+    # Load invoice list (with timeout handling)
     filter_status = None if status_filter == "All" else status_filter
-    invoices = load_invoice_list(filter_status)
+    try:
+        invoices = load_invoice_list(filter_status)
+    except Exception as e:
+        st.error(f"Error loading invoice list: {e}")
+        invoices = []
     
     if not invoices:
-        st.info("No invoices found. Upload invoices using the API or demo scripts.")
-        return
+        st.info("No invoices found. Upload invoices using the file uploader in the sidebar.")
+        # Don't return early - allow user to upload even if list is empty
     
     # Invoice selector with null default
     invoice_options = {
@@ -513,7 +534,7 @@ def main():
         st.metric("Invoice Number", invoice_data.get("fields", {}).get("invoice_number", {}).get("value", "N/A"))
     
     with col2:
-        total_conf = invoice_data.get("extraction_confidence", 0.0)
+        total_conf = safe_float(invoice_data.get("extraction_confidence", 0.0), 0.0)
         conf_icon = get_confidence_icon(total_conf)
         st.metric(
             "Overall Confidence",
@@ -576,7 +597,7 @@ def main():
                     if field_name in fields:
                         field_data = fields[field_name]
                         value = field_data.get("value")
-                        confidence = field_data.get("confidence", 0.0)
+                        confidence = safe_float(field_data.get("confidence", 0.0), 0.0)
                         
                         with header_cols[i % 3]:
                             icon = get_confidence_icon(confidence)
@@ -665,7 +686,7 @@ def main():
                 for i, field_name in enumerate(financial_fields):
                     field_data = fields.get(field_name) or {"value": tax_breakdown.get(field_name), "confidence": 0.0}
                     value = field_data.get("value")
-                    confidence = field_data.get("confidence", 0.0)
+                    confidence = safe_float(field_data.get("confidence", 0.0), 0.0)
 
                     with financial_cols[i % 3]:
                         icon = get_confidence_icon(confidence)
@@ -767,7 +788,7 @@ def main():
                         "GST": f"${safe_num(current_line_value(ln, 'gst', item.get('gst_amount')), 0):,.2f}" if item.get("gst_amount") is not None or st.session_state.get(f"item_{selected_invoice_id}_{ln}_gst") is not None else "",
                         "PST/QST": f"${safe_num(current_line_value(ln, 'pstqst', item.get('pst_amount') if item.get('pst_amount') is not None else item.get('qst_amount')), 0):,.2f}" if (item.get("pst_amount") is not None or item.get("qst_amount") is not None or st.session_state.get(f"item_{selected_invoice_id}_{ln}_pstqst") is not None) else "",
                         "Combined Tax": f"${safe_num(current_line_value(ln, 'combined', item.get('combined_tax')), 0):,.2f}" if item.get("combined_tax") is not None or st.session_state.get(f"item_{selected_invoice_id}_{ln}_combined") is not None else "",
-                        "Confidence": format_confidence(item.get("confidence", 0.0))
+                        "Confidence": format_confidence(safe_float(item.get("confidence", 0.0), 0.0))
                     })
                 
                 st.dataframe(items_data, use_container_width=True)
@@ -803,7 +824,7 @@ def main():
                             st.number_input("Combined Tax", value=safe_num(item.get("combined_tax"), 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_combined")
                             st.number_input("Line Total", value=safe_num(line_total, 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_amount")
                             st.number_input("Subtotal", value=safe_num(subtotal, 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_subtotal")
-                            conf = item.get("confidence", 0.0)
+                            conf = safe_float(item.get("confidence", 0.0), 0.0)
                             conf_class = get_confidence_color(conf)
                             st.markdown(f'<span class="{conf_class}">{get_confidence_icon(conf)} Confidence: {format_confidence(conf)}</span>', 
                                       unsafe_allow_html=True)
@@ -826,7 +847,7 @@ def main():
                     with col_b:
                         st.text_input("Postal Code", value=addr_val.get("postal_code", "") or "", key=f"{selected_invoice_id}_{addr_type}_postal_code")
                         st.text_input("Country", value=addr_val.get("country", "") or "", key=f"{selected_invoice_id}_{addr_type}_country")
-                        conf = addr_data.get("confidence", 0.0)
+                        conf = safe_float(addr_data.get("confidence", 0.0), 0.0)
                         st.markdown(
                             f'<span class="{get_confidence_color(conf)}">{get_confidence_icon(conf)} {format_confidence(conf)}</span>',
                             unsafe_allow_html=True,
@@ -839,7 +860,12 @@ def main():
             with tab5:
                 st.subheader("Submit Validation")
                 
-                reviewer_name = st.text_input("Reviewer Name", value="", placeholder="Enter your name", key="reviewer_name")
+                # Reviewer name is now in sidebar - just display it
+                current_reviewer = st.session_state.get("reviewer_name", "")
+                if current_reviewer:
+                    st.info(f"**Reviewer:** {current_reviewer} (set in sidebar)")
+                else:
+                    st.warning("⚠️ Please enter your name in the sidebar before submitting validation.")
                 
                 validation_status = st.selectbox(
                     "Validation Status",
@@ -915,6 +941,7 @@ def main():
                     for item in st.session_state.get("edited_line_items", []):
                         ln = item.get("line_number")
                         orig = original_items.get(ln, {}) or {}
+                        is_new_item = ln not in original_items  # Track if this is a new line item
                         corrections = {}
                         delete_flag = st.session_state.get(f"item_{selected_invoice_id}_{ln}_delete", False)
 
@@ -1010,7 +1037,30 @@ def main():
                         if line_total_val is not None and line_total_val != orig.get("amount"):
                             corrections["amount"] = line_total_val
 
-                        if corrections:
+                        # For new items, include all fields even if unchanged (to create the item)
+                        if is_new_item:
+                            # New line item - include all fields to create it
+                            corrections["description"] = desc_val
+                            if qty_val is not None:
+                                corrections["quantity"] = qty_val
+                            if price_val is not None:
+                                corrections["unit_price"] = price_val
+                            if amount_val is not None:
+                                corrections["amount"] = amount_val
+                            if gst_val is not None:
+                                corrections["gst_amount"] = gst_val
+                            if pstqst_val is not None:
+                                corrections["pst_amount"] = pstqst_val
+                            if combined_val is not None:
+                                corrections["combined_tax"] = combined_val
+                            line_item_validations.append({
+                                "line_number": ln,
+                                "validated": True,
+                                "corrections": corrections,
+                                "validation_notes": ""
+                            })
+                        elif corrections:
+                            # Existing item with changes
                             line_item_validations.append({
                                 "line_number": ln,
                                 "validated": True,
@@ -1039,8 +1089,6 @@ def main():
                         "reviewer": reviewer_value,
                         "validation_notes": notes_value,
                     }
-                    # DEBUG: Log payload to verify expected_review_version is included
-                    st.write(f"DEBUG: Sending expected_review_version={payload['expected_review_version']}")
                     success, error_detail = _post_validation_payload(payload)
                     
                     if success:

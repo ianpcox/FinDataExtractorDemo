@@ -17,6 +17,7 @@ from .field_extractor import FieldExtractor
 from src.ingestion.file_handler import FileHandler
 from src.models.invoice import Invoice
 from src.services.db_service import DatabaseService
+from src.services.progress_tracker import progress_tracker, ProcessingStep
 from src.models.db_utils import address_to_dict, line_items_to_json, _sanitize_tax_breakdown
 from src.config import settings
 try:
@@ -101,9 +102,14 @@ class ExtractionService:
         
         try:
             logger.info(f"Starting extraction for invoice: {invoice_id}")
+            
+            # Start extraction step (continues from ingestion at 50%)
+            await progress_tracker.start(invoice_id, ProcessingStep.EXTRACTION, "Starting extraction...")
+            await progress_tracker.update(invoice_id, 50, "Starting extraction...")
 
             claimed = await DatabaseService.claim_for_extraction(invoice_id)
             if not claimed:
+                await progress_tracker.error(invoice_id, "Invoice is already processing", ProcessingStep.EXTRACTION)
                 return {
                     "invoice_id": invoice_id,
                     "status": "conflict",
@@ -112,10 +118,16 @@ class ExtractionService:
             
             # Step 1: Download PDF
             logger.info(f"Downloading PDF: {file_identifier}")
-            file_content = await run_in_threadpool(self.file_handler.download_file, file_identifier)
+            await progress_tracker.update(invoice_id, 52, "Downloading PDF file...")
+            # In demo mode with local files, download is instant - no need for threadpool
+            if settings.DEMO_MODE and not self.file_handler.use_azure:
+                file_content = self.file_handler.download_file(file_identifier)
+            else:
+                file_content = await run_in_threadpool(self.file_handler.download_file, file_identifier)
             
             if not file_content:
                 errors.append("Failed to download file")
+                await progress_tracker.error(invoice_id, "Failed to download file", ProcessingStep.EXTRACTION)
                 return {
                     "invoice_id": invoice_id,
                     "status": "error",
@@ -124,20 +136,27 @@ class ExtractionService:
             
             # Step 2: Analyze with Document Intelligence
             logger.info(f"Analyzing invoice with Document Intelligence: {invoice_id}")
-            doc_intelligence_data = await run_in_threadpool(
-                self.doc_intelligence_client.analyze_invoice,
-                file_content,
-            )
+            await progress_tracker.update(invoice_id, 55, "Analyzing document with Azure Document Intelligence...")
+            # In demo mode, mock client is instant - no need for threadpool
+            if settings.DEMO_MODE:
+                doc_intelligence_data = self.doc_intelligence_client.analyze_invoice(file_content)
+            else:
+                doc_intelligence_data = await run_in_threadpool(
+                    self.doc_intelligence_client.analyze_invoice,
+                    file_content,
+                )
             
             if not doc_intelligence_data or doc_intelligence_data.get("error"):
-                errors.append(
-                    doc_intelligence_data.get("error", "Document Intelligence analysis failed")
-                )
+                error_msg = doc_intelligence_data.get("error", "Document Intelligence analysis failed")
+                errors.append(error_msg)
+                await progress_tracker.error(invoice_id, error_msg, ProcessingStep.EXTRACTION)
                 return {
                     "invoice_id": invoice_id,
                     "status": "upstream_error",
                     "errors": errors
                 }
+            
+            await progress_tracker.update(invoice_id, 65, "Document analysis complete, mapping fields...")
             
             # Step 3: Extract text for subtype detection (optional, for better subtype extraction)
             invoice_text = None  # Could extract from PDF if needed
@@ -156,12 +175,17 @@ class ExtractionService:
             invoice.id = invoice_id
             invoice.status = "extracted"
             
+            await progress_tracker.update(invoice_id, 70, "Fields mapped, saving to database...")
+            
             # Step 5: Save to database
             logger.info(f"Saving extracted invoice to database: {invoice_id}")
             patch = self._invoice_to_patch(invoice)
             ok = await DatabaseService.set_extraction_result(invoice_id, patch, db=db)
             if not ok:
                 raise ValueError("Failed to persist extraction result; state mismatch")
+            
+            await progress_tracker.update(invoice_id, 75, "Extraction complete, checking for LLM evaluation...")
+            await progress_tracker.complete_step(invoice_id, ProcessingStep.EXTRACTION, "Extraction complete")
             
             # Prepare JSON-serializable payload
             invoice_dict = invoice.model_dump(mode="json")
@@ -198,9 +222,17 @@ class ExtractionService:
             low_conf_fields = [x for x in low_conf_fields if not (x in seen or seen.add(x))]
 
             llm_changed = False
-            if not low_conf_fields:
+            # Skip LLM fallback in demo mode or if disabled
+            if settings.DEMO_MODE or not getattr(settings, "USE_LLM_FALLBACK", False):
+                if low_conf_fields:
+                    logger.info("Demo mode or LLM disabled - skipping LLM fallback for %d low-confidence fields", len(low_conf_fields))
+                await progress_tracker.update(invoice_id, 100, "No LLM evaluation needed (demo mode or disabled)")
+            elif not low_conf_fields:
                 logger.info("No fields below low_conf_threshold=%.2f, skipping LLM fallback", low_conf_threshold)
+                await progress_tracker.update(invoice_id, 100, "No LLM evaluation needed")
             else:
+                await progress_tracker.start(invoice_id, ProcessingStep.LLM_EVALUATION, f"Evaluating {len(low_conf_fields)} low-confidence fields with LLM...")
+                await progress_tracker.update(invoice_id, 75, f"Starting LLM evaluation for {len(low_conf_fields)} fields...")
                 invoice_before_llm = invoice.model_dump(mode="json")
                 try:
                     await run_in_threadpool(
@@ -211,12 +243,16 @@ class ExtractionService:
                         fc,
                     )
                     llm_changed = invoice.model_dump(mode="json") != invoice_before_llm
+                    await progress_tracker.update(invoice_id, 95, "LLM evaluation complete")
+                    await progress_tracker.complete_step(invoice_id, ProcessingStep.LLM_EVALUATION, "LLM evaluation complete")
                 except Exception as e:
                     logger.exception("LLM fallback failed; continuing with DI-only invoice: %s", e)
+                    await progress_tracker.error(invoice_id, f"LLM evaluation failed: {str(e)}", ProcessingStep.LLM_EVALUATION)
 
             # Final save after LLM post-processing only when there was a change
             if llm_changed:
                 logger.info("Saving extracted invoice to database (after LLM) for: %s", invoice_id)
+                await progress_tracker.update(invoice_id, 98, "Saving LLM-enhanced results...")
                 patch = self._invoice_to_patch(invoice)
                 ok2 = await DatabaseService.set_extraction_result(invoice_id, patch, db=db)
                 if not ok2:
@@ -224,6 +260,9 @@ class ExtractionService:
             else:
                 logger.info("Skipping post-LLM save; no LLM changes detected.")
             invoice_dict = invoice.model_dump(mode="json")
+
+            await progress_tracker.update(invoice_id, 100, "Processing complete")
+            await progress_tracker.complete(invoice_id, "Invoice processing completed successfully")
 
             result = {
                 "invoice_id": invoice_id,
@@ -243,6 +282,7 @@ class ExtractionService:
         except Exception as e:
             logger.error(f"Error extracting invoice {invoice_id}: {e}", exc_info=True)
             errors.append(str(e))
+            await progress_tracker.error(invoice_id, str(e), ProcessingStep.EXTRACTION)
             await DatabaseService.set_extraction_failed(invoice_id, "; ".join(errors), db=db)
             return {
                 "invoice_id": invoice_id,
