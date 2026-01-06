@@ -10,12 +10,15 @@ import hashlib
 from typing import Any, Mapping, Dict
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from starlette.concurrency import run_in_threadpool
 
 from .document_intelligence_client import DocumentIntelligenceClient
 from .field_extractor import FieldExtractor
 from src.ingestion.file_handler import FileHandler
 from src.models.invoice import Invoice
 from src.services.db_service import DatabaseService
+from src.services.progress_tracker import progress_tracker, ProcessingStep
+from src.models.db_utils import address_to_dict, line_items_to_json, _sanitize_tax_breakdown
 from src.config import settings
 try:
     from openai import AzureOpenAI
@@ -100,12 +103,31 @@ class ExtractionService:
         try:
             logger.info(f"Starting extraction for invoice: {invoice_id}")
             
+            # Start extraction step (continues from ingestion at 50%)
+            await progress_tracker.start(invoice_id, ProcessingStep.EXTRACTION, "Starting extraction...")
+            await progress_tracker.update(invoice_id, 50, "Starting extraction...")
+
+            claimed = await DatabaseService.claim_for_extraction(invoice_id)
+            if not claimed:
+                await progress_tracker.error(invoice_id, "Invoice is already processing", ProcessingStep.EXTRACTION)
+                return {
+                    "invoice_id": invoice_id,
+                    "status": "conflict",
+                    "errors": ["Invoice is already processing"],
+                }
+            
             # Step 1: Download PDF
             logger.info(f"Downloading PDF: {file_identifier}")
-            file_content = self.file_handler.download_file(file_identifier)
+            await progress_tracker.update(invoice_id, 52, "Downloading PDF file...")
+            # In demo mode with local files, download is instant - no need for threadpool
+            if settings.DEMO_MODE and not self.file_handler.use_azure:
+                file_content = self.file_handler.download_file(file_identifier)
+            else:
+                file_content = await run_in_threadpool(self.file_handler.download_file, file_identifier)
             
             if not file_content:
                 errors.append("Failed to download file")
+                await progress_tracker.error(invoice_id, "Failed to download file", ProcessingStep.EXTRACTION)
                 return {
                     "invoice_id": invoice_id,
                     "status": "error",
@@ -114,19 +136,27 @@ class ExtractionService:
             
             # Step 2: Analyze with Document Intelligence
             logger.info(f"Analyzing invoice with Document Intelligence: {invoice_id}")
-            doc_intelligence_data = self.doc_intelligence_client.analyze_invoice(
-                file_content
-            )
+            await progress_tracker.update(invoice_id, 55, "Analyzing document with Azure Document Intelligence...")
+            # In demo mode, mock client is instant - no need for threadpool
+            if settings.DEMO_MODE:
+                doc_intelligence_data = self.doc_intelligence_client.analyze_invoice(file_content)
+            else:
+                doc_intelligence_data = await run_in_threadpool(
+                    self.doc_intelligence_client.analyze_invoice,
+                    file_content,
+                )
             
             if not doc_intelligence_data or doc_intelligence_data.get("error"):
-                errors.append(
-                    doc_intelligence_data.get("error", "Document Intelligence analysis failed")
-                )
+                error_msg = doc_intelligence_data.get("error", "Document Intelligence analysis failed")
+                errors.append(error_msg)
+                await progress_tracker.error(invoice_id, error_msg, ProcessingStep.EXTRACTION)
                 return {
                     "invoice_id": invoice_id,
-                    "status": "extraction_failed",
+                    "status": "upstream_error",
                     "errors": errors
                 }
+            
+            await progress_tracker.update(invoice_id, 65, "Document analysis complete, mapping fields...")
             
             # Step 3: Extract text for subtype detection (optional, for better subtype extraction)
             invoice_text = None  # Could extract from PDF if needed
@@ -145,9 +175,17 @@ class ExtractionService:
             invoice.id = invoice_id
             invoice.status = "extracted"
             
+            await progress_tracker.update(invoice_id, 70, "Fields mapped, saving to database...")
+            
             # Step 5: Save to database
             logger.info(f"Saving extracted invoice to database: {invoice_id}")
-            await DatabaseService.save_invoice(invoice, db=db)
+            patch = self._invoice_to_patch(invoice)
+            ok = await DatabaseService.set_extraction_result(invoice_id, patch, db=db)
+            if not ok:
+                raise ValueError("Failed to persist extraction result; state mismatch")
+            
+            await progress_tracker.update(invoice_id, 75, "Extraction complete, checking for LLM evaluation...")
+            await progress_tracker.complete_step(invoice_id, ProcessingStep.EXTRACTION, "Extraction complete")
             
             # Prepare JSON-serializable payload
             invoice_dict = invoice.model_dump(mode="json")
@@ -184,28 +222,47 @@ class ExtractionService:
             low_conf_fields = [x for x in low_conf_fields if not (x in seen or seen.add(x))]
 
             llm_changed = False
-            if not low_conf_fields:
+            # Skip LLM fallback in demo mode or if disabled
+            if settings.DEMO_MODE or not getattr(settings, "USE_LLM_FALLBACK", False):
+                if low_conf_fields:
+                    logger.info("Demo mode or LLM disabled - skipping LLM fallback for %d low-confidence fields", len(low_conf_fields))
+                await progress_tracker.update(invoice_id, 100, "No LLM evaluation needed (demo mode or disabled)")
+            elif not low_conf_fields:
                 logger.info("No fields below low_conf_threshold=%.2f, skipping LLM fallback", low_conf_threshold)
+                await progress_tracker.update(invoice_id, 100, "No LLM evaluation needed")
             else:
+                await progress_tracker.start(invoice_id, ProcessingStep.LLM_EVALUATION, f"Evaluating {len(low_conf_fields)} low-confidence fields with LLM...")
+                await progress_tracker.update(invoice_id, 75, f"Starting LLM evaluation for {len(low_conf_fields)} fields...")
                 invoice_before_llm = invoice.model_dump(mode="json")
                 try:
-                    self._run_low_confidence_fallback(
-                        invoice=invoice,
-                        low_conf_fields=low_conf_fields,
-                        di_data=doc_intelligence_data,
-                        di_field_confidence=fc,
+                    await run_in_threadpool(
+                        self._run_low_confidence_fallback,
+                        invoice,
+                        low_conf_fields,
+                        doc_intelligence_data,
+                        fc,
                     )
                     llm_changed = invoice.model_dump(mode="json") != invoice_before_llm
+                    await progress_tracker.update(invoice_id, 95, "LLM evaluation complete")
+                    await progress_tracker.complete_step(invoice_id, ProcessingStep.LLM_EVALUATION, "LLM evaluation complete")
                 except Exception as e:
                     logger.exception("LLM fallback failed; continuing with DI-only invoice: %s", e)
+                    await progress_tracker.error(invoice_id, f"LLM evaluation failed: {str(e)}", ProcessingStep.LLM_EVALUATION)
 
             # Final save after LLM post-processing only when there was a change
             if llm_changed:
                 logger.info("Saving extracted invoice to database (after LLM) for: %s", invoice_id)
-                await DatabaseService.save_invoice(invoice, db=db)
+                await progress_tracker.update(invoice_id, 98, "Saving LLM-enhanced results...")
+                patch = self._invoice_to_patch(invoice)
+                ok2 = await DatabaseService.set_extraction_result(invoice_id, patch, db=db)
+                if not ok2:
+                    raise ValueError("Failed to persist post-LLM extraction result; state mismatch")
             else:
                 logger.info("Skipping post-LLM save; no LLM changes detected.")
             invoice_dict = invoice.model_dump(mode="json")
+
+            await progress_tracker.update(invoice_id, 100, "Processing complete")
+            await progress_tracker.complete(invoice_id, "Invoice processing completed successfully")
 
             result = {
                 "invoice_id": invoice_id,
@@ -225,6 +282,8 @@ class ExtractionService:
         except Exception as e:
             logger.error(f"Error extracting invoice {invoice_id}: {e}", exc_info=True)
             errors.append(str(e))
+            await progress_tracker.error(invoice_id, str(e), ProcessingStep.EXTRACTION)
+            await DatabaseService.set_extraction_failed(invoice_id, "; ".join(errors), db=db)
             return {
                 "invoice_id": invoice_id,
                 "status": "error",
@@ -258,70 +317,101 @@ class ExtractionService:
             return
 
         try:
-            # Prepare sanitized DI snapshot for prompt/caching
-            di_snapshot = {
-                "di_fields": di_data or {},
-                "di_field_confidence": di_field_confidence or {},
-                "low_conf_fields": low_conf_fields,
-            }
-            di_snapshot = self._sanitize_for_json(di_snapshot)
+            # group fields to reduce payload; process sequentially with small jitter
+            fc = di_field_confidence or {}
+            groups = [
+                (
+                    "fields",
+                    {
+                        "invoice_number", "invoice_date", "due_date",
+                        "vendor_name", "vendor_id", "vendor_phone",
+                        "customer_name", "customer_id",
+                        "subtotal", "tax_amount", "total_amount",
+                        "currency", "payment_terms", "acceptance_percentage",
+                        "tax_registration_number",
+                    },
+                ),
+                ("addresses", {"vendor_address", "bill_to_address", "remit_to_address"}),
+                ("line_items", {f for f in low_conf_fields if f.startswith("line_items")}),
+            ]
 
+            # Prepare sanitized DI snapshot for caching (common)
+            di_snapshot_base = {
+                "di_fields": di_data or {},
+                "di_field_confidence": fc,
+            }
             try:
                 canonical_di = self.field_extractor.normalize_di_data(di_data or {})
             except Exception:
                 canonical_di = di_data or {}
 
-            prompt = self._build_llm_prompt(canonical_di, low_conf_fields, di_data)
-            if not prompt:
-                logger.info("No prompt built for LLM fallback; skipping.")
-                return
+            for idx, (grp_name, grp_fields) in enumerate(groups):
+                sub_fields = [f for f in low_conf_fields if f in grp_fields]
+                if not sub_fields:
+                    continue
 
-            cache_key = (
-                settings.AOAI_DEPLOYMENT_NAME or "",
-                tuple(sorted(low_conf_fields)),
-                invoice.file_name or invoice.id or "",
-                json.dumps(di_snapshot, sort_keys=True),
-            )
+                di_snapshot = dict(di_snapshot_base)
+                di_snapshot["low_conf_fields"] = sub_fields
+                di_snapshot = self._sanitize_for_json(di_snapshot)
 
-            suggestion_text = self._llm_cache.get(cache_key)
-            if suggestion_text is None:
-                client = AzureOpenAI(
-                    api_key=settings.AOAI_API_KEY,
-                    api_version=settings.AOAI_API_VERSION,
-                    azure_endpoint=settings.AOAI_ENDPOINT,
+                prompt = self._build_llm_prompt(canonical_di, sub_fields, di_data)
+                if not prompt:
+                    logger.info("No prompt built for group %s; skipping.", grp_name)
+                    continue
+
+                cache_key = (
+                    settings.AOAI_DEPLOYMENT_NAME or "",
+                    tuple(sorted(sub_fields)),
+                    invoice.file_name or invoice.id or "",
+                    json.dumps(di_snapshot, sort_keys=True),
                 )
 
-                logger.info("Calling Azure OpenAI chat.completions for LLM fallback.")
-                resp = client.chat.completions.create(
-                    model=settings.AOAI_DEPLOYMENT_NAME,
-                    temperature=0.0,
-                    messages=[
-                        {"role": "system", "content": LLM_SYSTEM_PROMPT},
-                        {"role": "user", "content": prompt},
-                    ],
-                )
+                suggestion_text = self._llm_cache.get(cache_key)
+                if suggestion_text is None:
+                    client = AzureOpenAI(
+                        api_key=settings.AOAI_API_KEY,
+                        api_version=settings.AOAI_API_VERSION,
+                        azure_endpoint=settings.AOAI_ENDPOINT,
+                    )
 
-                if not resp.choices or not resp.choices[0].message or not resp.choices[0].message.content:
-                    logger.warning("LLM fallback returned no content; skipping suggestions.")
-                    return
+                    logger.info("Calling Azure OpenAI chat.completions for group %s.", grp_name)
+                    try:
+                        resp = client.chat.completions.create(
+                            model=settings.AOAI_DEPLOYMENT_NAME,
+                            temperature=0.0,
+                            messages=[
+                                {"role": "system", "content": LLM_SYSTEM_PROMPT},
+                                {"role": "user", "content": prompt},
+                            ],
+                        )
+                    except Exception as call_err:
+                        status = getattr(call_err, "status_code", None)
+                        if status == 429:
+                            logger.warning("LLM fallback hit rate limit (429) on group %s; stopping further LLM calls.", grp_name)
+                            break
+                        logger.error("LLM fallback call failed for group %s: %s", grp_name, call_err, exc_info=True)
+                        continue
 
-                suggestion_text = resp.choices[0].message.content.strip()
-                self._llm_cache[cache_key] = suggestion_text
+                    if not resp.choices or not resp.choices[0].message or not resp.choices[0].message.content:
+                        logger.warning("LLM fallback returned no content for group %s; skipping.", grp_name)
+                        continue
 
-            # Parse and apply suggestions (best-effort even if raw text is not strict JSON)
-            llm_data = self._coerce_llm_json(suggestion_text)
-            if llm_data is None:
-                logger.error("LLM fallback returned non-JSON content; preserving raw text for debugging.")
-                logger.debug("Raw LLM suggestion text: %s", suggestion_text)
-                return
+                    suggestion_text = resp.choices[0].message.content.strip()
+                    self._llm_cache[cache_key] = suggestion_text
 
-            if not isinstance(llm_data, dict):
-                logger.error("LLM fallback JSON is not an object; got %s", type(llm_data))
-                logger.debug("Raw LLM suggestion text: %s", suggestion_text)
-                return
+                llm_data = self._coerce_llm_json(suggestion_text)
+                if llm_data is None:
+                    logger.error("LLM fallback returned non-JSON content for group %s; skipping.", grp_name)
+                    logger.debug("Raw LLM suggestion text: %s", suggestion_text)
+                    continue
 
-            self._apply_llm_suggestions(invoice, llm_data, low_conf_fields)
-            logger.info("LLM fallback suggestions applied successfully.")
+                if not isinstance(llm_data, dict):
+                    logger.error("LLM fallback JSON is not an object for group %s; got %s", grp_name, type(llm_data))
+                    logger.debug("Raw LLM suggestion text: %s", suggestion_text)
+                    continue
+
+                self._apply_llm_suggestions(invoice, llm_data, sub_fields)
+                logger.info("LLM fallback suggestions applied successfully for group %s.", grp_name)
 
         except Exception as e:
             logger.exception("LLM fallback failed: %s", e)
@@ -454,6 +544,50 @@ class ExtractionService:
                 )
         except Exception:
             pass
+
+    def _invoice_to_patch(self, invoice: Invoice) -> Dict[str, Any]:
+        """Convert an Invoice Pydantic model into a dict suitable for DB update."""
+        return {
+            "status": invoice.status,
+            "processing_state": invoice.processing_state,
+            "content_sha256": invoice.content_sha256,
+            "invoice_number": invoice.invoice_number,
+            "invoice_date": invoice.invoice_date,
+            "due_date": invoice.due_date,
+            "vendor_name": invoice.vendor_name,
+            "vendor_id": invoice.vendor_id,
+            "vendor_phone": invoice.vendor_phone,
+            "vendor_address": address_to_dict(invoice.vendor_address),
+            "customer_name": invoice.customer_name,
+            "customer_id": invoice.customer_id,
+            "entity": invoice.entity,
+            "bill_to_address": address_to_dict(invoice.bill_to_address),
+            "remit_to_address": address_to_dict(invoice.remit_to_address),
+            "remit_to_name": invoice.remit_to_name,
+            "contract_id": invoice.contract_id,
+            "standing_offer_number": invoice.standing_offer_number,
+            "po_number": invoice.po_number,
+            "period_start": invoice.period_start,
+            "period_end": invoice.period_end,
+            "subtotal": invoice.subtotal,
+            "tax_breakdown": _sanitize_tax_breakdown(invoice.tax_breakdown),
+            "tax_amount": invoice.tax_amount,
+            "total_amount": invoice.total_amount,
+            "currency": invoice.currency,
+            "acceptance_percentage": invoice.acceptance_percentage,
+            "tax_registration_number": invoice.tax_registration_number,
+            "payment_terms": invoice.payment_terms,
+            "line_items": line_items_to_json(invoice.line_items),
+            "invoice_subtype": invoice.invoice_subtype.value if invoice.invoice_subtype else None,
+            "extensions": invoice.extensions.dict() if invoice.extensions else None,
+            "extraction_confidence": invoice.extraction_confidence,
+            "field_confidence": invoice.field_confidence,
+            "extraction_timestamp": invoice.extraction_timestamp,
+            "review_status": invoice.review_status,
+            "reviewer": invoice.reviewer,
+            "review_timestamp": invoice.review_timestamp,
+            "review_notes": invoice.review_notes,
+        }
 
     def _sanitize_for_json(self, obj):
         """Recursively convert payload objects to JSON-serializable primitives."""
