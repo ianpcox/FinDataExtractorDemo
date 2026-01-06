@@ -734,65 +734,29 @@ async def validate_invoice(
                             "corrected_at": datetime.utcnow().isoformat()
                         })
 
-        # Apply line item validations (including deletions and new items)
+        # Apply line item validations (including deletions)
         to_delete_lines = set()
-        existing_line_numbers = {li.line_number for li in invoice.line_items}
-        new_line_items = []
-        
         if request.line_item_validations:
             for item_validation in request.line_item_validations:
-                ln = item_validation.line_number
-                
-                # Handle delete flag
-                if item_validation.corrections and item_validation.corrections.get("delete"):
-                    if ln in existing_line_numbers:
-                        to_delete_lines.add(ln)
-                        for line_item in invoice.line_items:
-                            if line_item.line_number == ln:
-                                try:
-                                    old_snapshot = line_item.model_dump(mode="json")
-                                except Exception:
-                                    old_snapshot = str(line_item)
-                                corrections_log.append({
-                                    "invoice_id": invoice.id,
-                                    "line_number": ln,
-                                    "field": "delete",
-                                    "old_value": old_snapshot,
-                                    "new_value": None,
-                                    "corrected_at": datetime.utcnow().isoformat()
-                                })
-                                break
-                    continue
-                
-                # Check if this is a new line item
-                if ln not in existing_line_numbers and item_validation.validated and item_validation.corrections:
-                    # Create new line item
-                    corrections = item_validation.corrections
-                    new_item = LineItem(
-                        line_number=ln,
-                        description=corrections.get("description", ""),
-                        quantity=Decimal(str(corrections.get("quantity", 0))) if corrections.get("quantity") is not None else None,
-                        unit_price=Decimal(str(corrections.get("unit_price", 0))) if corrections.get("unit_price") is not None else None,
-                        amount=Decimal(str(corrections.get("amount", 0))) if corrections.get("amount") is not None else Decimal("0"),
-                        confidence=0.99,  # Manual entry = high confidence
-                        gst_amount=Decimal(str(corrections.get("gst_amount", 0))) if corrections.get("gst_amount") is not None else None,
-                        pst_amount=Decimal(str(corrections.get("pst_amount", 0))) if corrections.get("pst_amount") is not None else None,
-                        combined_tax=Decimal(str(corrections.get("combined_tax", 0))) if corrections.get("combined_tax") is not None else None,
-                    )
-                    new_line_items.append(new_item)
-                    corrections_log.append({
-                        "invoice_id": invoice.id,
-                        "line_number": ln,
-                        "field": "create",
-                        "old_value": None,
-                        "new_value": new_item.model_dump(mode="json"),
-                        "corrected_at": datetime.utcnow().isoformat()
-                    })
-                    continue
-                
-                # Update existing line item
+                # Find corresponding line item
                 for line_item in invoice.line_items:
-                    if line_item.line_number == ln:
+                    if line_item.line_number == item_validation.line_number:
+                        # Handle delete flag
+                        if item_validation.corrections and item_validation.corrections.get("delete"):
+                            to_delete_lines.add(line_item.line_number)
+                            try:
+                                old_snapshot = line_item.model_dump(mode="json")
+                            except Exception:
+                                old_snapshot = str(line_item)
+                            corrections_log.append({
+                                "invoice_id": invoice.id,
+                                "line_number": line_item.line_number,
+                                "field": "delete",
+                                "old_value": old_snapshot,
+                                "new_value": None,
+                                "corrected_at": datetime.utcnow().isoformat()
+                            })
+                            break
                         if item_validation.validated and item_validation.corrections:
                             # Apply corrections
                             for field, value in item_validation.corrections.items():
@@ -809,7 +773,7 @@ async def validate_invoice(
                                         setattr(line_item, field, value)
                                     corrections_log.append({
                                         "invoice_id": invoice.id,
-                                        "line_number": ln,
+                                        "line_number": line_item.line_number,
                                         "field": field,
                                         "old_value": old_value,
                                         "new_value": value,
@@ -821,16 +785,8 @@ async def validate_invoice(
                             except Exception:
                                 line_item.confidence = 0.99
                         break
-        
-        # Apply deletions
         if to_delete_lines:
             invoice.line_items = [li for li in invoice.line_items if li.line_number not in to_delete_lines]
-        
-        # Add new line items
-        if new_line_items:
-            invoice.line_items.extend(new_line_items)
-            # Sort by line_number
-            invoice.line_items.sort(key=lambda li: li.line_number)
 
         patch_fields: Dict[str, Any] = {}
 

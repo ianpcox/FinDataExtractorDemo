@@ -9,13 +9,10 @@ class Settings(BaseSettings):
     """Application settings - simplified version"""
     
     # Application
-    APP_NAME: str = "FinDataExtractorDEMO"
+    APP_NAME: str = "FinDataExtractorVanilla"
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = os.getenv("DEBUG", "False").lower() == "true"
     ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
-    
-    # Demo Mode (bypasses Azure dependencies)
-    DEMO_MODE: bool = os.getenv("DEMO_MODE", "False").lower() == "true"
     
     # API
     API_HOST: str = os.getenv("API_HOST", "0.0.0.0")
@@ -48,14 +45,6 @@ class Settings(BaseSettings):
     MAX_FILE_SIZE_MB: int = int(os.getenv("MAX_FILE_SIZE_MB", "50"))
     SUPPORTED_FILE_TYPES: str = os.getenv("SUPPORTED_FILE_TYPES", "pdf")
     EXTRACTION_CONFIDENCE_THRESHOLD: float = float(os.getenv("EXTRACTION_CONFIDENCE_THRESHOLD", "0.85"))
-    
-    # PDF Preprocessing (optional - reduces costs and improves extraction accuracy)
-    ENABLE_PDF_PREPROCESSING: bool = os.getenv("ENABLE_PDF_PREPROCESSING", "False").lower() == "true"
-    ENABLE_PDF_IMAGE_OPTIMIZATION: bool = os.getenv("ENABLE_PDF_IMAGE_OPTIMIZATION", "False").lower() == "true"
-    ENABLE_PDF_ROTATION_CORRECTION: bool = os.getenv("ENABLE_PDF_ROTATION_CORRECTION", "False").lower() == "true"
-    PDF_PREPROCESS_TARGET_DPI: int = int(os.getenv("PDF_PREPROCESS_TARGET_DPI", "300"))  # Target DPI for image optimization
-    PDF_PREPROCESS_MAX_DPI: int = int(os.getenv("PDF_PREPROCESS_MAX_DPI", "600"))  # Maximum DPI before downscaling
-    PDF_PREPROCESS_TIMEOUT_SEC: float = float(os.getenv("PDF_PREPROCESS_TIMEOUT_SEC", "30"))  # Timeout in seconds for preprocessing (SLO)
     
     # Storage (local file storage path if not using Azure)
     LOCAL_STORAGE_PATH: str = os.getenv("LOCAL_STORAGE_PATH", "./storage")
