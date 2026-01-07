@@ -179,13 +179,13 @@ class TestConcurrentExtraction:
             success_responses = [r for r in responses if r.status_code == 200]
             conflict_responses = [r for r in responses if r.status_code == 409]
             
-            # ✅ Assertion 1: Exactly one success
+            # Assertion 1: Exactly one success
             assert len(success_responses) == 1, (
                 f"Expected exactly 1 success, got {len(success_responses)}. "
                 f"Responses: {[(r.status_code, r.text[:100]) for r in responses]}"
             )
             
-            # ✅ Assertion 2: All others are conflict
+            # Assertion 2: All others are conflict
             assert len(conflict_responses) == N - 1, (
                 f"Expected {N-1} conflicts, got {len(conflict_responses)}. "
                 f"Responses: {[(r.status_code, r.text[:100]) for r in responses]}"
@@ -198,7 +198,7 @@ class TestConcurrentExtraction:
                 message = data.get("detail", {}).get("message", "") or data.get("message", "")
                 assert "already processing" in message.lower(), f"Unexpected conflict message: {message}"
             
-            # ✅ Assertion 3: Final DB state is EXTRACTED
+            # Assertion 3: Final DB state is EXTRACTED
             await db_session.expire_all()
             result = await db_session.execute(
                 f"SELECT * FROM invoices WHERE id = '{invoice_id}'"

@@ -23,7 +23,7 @@ try:
     print("\n1. Connecting to Azure Key Vault...")
     credential = DefaultAzureCredential()
     client = SecretClient(vault_url=kv_url, credential=credential)
-    print("   ✓ Connected successfully")
+    print("   Connected successfully")
     
     # Map of Key Vault secret names to .env variable names
     secrets_map = {
@@ -48,20 +48,20 @@ try:
         try:
             secret = client.get_secret(secret_name)
             set_key(env_file, env_var, secret.value)
-            print(f"   ✓ {env_var}: {secret.value[:10]}...{secret.value[-4:]}")
+            print(f"   {env_var}: {secret.value[:10]}...{secret.value[-4:]}")
             updated_count += 1
         except Exception as e:
             if "not found" not in str(e).lower():
-                print(f"   ⚠️  {secret_name}: {e}")
+                print(f"   {secret_name}: {e}")
     
     if updated_count > 0:
-        print(f"\n✓ Updated {updated_count} credentials in .env file")
+        print(f"\nUpdated {updated_count} credentials in .env file")
         print("\nPlease restart the API server and Streamlit for changes to take effect:")
         print("  1. Stop current terminals (Ctrl+C)")
         print("  2. Restart API: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload")
         print("  3. Restart Streamlit: streamlit run streamlit_app.py --server.port 8501")
     else:
-        print("\n✗ No credentials were updated")
+        print("\nNo credentials were updated")
         print("\nTroubleshooting:")
         print("  1. Verify you're logged in: az login")
         print("  2. Check your Azure role: az role assignment list --assignee <your-email>")
@@ -71,10 +71,10 @@ try:
         print("  - Azure OpenAI: https://portal.azure.com/#view/Microsoft_Azure_ProjectOxford/CognitiveServicesHub/~/OpenAI")
     
 except ImportError:
-    print("\n✗ Azure libraries not installed")
+    print("\nAzure libraries not installed")
     print("Install with: pip install azure-keyvault-secrets azure-identity")
 except Exception as e:
-    print(f"\n✗ Error: {e}")
+    print(f"\nError: {e}")
     print("\nManual Update Instructions:")
     print("="*70)
     print("Go to Azure Portal and get the credentials:")

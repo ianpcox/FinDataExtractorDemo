@@ -405,17 +405,17 @@ def main():
         st.markdown("---")
         
         # Add New Invoice Section (Collapsible)
-        with st.expander("🆕 **Add New Invoice**", expanded=False):
+        with st.expander("**Add New Invoice**", expanded=False):
             # Tabs for different source options
-            tab_upload, tab_azure = st.tabs(["📁 Local Upload", "☁️ Azure Blob"])
+            tab_upload, tab_azure = st.tabs(["Local Upload", "Azure Blob"])
             
             with tab_upload:
                 st.markdown("Upload a PDF invoice from your computer")
                 upload_file = st.file_uploader("Choose PDF file", type=["pdf"], label_visibility="collapsed")
                 if upload_file is not None:
-                    st.caption(f"📄 {upload_file.name}")
-                    if st.button("⬆️ Upload and Extract", type="primary", use_container_width=True):
-                        with st.spinner("⏳ Processing invoice... This may take 2-5 minutes for complex documents."):
+                    st.caption(f"{upload_file.name}")
+                    if st.button("Upload and Extract", type="primary", use_container_width=True):
+                        with st.spinner("Processing invoice... This may take 2-5 minutes for complex documents."):
                             try:
                                 files = {"file": (upload_file.name, upload_file.getvalue(), "application/pdf")}
                                 resp = requests.post(f"{API_BASE_URL}/api/ingestion/upload", files=files, timeout=180)
@@ -424,14 +424,14 @@ def main():
                                     invoice_id = data.get("invoice_id")
                                     file_path = data.get("file_path")
                                     file_name = data.get("file_name") or upload_file.name
-                                    st.info("✓ Uploaded. Extracting fields from document...")
+                                    st.info("Uploaded. Extracting fields from document...")
                                     extract_resp = requests.post(
                                         f"{API_BASE_URL}/api/extraction/extract/{invoice_id}",
                                         params={"file_identifier": file_path, "file_name": file_name},
                                         timeout=300,
                                     )
                                     if extract_resp.status_code == 200:
-                                        st.success("✓ Extraction completed. Loading invoice for review...")
+                                        st.success("Extraction completed. Loading invoice for review...")
                                         st.cache_data.clear()
                                         st.session_state["selected_invoice_id"] = invoice_id
                                         st.rerun()
@@ -469,14 +469,14 @@ def main():
                     blob_names = [b.get("name") for b in blobs if b.get("name")]
                     selected_blob = st.selectbox("Select file to import", ["-- choose --"] + blob_names, label_visibility="collapsed")
                     
-                    if st.button("☁️ Import from Azure", type="primary", use_container_width=True, disabled=(selected_blob == "-- choose --")):
+                    if st.button("Import from Azure", type="primary", use_container_width=True, disabled=(selected_blob == "-- choose --")):
                         if selected_blob and selected_blob != "-- choose --":
-                            with st.spinner(f"⏳ Importing and extracting {selected_blob}... This may take 2-5 minutes."):
+                            with st.spinner(f"Importing and extracting {selected_blob}... This may take 2-5 minutes."):
                                 ingest_result = ingest_blob(default_container, selected_blob)
                                 if ingest_result:
                                     new_invoice_id = ingest_result.get("invoice_id")
                                     if new_invoice_id:
-                                        st.success(f"✓ Imported successfully! Loading for review...")
+                                        st.success(f"Imported successfully! Loading for review...")
                                         st.session_state["selected_invoice_id"] = new_invoice_id
                                         st.cache_data.clear()
                                         st.rerun()
@@ -486,7 +486,7 @@ def main():
         st.markdown("---")
         
         # Review Existing Invoices Section (Always visible)
-        st.markdown("### 📋 Review Existing Invoices")
+        st.markdown("### Review Existing Invoices")
         
         col1, col2 = st.columns([2, 1])
         with col1:
@@ -497,14 +497,31 @@ def main():
                 label_visibility="collapsed"
             )
         with col2:
-            if st.button("🔄", help="Refresh list"):
+            if st.button("Refresh", help="Refresh list"):
                 st.cache_data.clear()
                 st.rerun()
         
         st.markdown("---")
         
+        # Backend Health (Compact)
+        st.markdown("### System Status")
+        api_ok = check_api_health()
+        db_ok = check_db_health()
+        st.markdown(
+            """
+            <div style="display:flex;flex-direction:column;gap:0.25rem;">
+            """,
+            unsafe_allow_html=True,
+        )
+        st.container().success("API Server: running" if api_ok else "API Server: down")
+        st.container().success("Database: connected" if db_ok else "Database: unreachable")
+        st.container().info("UI: active (current session)")
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
         # Collapsible Instructions
-        with st.expander("ℹ️ How to Use"):
+        with st.expander("How to Use"):
             st.markdown("""
             **Review Process:**
             1. Select an invoice from the list
@@ -604,6 +621,18 @@ def main():
             total_val_num = 0.0
         st.metric("Total Amount", f"${total_val_num:,.2f}")
 
+    # Check for missing addresses and LLM issues
+    addresses = invoice_data.get("addresses", {}) or {}
+    missing_addresses = []
+    for addr_type in ["vendor_address", "bill_to_address", "remit_to_address"]:
+        addr_data = addresses.get(addr_type, {})
+        addr_val = addr_data.get("value") if isinstance(addr_data, dict) else addr_data
+        if not addr_val or not isinstance(addr_val, dict) or not any(addr_val.get(k) for k in ["street", "city", "province", "postal_code"]):
+            missing_addresses.append(addr_type.replace("_", " ").title())
+    
+    if missing_addresses:
+        st.warning(f"**LLM/Extraction Issue**: The following addresses were not extracted: {', '.join(missing_addresses)}. This may indicate LLM fallback failed or addresses had low confidence. Check the API logs for details.")
+
     # Layout: left persistent PDF, right tabs
     col_pdf, col_main = st.columns([1.1, 1.9])
 
@@ -632,7 +661,7 @@ def main():
                 # Group fields into sections
                 header_fields = ["invoice_number", "invoice_date", "due_date", "invoice_type", "reference_number", "po_number", "standing_offer_number"]
                 vendor_fields = ["vendor_name", "vendor_id", "vendor_phone", "vendor_fax", "vendor_email", "vendor_website"]
-                vendor_tax_fields = ["business_number", "gst_number", "qst_number", "pst_number"]
+                vendor_tax_fields = ["business_number", "gst_number", "qst_number", "pst_number", "tax_registration_number"]
                 customer_fields = ["customer_name", "customer_id", "customer_phone", "customer_email", "customer_fax"]
                 
                 # Header Information
@@ -674,7 +703,7 @@ def main():
                             
                             # Display confidence or "User Edited" indicator
                             if is_edited:
-                                st.markdown('<span class="confidence-high">[✓] User Edited</span>', unsafe_allow_html=True)
+                                st.markdown('<span class="confidence-high">[User Edited]</span>', unsafe_allow_html=True)
                             else:
                                 icon = get_confidence_icon(confidence)
                                 conf_class = get_confidence_color(confidence)
@@ -716,7 +745,7 @@ def main():
                                 st.session_state["user_edited_fields"][selected_invoice_id].add(field_name)
                             
                             if is_edited:
-                                st.markdown('<span class="confidence-high">[✓] User Edited</span>', unsafe_allow_html=True)
+                                st.markdown('<span class="confidence-high">[User Edited]</span>', unsafe_allow_html=True)
                             else:
                                 icon = get_confidence_icon(confidence)
                                 conf_class = get_confidence_color(confidence)
@@ -725,7 +754,7 @@ def main():
                 
                 # Vendor Tax IDs (always display all fields)
                 st.markdown("#### Vendor Tax IDs")
-                tax_id_cols = st.columns(4)
+                tax_id_cols = st.columns(5)
                 
                 for i, field_name in enumerate(vendor_tax_fields):
                     # Always display these fields, even if not in invoice data
@@ -733,7 +762,7 @@ def main():
                     value = field_data.get("value") if field_data else None
                     confidence = field_data.get("confidence", 0.0) if field_data else 0.0
                     
-                    with tax_id_cols[i % 4]:
+                    with tax_id_cols[i % 5]:
                         label = field_name.replace("_", " ").title()
                         widget_key = f"field_{selected_invoice_id}_{field_name}"
                         
@@ -758,14 +787,14 @@ def main():
                             st.session_state["user_edited_fields"][selected_invoice_id].add(field_name)
                         
                         if is_edited:
-                            st.markdown('<span class="confidence-high">[✓] User Edited</span>', unsafe_allow_html=True)
+                            st.markdown('<span class="confidence-high">[User Edited]</span>', unsafe_allow_html=True)
                         elif field_data:
                             icon = get_confidence_icon(confidence)
                             conf_class = get_confidence_color(confidence)
                             st.markdown(f'<span class="{conf_class}">{icon} {format_confidence(confidence)}</span>', 
                                       unsafe_allow_html=True)
                         else:
-                            st.markdown('<span class="confidence-low">⚠️ Not extracted</span>', unsafe_allow_html=True)
+                            st.markdown('<span class="confidence-low">Not extracted</span>', unsafe_allow_html=True)
                 
                 # Customer Information
                 st.markdown("#### Customer Information")
@@ -802,7 +831,7 @@ def main():
                                 st.session_state["user_edited_fields"][selected_invoice_id].add(field_name)
                             
                             if is_edited:
-                                st.markdown('<span class="confidence-high">[✓] User Edited</span>', unsafe_allow_html=True)
+                                st.markdown('<span class="confidence-high">[User Edited]</span>', unsafe_allow_html=True)
                             else:
                                 icon = get_confidence_icon(confidence)
                                 conf_class = get_confidence_color(confidence)
@@ -886,7 +915,7 @@ def main():
                             st.session_state["user_edited_fields"][selected_invoice_id].add(field_name)
                         
                         if is_edited:
-                            st.markdown('<span class="confidence-high">[✓] User Edited</span>', unsafe_allow_html=True)
+                            st.markdown('<span class="confidence-high">[User Edited]</span>', unsafe_allow_html=True)
                         else:
                             icon = get_confidence_icon(confidence)
                             conf_class = get_confidence_color(confidence)
@@ -926,7 +955,7 @@ def main():
                         )
                         
                         if is_edited:
-                            st.caption("✓ Edited")
+                            st.caption("Edited")
                         elif confidence > 0:
                             st.caption(f"{format_confidence(confidence)}")
                     
@@ -954,7 +983,7 @@ def main():
                         )
                         
                         if is_edited:
-                            st.caption("✓ Edited")
+                            st.caption("Edited")
                         elif confidence > 0:
                             st.caption(f"{format_confidence(confidence)}")
 
@@ -968,7 +997,6 @@ def main():
                     "payment_terms",
                     "payment_method",
                     "payment_due_upon",
-                    "tax_registration_number",
                 ]
                 
                 # Date Fields
@@ -1025,7 +1053,7 @@ def main():
                             st.session_state["user_edited_fields"][selected_invoice_id].add(field_name)
                         
                         if is_edited:
-                            st.markdown('<span class="confidence-high">[✓] User Edited</span>', unsafe_allow_html=True)
+                            st.markdown('<span class="confidence-high">[User Edited]</span>', unsafe_allow_html=True)
                         else:
                             icon = get_confidence_icon(confidence)
                             conf_class = get_confidence_color(confidence)
@@ -1071,7 +1099,7 @@ def main():
                             st.session_state["user_edited_fields"][selected_invoice_id].add(field_name)
                         
                         if is_edited:
-                            st.markdown('<span class="confidence-high">[✓] User Edited</span>', unsafe_allow_html=True)
+                            st.markdown('<span class="confidence-high">[User Edited]</span>', unsafe_allow_html=True)
                         else:
                             icon = get_confidence_icon(confidence)
                             conf_class = get_confidence_color(confidence)
@@ -1087,7 +1115,7 @@ def main():
                 line_items = st.session_state.get("edited_line_items", [])
                 add_cols = st.columns([1, 3])
                 with add_cols[0]:
-                    add_line_item = st.form_submit_button("➕ Add line item")
+                    add_line_item = st.form_submit_button("Add line item")
                 if add_line_item:
                     existing_numbers = [item.get("line_number", 0) for item in line_items]
                     next_line_number = max(existing_numbers or [0]) + 1
@@ -1265,7 +1293,7 @@ def main():
                         is_deleted = st.session_state.get(delete_key, False)
                         
                         # Show deletion status in expander title
-                        title_suffix = " 🗑️ MARKED FOR DELETION" if is_deleted else ""
+                        title_suffix = " MARKED FOR DELETION" if is_deleted else ""
                         with st.expander(f"Line {ln}: {item.get('description', '')[:50]}{title_suffix}"):
                             # Delete toggle at the top
                             col_del1, col_del2 = st.columns([1, 3])
@@ -1280,7 +1308,7 @@ def main():
                                     st.session_state[delete_key] = st.session_state.get(detail_checkbox_key, False)
                             with col_del2:
                                 if delete_flag:
-                                    st.error("⚠️ This line item will be removed when you submit validation.")
+                                    st.error("This line item will be removed when you submit validation.")
                             
                             # Only show edit fields if not deleted
                             if not delete_flag:
@@ -1299,6 +1327,7 @@ def main():
                                         format="%.2f",
                                         key=f"item_{selected_invoice_id}_{ln}_pstqst",
                                     )
+                                    st.number_input("Tax Amount", value=safe_num(item.get("tax_amount"), 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_tax_amount", help="Total tax amount for this line item")
 
                                 with col2:
                                     st.number_input("Unit Price", value=safe_num(item.get("unit_price"), 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_price")
@@ -1317,27 +1346,34 @@ def main():
     
             # Tab 5: Addresses
             with tab5:
-                addresses = st.session_state.get("edited_addresses", {})
-                if addresses:
-                    st.subheader("Addresses")
-                    for addr_type, addr_data in addresses.items():
-                        st.markdown(f"**{addr_type.replace('_', ' ').title()}:**")
-                        addr_val = (addr_data or {}).get("value") or {}
-                        col_a, col_b = st.columns(2)
-                        with col_a:
-                            st.text_input("Street", value=addr_val.get("street", "") or "", key=f"{selected_invoice_id}_{addr_type}_street")
-                            st.text_input("City", value=addr_val.get("city", "") or "", key=f"{selected_invoice_id}_{addr_type}_city")
-                            st.text_input("Province", value=addr_val.get("province", "") or "", key=f"{selected_invoice_id}_{addr_type}_province")
-                        with col_b:
-                            st.text_input("Postal Code", value=addr_val.get("postal_code", "") or "", key=f"{selected_invoice_id}_{addr_type}_postal_code")
-                            st.text_input("Country", value=addr_val.get("country", "") or "", key=f"{selected_invoice_id}_{addr_type}_country")
-                            conf = addr_data.get("confidence", 0.0)
+                addresses = st.session_state.get("edited_addresses", {}) or {}
+                st.subheader("Addresses")
+                
+                # Always display all canonical address types
+                address_types = ["vendor_address", "bill_to_address", "remit_to_address"]
+                
+                for addr_type in address_types:
+                    st.markdown(f"**{addr_type.replace('_', ' ').title()}:**")
+                    addr_data = addresses.get(addr_type, {})
+                    addr_val = (addr_data.get("value") if isinstance(addr_data, dict) else addr_data) or {}
+                    if not isinstance(addr_val, dict):
+                        addr_val = {}
+                    
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        st.text_input("Street", value=addr_val.get("street", "") or "", key=f"{selected_invoice_id}_{addr_type}_street")
+                        st.text_input("City", value=addr_val.get("city", "") or "", key=f"{selected_invoice_id}_{addr_type}_city")
+                        st.text_input("Province", value=addr_val.get("province", "") or "", key=f"{selected_invoice_id}_{addr_type}_province")
+                    with col_b:
+                        st.text_input("Postal Code", value=addr_val.get("postal_code", "") or "", key=f"{selected_invoice_id}_{addr_type}_postal_code")
+                        st.text_input("Country", value=addr_val.get("country", "") or "", key=f"{selected_invoice_id}_{addr_type}_country")
+                        conf = addr_data.get("confidence", 0.0) if isinstance(addr_data, dict) else 0.0
+                        if conf > 0:
                             st.markdown(
                                 f'<span class="{get_confidence_color(conf)}">{get_confidence_icon(conf)} {format_confidence(conf)}</span>',
                                 unsafe_allow_html=True,
                             )
-                else:
-                    st.info("No addresses available.")
+                    st.markdown("---")
     
             # Tab 6: Validation
             with tab6:
@@ -1479,6 +1515,7 @@ def main():
                             # clear qst_amount if present
                             corrections["qst_amount"] = None
                         maybe_add("combined", "combined_tax")
+                        maybe_add("tax_amount", "tax_amount")
                         maybe_add("acceptance_pct", "acceptance_percentage")
 
                         # derive line_total (amount) for submission if changed
@@ -1605,7 +1642,7 @@ def main():
         
         col1, col2, col3 = st.columns([1, 1, 1])
         with col1:
-            if st.button("💾 Save Changes", type="primary", use_container_width=True):
+            if st.button("Save Changes", type="primary", use_container_width=True):
                 _persist_changes(
                     st.session_state.get("validation_status", "pending"),
                     st.session_state.get("reviewer_name", ""),
@@ -1615,11 +1652,11 @@ def main():
         with col2:
             # AI Extract button - only show if there are low-confidence fields
             ai_button_disabled = low_conf_count == 0
-            ai_button_label = f"🤖 Run AI Extract" if low_conf_count > 0 else "✓ All Fields High Confidence"
+            ai_button_label = f"Run AI Extract" if low_conf_count > 0 else "All Fields High Confidence"
             ai_button_help = f"Improve {low_conf_count} low-confidence fields using AI" if low_conf_count > 0 else "No fields need AI extraction"
             
             if st.button(ai_button_label, type="secondary", use_container_width=True, disabled=ai_button_disabled, help=ai_button_help):
-                with st.spinner(f"🤖 Running AI extraction on {low_conf_count} fields... This may take 30-60 seconds."):
+                with st.spinner(f"Running AI extraction on {low_conf_count} fields... This may take 30-60 seconds."):
                     try:
                         ai_resp = requests.post(
                             f"{API_BASE_URL}/api/extraction/ai-extract/{selected_invoice_id}",
@@ -1630,7 +1667,7 @@ def main():
                             ai_result = ai_resp.json()
                             fields_improved = ai_result.get("fields_improved", 0)
                             if fields_improved > 0:
-                                st.success(f"✓ AI extraction improved {fields_improved} fields! Reloading...")
+                                st.success(f"AI extraction improved {fields_improved} fields! Reloading...")
                                 st.cache_data.clear()
                                 # Clear user edits since AI has updated the fields
                                 if "user_edited_fields" in st.session_state:
@@ -1646,7 +1683,7 @@ def main():
         with col3:
             # Show reload button if there was a conflict
             if st.session_state.get("last_conflict"):
-                if st.button("🔄 Reload Latest", type="secondary", use_container_width=True):
+                if st.button("Reload Latest", type="secondary", use_container_width=True):
                     # Clear conflict and reload, discarding user edits
                     st.session_state.pop("last_conflict", None)
                     st.cache_data.clear()

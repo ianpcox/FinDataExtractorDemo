@@ -217,10 +217,20 @@ class ExtractionService:
             invoice_dict = invoice.model_dump(mode="json")
             extraction_ts = invoice.extraction_timestamp.isoformat() if invoice.extraction_timestamp else None
 
-            # Low-confidence fallback: trigger when required fields are missing or low, and when any field is explicitly low.
+            # Low-confidence fallback: trigger when required fields are missing or low,
+            # and when any field is explicitly low or blank/"Not Extracted".
             low_conf_threshold = 0.75
             low_conf_fields: List[str] = []
             fc = invoice.field_confidence or {}
+
+            def _is_blank(value: Any) -> bool:
+                if value is None:
+                    return True
+                if isinstance(value, str):
+                    return value.strip() == "" or value.strip().lower() == "not extracted"
+                if isinstance(value, (list, dict)):
+                    return len(value) == 0
+                return False
 
             required = [
                 "invoice_number",
@@ -234,7 +244,27 @@ class ExtractionService:
             for field in required:
                 val = getattr(invoice, field, None)
                 conf = fc.get(field)
-                if val in (None, "", {}) or conf is None or conf < low_conf_threshold:
+                if _is_blank(val) or conf is None or conf < low_conf_threshold:
+                    low_conf_fields.append(field)
+
+            # Include any blank/"Not Extracted" fields across the invoice payload,
+            # even if they don't have an explicit confidence score.
+            invoice_payload = invoice.model_dump()
+            excluded_fields = {
+                "id",
+                "created_at",
+                "updated_at",
+                "upload_date",
+                "extraction_timestamp",
+                "status",
+                "processing_state",
+                "extraction_confidence",
+                "field_confidence",
+            }
+            for field, value in invoice_payload.items():
+                if field in excluded_fields:
+                    continue
+                if _is_blank(value):
                     low_conf_fields.append(field)
 
             for name, conf in fc.items():
@@ -248,7 +278,12 @@ class ExtractionService:
             low_conf_fields = [x for x in low_conf_fields if not (x in seen or seen.add(x))]
 
             llm_changed = False
-            if not low_conf_fields:
+            # Skip LLM fallback in demo mode or if disabled
+            if settings.DEMO_MODE or not getattr(settings, "USE_LLM_FALLBACK", False):
+                if low_conf_fields:
+                    logger.info("Demo mode or LLM disabled - skipping LLM fallback for %d low-confidence fields", len(low_conf_fields))
+                await progress_tracker.update(invoice_id, 100, "No LLM evaluation needed (demo mode or disabled)")
+            elif not low_conf_fields:
                 logger.info("No fields below low_conf_threshold=%.2f, skipping LLM fallback", low_conf_threshold)
                 await progress_tracker.update(invoice_id, 100, "No LLM evaluation needed")
             else:
@@ -256,9 +291,17 @@ class ExtractionService:
                 use_llm = bool(getattr(settings, "USE_LLM_FALLBACK", False))
                 use_demo_llm = settings.DEMO_MODE and not aoai_ready
 
+                # Check for address fields specifically
+                address_fields = [f for f in low_conf_fields if f in {"vendor_address", "bill_to_address", "remit_to_address"}]
+                if address_fields:
+                    logger.info("Address fields with low confidence detected: %s", address_fields)
+
                 if not use_llm and not use_demo_llm:
-                    logger.info("LLM fallback disabled; skipping %d low-confidence fields", len(low_conf_fields))
-                    await progress_tracker.update(invoice_id, 100, "LLM evaluation disabled")
+                    logger.warning("LLM fallback disabled; skipping %d low-confidence fields (including %d address fields: %s)", 
+                                 len(low_conf_fields), len(address_fields), address_fields if address_fields else "none")
+                    if address_fields:
+                        logger.warning("ADDRESSES WILL NOT BE EXTRACTED: LLM fallback is disabled and addresses have low confidence")
+                    await progress_tracker.update(invoice_id, 100, f"LLM evaluation disabled - {len(low_conf_fields)} fields skipped")
                 else:
                     await progress_tracker.start(
                         invoice_id,
@@ -271,6 +314,7 @@ class ExtractionService:
                         f"Starting {'mock' if use_demo_llm else 'LLM'} evaluation for {len(low_conf_fields)} fields...",
                     )
                     invoice_before_llm = invoice.model_dump(mode="json")
+                    llm_error_details = []
                     try:
                         if use_demo_llm:
                             self._run_mock_llm_fallback(
@@ -288,11 +332,39 @@ class ExtractionService:
                                 fc,
                             )
                         llm_changed = invoice.model_dump(mode="json") != invoice_before_llm
-                        await progress_tracker.update(invoice_id, 95, "LLM evaluation complete")
+                        if llm_changed:
+                            await progress_tracker.update(invoice_id, 95, "LLM evaluation complete - fields updated")
+                        else:
+                            await progress_tracker.update(invoice_id, 95, "LLM evaluation complete - no changes")
                         await progress_tracker.complete_step(invoice_id, ProcessingStep.LLM_EVALUATION, "LLM evaluation complete")
                     except Exception as e:
-                        logger.exception("LLM fallback failed; continuing with DI-only invoice: %s", e)
-                        await progress_tracker.error(invoice_id, f"LLM evaluation failed: {str(e)}", ProcessingStep.LLM_EVALUATION)
+                        error_msg = str(e)
+                        # Extract more details from the error
+                        if hasattr(e, 'response') and hasattr(e.response, 'status_code'):
+                            error_msg = f"HTTP {e.response.status_code}: {error_msg}"
+                        if hasattr(e, 'response') and hasattr(e.response, 'url'):
+                            error_msg += f" (URL: {e.response.url})"
+                        # Check if addresses were affected
+                        address_fields_affected = [f for f in low_conf_fields if f in {"vendor_address", "bill_to_address", "remit_to_address"}]
+                        if address_fields_affected:
+                            logger.error("LLM FAILED FOR ADDRESSES: invoice %s - Address fields NOT evaluated: %s. Error: %s", 
+                                       invoice_id, address_fields_affected, error_msg, exc_info=True)
+                        else:
+                            logger.error("LLM fallback failed for invoice %s: %s. Low-confidence fields that were NOT evaluated: %s", 
+                                       invoice_id, error_msg, low_conf_fields, exc_info=True)
+                        
+                        error_summary = f"LLM evaluation failed: {error_msg}"
+                        if address_fields_affected:
+                            error_summary += f" | ADDRESSES MISSING: {', '.join(address_fields_affected)}"
+                        error_summary += f" | Fields not evaluated: {', '.join(low_conf_fields[:5])}{'...' if len(low_conf_fields) > 5 else ''}"
+                        await progress_tracker.error(invoice_id, error_summary, ProcessingStep.LLM_EVALUATION)
+                        # Store error details for later retrieval
+                        llm_error_details.append({
+                            "error": error_msg,
+                            "fields_affected": low_conf_fields,
+                            "endpoint": aoai_endpoint if not use_demo_llm else "mock",
+                            "deployment": settings.AOAI_DEPLOYMENT_NAME if not use_demo_llm else "mock"
+                        })
 
             # Final save after LLM post-processing only when there was a change
             if llm_changed:

@@ -138,7 +138,7 @@ async def test_file_processing(blob_name: str, container_name: str):
         else:
             logger.warning("Azure Document Intelligence not configured - skipping extraction test")
         
-        logger.info(f"\n✓ Successfully processed: {blob_name}\n")
+        logger.info(f"\nSuccessfully processed: {blob_name}\n")
         
     except Exception as e:
         logger.error(f"Error processing file {blob_name}: {e}", exc_info=True)

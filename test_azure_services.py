@@ -27,21 +27,21 @@ if di_endpoint and di_key:
             endpoint=di_endpoint,
             credential=AzureKeyCredential(di_key)
         )
-        print("   ✓ Client initialized successfully")
+        print("   Client initialized successfully")
         
         # Try to list models (lightweight operation)
         try:
             # This will fail if credentials are wrong
             print("   Testing API access...")
             # We can't list models with the prebuilt model, so just confirm init worked
-            print("   ✓ Credentials appear valid (client created)")
+            print("   Credentials appear valid (client created)")
         except Exception as e:
-            print(f"   ✗ API test failed: {e}")
+            print(f"   API test failed: {e}")
             
     except Exception as e:
-        print(f"   ✗ Failed to initialize client: {e}")
+        print(f"   Failed to initialize client: {e}")
 else:
-    print("   ✗ Missing environment variables")
+    print("   Missing environment variables")
     if not di_endpoint:
         print("      - AZURE_FORM_RECOGNIZER_ENDPOINT not set")
     if not di_key:
@@ -67,7 +67,7 @@ if aoai_endpoint and aoai_key and aoai_deployment:
             api_version="2024-02-15-preview",
             azure_endpoint=aoai_endpoint
         )
-        print("   ✓ Client initialized successfully")
+        print("   Client initialized successfully")
         
         # Try a minimal completion
         try:
@@ -78,14 +78,14 @@ if aoai_endpoint and aoai_key and aoai_deployment:
                 max_tokens=5,
                 timeout=10
             )
-            print(f"   ✓ API call successful! Response: {response.choices[0].message.content[:20]}")
+            print(f"   API call successful! Response: {response.choices[0].message.content[:20]}")
         except Exception as e:
-            print(f"   ✗ API call failed: {e}")
+            print(f"   API call failed: {e}")
             
     except Exception as e:
-        print(f"   ✗ Failed to initialize client: {e}")
+        print(f"   Failed to initialize client: {e}")
 else:
-    print("   ✗ Missing environment variables")
+    print("   Missing environment variables")
     if not aoai_endpoint:
         print("      - AOAI_ENDPOINT not set")
     if not aoai_key:
@@ -98,7 +98,7 @@ print("\n3. LLM FALLBACK CONFIGURATION")
 use_llm = os.getenv("USE_LLM_FALLBACK", "false").lower() in ("true", "1", "yes")
 print(f"   USE_LLM_FALLBACK: {use_llm}")
 if not use_llm:
-    print("   ⚠️  LLM fallback is DISABLED - only Document Intelligence will run")
+    print("   LLM fallback is DISABLED - only Document Intelligence will run")
 
 print("\n" + "=" * 60)
 print("TEST COMPLETE")
