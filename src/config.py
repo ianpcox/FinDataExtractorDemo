@@ -1,8 +1,66 @@
 """Simplified application configuration"""
 
 import os
+import logging
 from pydantic_settings import BaseSettings
 from typing import Optional
+
+logger = logging.getLogger(__name__)
+
+
+def _get_secret_from_keyvault(secret_names: list, fallback: Optional[str] = None) -> Optional[str]:
+    """
+    Try to get secret from Azure Key Vault, fallback to environment variable.
+    
+    Args:
+        secret_names: List of possible secret names in Key Vault (tries each in order)
+        fallback: Fallback value from environment variable (if Key Vault fails)
+    
+    Returns:
+        Secret value from Key Vault if available, otherwise fallback value
+    """
+    # Ensure secret_names is a list
+    if isinstance(secret_names, str):
+        secret_names = [secret_names]
+    
+    # Try Key Vault first
+    try:
+        from azure.keyvault.secrets import SecretClient
+        from azure.identity import DefaultAzureCredential
+        
+        # Get Key Vault URL from environment
+        kv_url = os.getenv("AZURE_KEY_VAULT_URL")
+        if not kv_url:
+            kv_name = os.getenv("AZURE_KEY_VAULT_NAME", "kvdiofindataextractor")
+            if kv_name:
+                kv_url = f"https://{kv_name}.vault.azure.net/"
+        
+        if kv_url:
+            try:
+                credential = DefaultAzureCredential()
+                client = SecretClient(vault_url=kv_url, credential=credential)
+                
+                # Try each secret name in order
+                for secret_name in secret_names:
+                    try:
+                        secret = client.get_secret(secret_name)
+                        logger.info(f"Loaded {secret_name} from Key Vault")
+                        return secret.value
+                    except Exception:
+                        continue  # Try next name
+                
+                logger.debug(f"Could not load any of {secret_names} from Key Vault. Using fallback.")
+            except Exception as e:
+                logger.debug(f"Key Vault access failed: {e}. Using fallback.")
+        else:
+            logger.debug("Key Vault not configured, using environment variables")
+    except ImportError:
+        logger.debug("Azure Key Vault libraries not installed, using environment variables")
+    except Exception as e:
+        logger.debug(f"Key Vault access failed: {e}. Using fallback.")
+    
+    # Fallback to environment variable
+    return fallback
 
 
 class Settings(BaseSettings):
@@ -22,8 +80,9 @@ class Settings(BaseSettings):
     API_PORT: int = int(os.getenv("API_PORT", "8000"))
     
     # Azure Document Intelligence (Required)
-    AZURE_FORM_RECOGNIZER_ENDPOINT: Optional[str] = os.getenv("AZURE_FORM_RECOGNIZER_ENDPOINT")
-    AZURE_FORM_RECOGNIZER_KEY: Optional[str] = os.getenv("AZURE_FORM_RECOGNIZER_KEY")
+    # Try Key Vault first, fallback to .env
+    AZURE_FORM_RECOGNIZER_ENDPOINT: Optional[str] = _get_secret_from_keyvault(["document-intelligence-endpoint"], os.getenv("AZURE_FORM_RECOGNIZER_ENDPOINT"))
+    AZURE_FORM_RECOGNIZER_KEY: Optional[str] = _get_secret_from_keyvault(["document-intelligence-key"], os.getenv("AZURE_FORM_RECOGNIZER_KEY"))
     AZURE_FORM_RECOGNIZER_MODEL: str = os.getenv("AZURE_FORM_RECOGNIZER_MODEL", "prebuilt-invoice")
     
     # Azure Storage (Optional - can use local storage)
@@ -39,9 +98,10 @@ class Settings(BaseSettings):
 
     # LLM Fallback (optional)
     USE_LLM_FALLBACK: bool = os.getenv("USE_LLM_FALLBACK", "False").lower() == "true"
-    AOAI_ENDPOINT: Optional[str] = os.getenv("AOAI_ENDPOINT")
-    AOAI_API_KEY: Optional[str] = os.getenv("AOAI_API_KEY")
-    AOAI_DEPLOYMENT_NAME: Optional[str] = os.getenv("AOAI_DEPLOYMENT_NAME")
+    # Try Key Vault first, fallback to .env (try alternative names too)
+    AOAI_ENDPOINT: Optional[str] = _get_secret_from_keyvault(["aoai-endpoint", "azure-openai-endpoint"], os.getenv("AOAI_ENDPOINT"))
+    AOAI_API_KEY: Optional[str] = _get_secret_from_keyvault(["aoai-api-key", "azure-openai-key"], os.getenv("AOAI_API_KEY"))
+    AOAI_DEPLOYMENT_NAME: Optional[str] = _get_secret_from_keyvault(["aoai-deployment-name", "azure-openai-deployment"], os.getenv("AOAI_DEPLOYMENT_NAME"))
     AOAI_API_VERSION: str = os.getenv("AOAI_API_VERSION", "2024-02-15-preview")
     
     # File Processing
