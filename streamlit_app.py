@@ -424,19 +424,36 @@ def main():
                                     invoice_id = data.get("invoice_id")
                                     file_path = data.get("file_path")
                                     file_name = data.get("file_name") or upload_file.name
-                                    st.info("Uploaded. Extracting fields from document...")
-                                    extract_resp = requests.post(
-                                        f"{API_BASE_URL}/api/extraction/extract/{invoice_id}",
-                                        params={"file_identifier": file_path, "file_name": file_name},
-                                        timeout=300,
-                                    )
-                                    if extract_resp.status_code == 200:
-                                        st.success("Extraction completed. Loading invoice for review...")
-                                        st.cache_data.clear()
-                                        st.session_state["selected_invoice_id"] = invoice_id
-                                        st.rerun()
-                                    else:
-                                        st.error(f"Extraction failed: {extract_resp.status_code} {extract_resp.text}")
+                                    
+                                    st.info("Uploaded. Extracting fields from document... This may take 5-10 minutes for complex documents.")
+                                    try:
+                                        # Use a very long timeout to handle slow Document Intelligence/LLM calls
+                                        extract_resp = requests.post(
+                                            f"{API_BASE_URL}/api/extraction/extract/{invoice_id}",
+                                            params={"file_identifier": file_path, "file_name": file_name},
+                                            timeout=600,  # 10 minutes - enough for DI + LLM
+                                        )
+                                        if extract_resp.status_code == 200:
+                                            st.success("Extraction completed. Loading invoice for review...")
+                                            st.cache_data.clear()
+                                            st.session_state["selected_invoice_id"] = invoice_id
+                                            st.rerun()
+                                        else:
+                                            st.error(f"Extraction failed: {extract_resp.status_code} {extract_resp.text}")
+                                    except requests.exceptions.Timeout:
+                                        st.warning("Extraction is taking longer than expected. The process is still running in the background.")
+                                        st.info(f"**Invoice ID:** {invoice_id}")
+                                        st.info("You can:")
+                                        st.info("1. Wait a few more minutes and refresh this page")
+                                        st.info("2. Check the invoice list to see when it's ready")
+                                        st.info("3. Use the 'Re-run Extraction' button if needed")
+                                        # Store invoice ID for later
+                                        st.session_state["pending_extraction_id"] = invoice_id
+                                    except requests.exceptions.ConnectionError:
+                                        st.error("Cannot connect to API server. Please ensure the API server is running on port 8000.")
+                                    except Exception as extract_err:
+                                        st.error(f"Extraction error: {extract_err}")
+                                        st.info(f"Invoice uploaded with ID: {invoice_id}. You can try re-extracting manually.")
                                 else:
                                     try:
                                         err_json = resp.json()
@@ -621,17 +638,65 @@ def main():
             total_val_num = 0.0
         st.metric("Total Amount", f"${total_val_num:,.2f}")
 
-    # Check for missing addresses and LLM issues
+    # Check for missing or low-confidence fields and LLM issues
+    fields = invoice_data.get("fields", {}) or {}
     addresses = invoice_data.get("addresses", {}) or {}
+    
+    def _is_blank(value: Any) -> bool:
+        """Check if a field value is blank/not extracted"""
+        if value is None:
+            return True
+        if isinstance(value, str):
+            return value.strip() == "" or value.strip().lower() == "not extracted"
+        if isinstance(value, (list, dict)):
+            return len(value) == 0
+        return False
+    
+    missing_or_low_conf_fields = []
+    low_conf_threshold = 0.75
+    
+    # Check all fields in the fields dictionary
+    for field_name, field_data in fields.items():
+        if not isinstance(field_data, dict):
+            continue
+            
+        field_value = field_data.get("value")
+        field_confidence = field_data.get("confidence", 0.0)
+        
+        # Skip fields that are explicitly set to high confidence and have values
+        # Only flag fields that are blank OR have low confidence
+        is_blank = _is_blank(field_value)
+        has_low_conf = field_confidence < low_conf_threshold
+        
+        if is_blank or has_low_conf:
+            # Format field name for display
+            display_name = field_name.replace("_", " ").title()
+            missing_or_low_conf_fields.append(display_name)
+    
+    # Check addresses separately (they're in a different structure)
     missing_addresses = []
     for addr_type in ["vendor_address", "bill_to_address", "remit_to_address"]:
         addr_data = addresses.get(addr_type, {})
         addr_val = addr_data.get("value") if isinstance(addr_data, dict) else addr_data
-        if not addr_val or not isinstance(addr_val, dict) or not any(addr_val.get(k) for k in ["street", "city", "province", "postal_code"]):
+        addr_conf = addr_data.get("confidence", 0.0) if isinstance(addr_data, dict) else 0.0
+        
+        # Check if address is missing or has low confidence
+        is_addr_blank = not addr_val or not isinstance(addr_val, dict) or not any(addr_val.get(k) for k in ["street", "city", "province", "postal_code"])
+        if is_addr_blank or addr_conf < low_conf_threshold:
             missing_addresses.append(addr_type.replace("_", " ").title())
     
-    if missing_addresses:
-        st.warning(f"**LLM/Extraction Issue**: The following addresses were not extracted: {', '.join(missing_addresses)}. This may indicate LLM fallback failed or addresses had low confidence. Check the API logs for details.")
+    # Combine all missing/low confidence fields
+    all_missing = missing_or_low_conf_fields + missing_addresses
+    
+    if all_missing:
+        # Limit display to first 10 fields to avoid overwhelming the UI
+        display_fields = all_missing[:10]
+        more_count = len(all_missing) - 10
+        field_list = ', '.join(display_fields)
+        if more_count > 0:
+            field_list += f", and {more_count} more field{'s' if more_count > 1 else ''}"
+        
+        st.warning(f"**LLM/Extraction Issue**: The following fields were not extracted or have low confidence (<75%): {field_list}. This may indicate LLM fallback failed or fields had low confidence. Check the API logs for details.")
 
     # Layout: left persistent PDF, right tabs
     col_pdf, col_main = st.columns([1.1, 1.9])
@@ -659,7 +724,7 @@ def main():
                 fields = invoice_data.get("fields", {})
                 
                 # Group fields into sections
-                header_fields = ["invoice_number", "invoice_date", "due_date", "invoice_type", "reference_number", "po_number", "standing_offer_number"]
+                header_fields = ["invoice_number", "invoice_date", "due_date", "invoice_type", "reference_number", "po_number", "standing_offer_number", "contract_id", "entity"]
                 vendor_fields = ["vendor_name", "vendor_id", "vendor_phone", "vendor_fax", "vendor_email", "vendor_website"]
                 vendor_tax_fields = ["business_number", "gst_number", "qst_number", "pst_number", "tax_registration_number"]
                 customer_fields = ["customer_name", "customer_id", "customer_phone", "customer_email", "customer_fax"]
@@ -873,7 +938,14 @@ def main():
                 st.markdown("**Amounts:**")
                 cols = st.columns(3)
                 for i, field_name in enumerate(basic_financial_fields):
-                    field_data = fields.get(field_name) or {"value": tax_breakdown.get(field_name), "confidence": 0.0}
+                    # Get field data from fields dict, or from tax_breakdown as fallback, but preserve confidence if available
+                    field_data = fields.get(field_name)
+                    if not field_data:
+                        # Fallback to tax_breakdown but use 0.0 confidence since it wasn't in fields
+                        field_data = {"value": tax_breakdown.get(field_name), "confidence": 0.0}
+                    elif field_data.get("value") is None and tax_breakdown.get(field_name):
+                        # If field exists but has no value, check tax_breakdown but keep original confidence
+                        field_data = {**field_data, "value": tax_breakdown.get(field_name)}
                     value = field_data.get("value")
                     confidence = field_data.get("confidence", 0.0)
 

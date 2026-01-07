@@ -9,6 +9,8 @@ import re
 import hashlib
 from typing import Any, Mapping, Dict
 import time
+import asyncio
+from collections import OrderedDict
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from starlette.concurrency import run_in_threadpool
@@ -23,14 +25,113 @@ from src.models.db_utils import address_to_dict, line_items_to_json, _sanitize_t
 from src.services.progress_tracker import progress_tracker, ProcessingStep
 from src.config import settings
 try:
-    from openai import AzureOpenAI
+    from openai import AzureOpenAI, AsyncAzureOpenAI
     from openai import RateLimitError, APIError
 except ImportError:
     AzureOpenAI = None
+    AsyncAzureOpenAI = None
     RateLimitError = None
     APIError = None
 
 logger = logging.getLogger(__name__)
+
+
+class TTLCache:
+    """Simple in-memory cache with TTL and size limits using LRU eviction."""
+    
+    def __init__(self, ttl_seconds: int = 3600, max_size: int = 1000):
+        """
+        Initialize cache with TTL and size limits.
+        
+        Args:
+            ttl_seconds: Time-to-live for cache entries in seconds (default: 1 hour)
+            max_size: Maximum number of entries in cache (default: 1000)
+        """
+        self.ttl_seconds = ttl_seconds
+        self.max_size = max_size
+        # OrderedDict maintains insertion order for LRU eviction
+        self._cache: OrderedDict = OrderedDict()
+        self._timestamps: Dict[Any, float] = {}
+    
+    def get(self, key: Any) -> Optional[str]:
+        """
+        Get value from cache if it exists and hasn't expired.
+        
+        Args:
+            key: Cache key
+            
+        Returns:
+            Cached value or None if not found or expired
+        """
+        if key not in self._cache:
+            return None
+        
+        # Check if entry has expired
+        if key in self._timestamps:
+            age = time.time() - self._timestamps[key]
+            if age > self.ttl_seconds:
+                # Expired - remove it
+                self._cache.pop(key, None)
+                self._timestamps.pop(key, None)
+                return None
+        
+        # Move to end (most recently used) for LRU
+        value = self._cache.pop(key)
+        self._cache[key] = value
+        return value
+    
+    def set(self, key: Any, value: str) -> None:
+        """
+        Set value in cache with current timestamp.
+        Evicts oldest entries if cache is full.
+        
+        Args:
+            key: Cache key
+            value: Value to cache
+        """
+        # Remove if already exists (will be re-added at end)
+        if key in self._cache:
+            self._cache.pop(key)
+            self._timestamps.pop(key, None)
+        
+        # Evict oldest entries if at capacity
+        while len(self._cache) >= self.max_size:
+            oldest_key = next(iter(self._cache))
+            self._cache.pop(oldest_key)
+            self._timestamps.pop(oldest_key, None)
+        
+        # Add new entry
+        self._cache[key] = value
+        self._timestamps[key] = time.time()
+    
+    def clear(self) -> None:
+        """Clear all cache entries."""
+        self._cache.clear()
+        self._timestamps.clear()
+    
+    def cleanup_expired(self) -> int:
+        """
+        Remove all expired entries from cache.
+        
+        Returns:
+            Number of entries removed
+        """
+        current_time = time.time()
+        expired_keys = [
+            key for key, timestamp in self._timestamps.items()
+            if current_time - timestamp > self.ttl_seconds
+        ]
+        
+        for key in expired_keys:
+            self._cache.pop(key, None)
+            self._timestamps.pop(key, None)
+        
+        return len(expired_keys)
+    
+    def size(self) -> int:
+        """Get current number of entries in cache."""
+        return len(self._cache)
+
 
 # Canonical field names - single source of truth
 CANONICAL_FIELDS = {
@@ -123,8 +224,10 @@ class ExtractionService:
         self.file_handler = file_handler or FileHandler()
         self.field_extractor = field_extractor or FieldExtractor()
         self.validation_service = ValidationService()
-        # Simple in-memory cache to avoid re-spending tokens for identical requests
-        self._llm_cache: Dict[Tuple[str, Tuple[str, ...], str, str], str] = {}
+        # In-memory cache with TTL and size limits to avoid re-spending tokens for identical requests
+        cache_ttl = getattr(settings, "LLM_CACHE_TTL_SECONDS", 3600)
+        cache_max_size = getattr(settings, "LLM_CACHE_MAX_SIZE", 1000)
+        self._llm_cache = TTLCache(ttl_seconds=cache_ttl, max_size=cache_max_size)
     
     async def extract_invoice(
         self,
@@ -224,7 +327,7 @@ class ExtractionService:
 
             # Low-confidence fallback: trigger when required fields are missing or low,
             # and when any field is explicitly low or blank/"Not Extracted".
-            low_conf_threshold = 0.75
+            low_conf_threshold = getattr(settings, "LLM_LOW_CONF_THRESHOLD", 0.75)
             low_conf_fields: List[str] = []
             fc = invoice.field_confidence or {}
 
@@ -329,19 +432,59 @@ class ExtractionService:
                                 fc,
                             )
                         else:
-                            await run_in_threadpool(
-                                self._run_low_confidence_fallback,
+                            llm_result = await self._run_low_confidence_fallback(
                                 invoice,
                                 low_conf_fields,
                                 doc_intelligence_data,
                                 fc,
+                                invoice_id=invoice_id,
                             )
+                            # Log per-group results
+                            if llm_result:
+                                groups_succeeded = llm_result.get("groups_succeeded", 0)
+                                groups_failed = llm_result.get("groups_failed", 0)
+                                overall_success = llm_result.get("success", False)
+                                
+                                if groups_succeeded > 0:
+                                    logger.info(
+                                        f"LLM fallback partial success: {groups_succeeded} groups succeeded, "
+                                        f"{groups_failed} groups failed for invoice {invoice_id}"
+                                    )
+                                    # Log failed groups for debugging
+                                    for grp_name, result in llm_result.get("group_results", {}).items():
+                                        if not result.get("success"):
+                                            logger.warning(
+                                                f"LLM group '{grp_name}' failed: {result.get('error', 'Unknown error')}"
+                                            )
+                                
+                                if groups_failed > 0 and groups_succeeded == 0:
+                                    # All groups failed - this is a complete failure
+                                    failed_groups = [
+                                        f"{name}: {r.get('error', 'Unknown')}"
+                                        for name, r in llm_result.get("group_results", {}).items()
+                                        if not r.get("success")
+                                    ]
+                                    error_summary = f"LLM evaluation failed for all {groups_failed} groups"
+                                    if failed_groups:
+                                        error_summary += f": {', '.join(failed_groups[:3])}"
+                                    await progress_tracker.error(invoice_id, error_summary, ProcessingStep.LLM_EVALUATION)
+                                elif overall_success:
+                                    # At least one group succeeded
+                                    await progress_tracker.complete_step(
+                                        invoice_id, 
+                                        ProcessingStep.LLM_EVALUATION, 
+                                        f"LLM evaluation complete ({groups_succeeded} groups succeeded, {groups_failed} failed)"
+                                    )
+                        
                         llm_changed = invoice.model_dump(mode="json") != invoice_before_llm
                         if llm_changed:
                             await progress_tracker.update(invoice_id, 95, "LLM evaluation complete - fields updated")
                         else:
                             await progress_tracker.update(invoice_id, 95, "LLM evaluation complete - no changes")
-                        await progress_tracker.complete_step(invoice_id, ProcessingStep.LLM_EVALUATION, "LLM evaluation complete")
+                        
+                        # Only mark as complete if we haven't already marked it as error
+                        if llm_result and llm_result.get("groups_succeeded", 0) > 0:
+                            await progress_tracker.complete_step(invoice_id, ProcessingStep.LLM_EVALUATION, "LLM evaluation complete")
                     except Exception as e:
                         error_msg = str(e)
                         # Extract more details from the error
@@ -494,12 +637,12 @@ class ExtractionService:
             invoice_before = invoice.model_dump(mode="json")
             
             # Run LLM fallback
-            await run_in_threadpool(
-                self._run_low_confidence_fallback,
+            await self._run_low_confidence_fallback(
                 invoice,
                 low_conf_fields,
                 di_data,
                 fc,
+                invoice_id=invoice_id,
             )
             
             # Check what changed
@@ -538,36 +681,89 @@ class ExtractionService:
                 "errors": [str(e)]
             }
     
-    def _run_low_confidence_fallback(
+    async def _run_low_confidence_fallback(
         self,
         invoice: Invoice,
         low_conf_fields: List[str],
         di_data: Dict[str, Any],
         di_field_confidence: Optional[Dict[str, float]] = None,
-    ) -> None:
-        """Run LLM fallback to refine low-confidence fields. Best-effort and non-blocking."""
+        invoice_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Run LLM fallback to refine low-confidence fields. Best-effort and non-blocking. Async version.
+        
+        Args:
+            invoice: Invoice object to update
+            low_conf_fields: List of low-confidence field names
+            di_data: Document Intelligence raw data
+            di_field_confidence: Optional field confidence dict
+            invoice_id: Optional invoice ID for progress tracking
+        
+        Returns:
+            Dict with keys:
+                - success: bool - True if at least one group succeeded
+                - groups_processed: int - Number of groups processed
+                - groups_succeeded: int - Number of groups that succeeded
+                - groups_failed: int - Number of groups that failed
+                - group_results: Dict[str, Dict] - Per-group results with 'success', 'fields', 'error' keys
+        """
         logger.info("Running LLM fallback for low confidence fields: %s", low_conf_fields)
 
         if not low_conf_fields:
             logger.info("No low-confidence fields to refine; skipping LLM fallback.")
-            return
+            return {
+                "success": False,
+                "groups_processed": 0,
+                "groups_succeeded": 0,
+                "groups_failed": 0,
+                "group_results": {},
+            }
 
         if not getattr(settings, "USE_LLM_FALLBACK", False):
             logger.info("LLM fallback disabled via settings; skipping.")
-            return
+            return {
+                "success": False,
+                "groups_processed": 0,
+                "groups_succeeded": 0,
+                "groups_failed": 0,
+                "group_results": {},
+            }
 
-        if AzureOpenAI is None:
+        if AsyncAzureOpenAI is None:
             logger.warning("openai package not installed; skipping LLM fallback.")
-            return
+            return {
+                "success": False,
+                "groups_processed": 0,
+                "groups_succeeded": 0,
+                "groups_failed": 0,
+                "group_results": {},
+            }
 
         if not settings.AOAI_ENDPOINT or not settings.AOAI_API_KEY or not settings.AOAI_DEPLOYMENT_NAME:
             logger.warning("AOAI config missing; skipping LLM fallback.")
             logger.warning("AOAI_ENDPOINT: %s, AOAI_API_KEY: %s, AOAI_DEPLOYMENT_NAME: %s", 
                           bool(settings.AOAI_ENDPOINT), bool(settings.AOAI_API_KEY), bool(settings.AOAI_DEPLOYMENT_NAME))
-            return
+            return {
+                "success": False,
+                "groups_processed": 0,
+                "groups_succeeded": 0,
+                "groups_failed": 0,
+                "group_results": {},
+            }
         
         # Normalize endpoint (remove trailing slash if present)
         aoai_endpoint = settings.AOAI_ENDPOINT.rstrip('/')
+
+        # Cleanup expired cache entries periodically (every 10th call)
+        if hasattr(self, '_llm_cache_call_count'):
+            self._llm_cache_call_count += 1
+        else:
+            self._llm_cache_call_count = 1
+        
+        if self._llm_cache_call_count % 10 == 0:
+            expired_count = self._llm_cache.cleanup_expired()
+            if expired_count > 0:
+                logger.debug(f"Cleaned up {expired_count} expired cache entries. Cache size: {self._llm_cache.size()}")
 
         try:
             # group fields to reduce payload; process sequentially with small jitter
@@ -576,15 +772,29 @@ class ExtractionService:
                 (
                     "fields",
                     {
-                        "invoice_number", "invoice_date", "due_date",
-                        "vendor_name", "vendor_id", "vendor_phone",
-                        "customer_name", "customer_id",
+                        "invoice_number", "invoice_date", "due_date", "invoice_type", "reference_number",
+                        "vendor_name", "vendor_id", "vendor_phone", "vendor_fax", "vendor_email", "vendor_website",
+                        "customer_name", "customer_id", "customer_phone", "customer_email", "customer_fax",
                         "subtotal", "tax_amount", "total_amount",
-                        "currency", "payment_terms", "acceptance_percentage",
-                        "tax_registration_number",
+                        "currency", "payment_terms", "payment_method", "payment_due_upon",
+                        "acceptance_percentage", "tax_registration_number",
+                        "entity", "contract_id", "standing_offer_number", "po_number",
+                        "period_start", "period_end", "shipping_date", "delivery_date",
+                        "discount_amount", "shipping_amount", "handling_fee", "deposit_amount",
+                        "gst_number", "qst_number", "pst_number", "business_number",
+                        "remit_to_name",
                     },
                 ),
                 ("addresses", {"vendor_address", "bill_to_address", "remit_to_address"}),
+                (
+                    "canadian_taxes",
+                    {
+                        "gst_amount", "gst_rate",
+                        "hst_amount", "hst_rate",
+                        "qst_amount", "qst_rate",
+                        "pst_amount", "pst_rate",
+                    },
+                ),
                 ("line_items", {f for f in low_conf_fields if f.startswith("line_items")}),
             ]
 
@@ -598,10 +808,46 @@ class ExtractionService:
             except Exception:
                 canonical_di = di_data or {}
 
+            # Track per-group results
+            group_results: Dict[str, Dict[str, Any]] = {}
+            groups_succeeded = 0
+            groups_failed = 0
+            
+            # Progress update task for long-running LLM calls
+            progress_task = None
+            if invoice_id:
+                async def send_progress_updates():
+                    """Send periodic progress updates during LLM calls"""
+                    update_interval = 7  # Update every 7 seconds
+                    base_progress = 75
+                    max_progress = 94
+                    iteration = 0
+                    
+                    while True:
+                        await asyncio.sleep(update_interval)
+                        iteration += 1
+                        # Gradually increase progress, but cap at max_progress
+                        progress = min(base_progress + (iteration * 2), max_progress)
+                        await progress_tracker.update(
+                            invoice_id,
+                            progress,
+                            f"LLM evaluation in progress... (processing group {iteration})",
+                            ProcessingStep.LLM_EVALUATION
+                        )
+                
+                progress_task = asyncio.create_task(send_progress_updates())
+
             for idx, (grp_name, grp_fields) in enumerate(groups):
                 sub_fields = [f for f in low_conf_fields if f in grp_fields]
                 if not sub_fields:
                     continue
+
+                # Initialize group result tracking
+                group_results[grp_name] = {
+                    "success": False,
+                    "fields": sub_fields,
+                    "error": None,
+                }
 
                 di_snapshot = dict(di_snapshot_base)
                 di_snapshot["low_conf_fields"] = sub_fields
@@ -610,6 +856,8 @@ class ExtractionService:
                 prompt = self._build_llm_prompt(canonical_di, sub_fields, di_data)
                 if not prompt:
                     logger.info("No prompt built for group %s; skipping.", grp_name)
+                    group_results[grp_name]["error"] = "No prompt built"
+                    groups_failed += 1
                     continue
 
                 cache_key = (
@@ -629,7 +877,7 @@ class ExtractionService:
                         settings.AOAI_API_VERSION
                     )
                     
-                    client = AzureOpenAI(
+                    client = AsyncAzureOpenAI(
                         api_key=settings.AOAI_API_KEY,
                         api_version=settings.AOAI_API_VERSION,
                         azure_endpoint=aoai_endpoint,
@@ -642,9 +890,27 @@ class ExtractionService:
                     exponential_base = 2.0
                     resp = None
                     
+                    # Update progress before starting LLM call
+                    if invoice_id and idx == 0:
+                        await progress_tracker.update(
+                            invoice_id,
+                            78,
+                            f"Calling LLM for group '{grp_name}' ({len(sub_fields)} fields)...",
+                            ProcessingStep.LLM_EVALUATION
+                        )
+                    
                     for attempt in range(max_retries + 1):
                         try:
-                            resp = client.chat.completions.create(
+                            # Update progress during retry attempts
+                            if invoice_id and attempt > 0:
+                                await progress_tracker.update(
+                                    invoice_id,
+                                    80,
+                                    f"Retrying LLM call for group '{grp_name}' (attempt {attempt + 1}/{max_retries + 1})...",
+                                    ProcessingStep.LLM_EVALUATION
+                                )
+                            
+                            resp = await client.chat.completions.create(
                                 model=settings.AOAI_DEPLOYMENT_NAME,
                                 temperature=0.0,
                                 messages=[
@@ -673,7 +939,7 @@ class ExtractionService:
                                         f"LLM fallback hit rate limit (429) on group {grp_name}, "
                                         f"attempt {attempt + 1}/{max_retries}, backing off for {delay:.2f}s"
                                     )
-                                    time.sleep(delay)
+                                    await asyncio.sleep(delay)
                                     continue
                                 else:
                                     logger.warning("LLM fallback hit rate limit (429) on group %s after max retries; stopping further LLM calls.", grp_name)
@@ -689,7 +955,7 @@ class ExtractionService:
                                     f"LLM fallback API error on group {grp_name}, "
                                     f"attempt {attempt + 1}/{max_retries}: {error_msg}, retrying in {delay:.2f}s"
                                 )
-                                time.sleep(delay)
+                                await asyncio.sleep(delay)
                                 continue
                             
                             # Non-retryable error or max retries reached
@@ -698,22 +964,38 @@ class ExtractionService:
                                 error_msg += f" (URL: {call_err.response.url})"
                             logger.error("LLM fallback call failed for group %s: %s. Endpoint: %s, Deployment: %s", 
                                        grp_name, error_msg, aoai_endpoint, settings.AOAI_DEPLOYMENT_NAME, exc_info=True)
+                            # Mark group as failed
+                            group_results[grp_name]["error"] = error_msg
+                            groups_failed += 1
+                            resp = None  # Ensure resp is None to trigger failure handling
                             break
                     else:
                         # All retries exhausted without success
+                        error_msg = "All retries exhausted"
                         logger.error("LLM fallback exhausted all retries for group %s", grp_name)
+                        group_results[grp_name]["error"] = error_msg
+                        groups_failed += 1
+                        resp = None  # Ensure resp is None to trigger failure handling
                         continue
 
                     if resp is None:
-                        logger.error("LLM fallback failed: no response received for group %s", grp_name)
+                        # Already handled above, but double-check
+                        if group_results[grp_name].get("error") is None:
+                            error_msg = "No response received"
+                            logger.error("LLM fallback failed: no response received for group %s", grp_name)
+                            group_results[grp_name]["error"] = error_msg
+                            groups_failed += 1
                         continue
 
                     if not resp.choices or not resp.choices[0].message or not resp.choices[0].message.content:
+                        error_msg = "No content in response"
                         logger.warning("LLM fallback returned no content for group %s; skipping.", grp_name)
+                        group_results[grp_name]["error"] = error_msg
+                        groups_failed += 1
                         continue
 
                     suggestion_text = resp.choices[0].message.content.strip()
-                    self._llm_cache[cache_key] = suggestion_text
+                    self._llm_cache.set(cache_key, suggestion_text)
 
                 llm_data = self._coerce_llm_json(suggestion_text)
                 if llm_data is None:
@@ -728,9 +1010,49 @@ class ExtractionService:
 
                 self._apply_llm_suggestions(invoice, llm_data, sub_fields)
                 logger.info("LLM fallback suggestions applied successfully for group %s.", grp_name)
+                group_results[grp_name]["success"] = True
+                groups_succeeded += 1
+                
+                # Update progress after successful group
+                if invoice_id:
+                    total_groups = len([g for g in groups if any(f in low_conf_fields for f in g[1])])
+                    if total_groups > 0:
+                        progress_pct = 75 + int((groups_succeeded / total_groups) * 15)  # 75-90% range
+                        await progress_tracker.update(
+                            invoice_id,
+                            progress_pct,
+                            f"Completed group '{grp_name}' ({groups_succeeded}/{total_groups} groups done)...",
+                            ProcessingStep.LLM_EVALUATION
+                        )
 
         except Exception as e:
+            error_msg = f"Unexpected error in LLM fallback: {str(e)}"
             logger.exception("LLM fallback failed: %s", e)
+            # Mark all remaining groups as failed
+            for grp_name, result in group_results.items():
+                if not result["success"] and result["error"] is None:
+                    result["error"] = error_msg
+                    groups_failed += 1
+        finally:
+            # Cancel progress update task if it's still running
+            if progress_task and not progress_task.done():
+                progress_task.cancel()
+                try:
+                    await progress_task
+                except asyncio.CancelledError:
+                    pass
+        
+        # Return results summary
+        groups_processed = len(group_results)
+        overall_success = groups_succeeded > 0
+        
+        return {
+            "success": overall_success,
+            "groups_processed": groups_processed,
+            "groups_succeeded": groups_succeeded,
+            "groups_failed": groups_failed,
+            "group_results": group_results,
+        }
 
     def _run_mock_llm_fallback(
         self,
@@ -753,33 +1075,49 @@ class ExtractionService:
                     return val
             return None
 
-        def _promote_confidence(field_name: str) -> None:
+        def _promote_confidence(field_name: str, original_value: Any = None, new_value: Any = None) -> None:
             if invoice.field_confidence is None:
                 invoice.field_confidence = {}
             current = invoice.field_confidence.get(field_name, 0.0)
-            invoice.field_confidence[field_name] = max(float(current or 0.0), 0.9)
+            
+            # Use dynamic confidence calculation if we have context
+            if original_value is not None or new_value is not None:
+                calculated = self._calculate_llm_confidence(
+                    field_name,
+                    original_value,
+                    new_value,
+                    current,
+                )
+                invoice.field_confidence[field_name] = calculated
+            else:
+                # Fallback: use max of current or 0.85 (slightly lower than 0.9 for mock LLM)
+                invoice.field_confidence[field_name] = max(float(current or 0.0), 0.85)
 
         for field in low_conf_fields:
             try:
+                # Get original value for confidence calculation
+                original_value = getattr(invoice, field, None)
+                
                 if field in {"vendor_address", "bill_to_address", "remit_to_address"}:
                     addr_data = _first_value(canonical.get(field), di_raw.get(field))
                     if addr_data:
-                        setattr(invoice, field, self.field_extractor._map_address(addr_data))
-                        _promote_confidence(field)
+                        new_value = self.field_extractor._map_address(addr_data)
+                        setattr(invoice, field, new_value)
+                        _promote_confidence(field, original_value, new_value)
                     continue
 
                 if field in {"invoice_date", "due_date", "period_start", "period_end"}:
                     parsed = self.field_extractor._parse_date(canonical.get(field))
                     if parsed:
                         setattr(invoice, field, parsed)
-                        _promote_confidence(field)
+                        _promote_confidence(field, original_value, parsed)
                     continue
 
                 if field in {"subtotal", "tax_amount", "total_amount", "acceptance_percentage"}:
                     parsed = self.field_extractor._parse_decimal(canonical.get(field))
                     if parsed is not None:
                         setattr(invoice, field, parsed)
-                        _promote_confidence(field)
+                        _promote_confidence(field, original_value, parsed)
                     continue
 
                 candidate = _first_value(
@@ -794,7 +1132,7 @@ class ExtractionService:
                 )
                 if candidate not in (None, "", {}):
                     setattr(invoice, field, candidate)
-                    _promote_confidence(field)
+                    _promote_confidence(field, original_value, candidate)
             except Exception as err:
                 logger.warning("Mock LLM fallback skipped field %s: %s", field, err)
 
@@ -809,7 +1147,7 @@ class ExtractionService:
     def _has_aoai_config(self) -> bool:
         """Return True if AOAI client/config is available for real LLM fallback."""
         return bool(
-            AzureOpenAI is not None
+            AsyncAzureOpenAI is not None
             and settings.AOAI_ENDPOINT
             and settings.AOAI_API_KEY
             and settings.AOAI_DEPLOYMENT_NAME
@@ -838,7 +1176,7 @@ class ExtractionService:
             "fields": sanitized,
         }
 
-        snippet = self._build_content_snippet(di_raw or {})
+        snippet = self._build_content_snippet(di_raw or {}, low_conf_fields)
         if snippet:
             payload["ocr_snippet"] = snippet
 
@@ -846,29 +1184,360 @@ class ExtractionService:
         prefix = f"Low-confidence fields: {', '.join(low_conf_fields)}\n"
         return prefix + json.dumps(payload, ensure_ascii=False, default=str)
 
-    def _build_content_snippet(self, di_data: Dict[str, Any]) -> str:
-        """Extract a small OCR snippet to limit token usage."""
+    def _build_content_snippet(self, di_data: Dict[str, Any], low_conf_fields: Optional[List[str]] = None) -> str:
+        """
+        Extract an intelligent OCR snippet that includes relevant context.
+        
+        Strategy:
+        1. For multi-page documents: Include first page, middle page(s), and last page
+        2. For single-page or content string: Include beginning, middle, and end sections
+        3. Prioritize content that might contain the low-confidence fields
+        
+        Args:
+            di_data: Document Intelligence data with 'pages' or 'content'
+            low_conf_fields: Optional list of low-confidence field names for context-aware selection
+            
+        Returns:
+            OCR snippet string with improved context coverage
+        """
         try:
+            max_chars = getattr(settings, "LLM_OCR_SNIPPET_MAX_CHARS", 3000)
+            
             pages = di_data.get("pages")
             if isinstance(pages, list) and pages:
-                first_page = str(pages[0])
-                last_page = str(pages[-1]) if len(pages) > 1 else ""
-                head = first_page[:1200]
-                tail = last_page[-800:] if last_page else ""
-                return head + ("\n...\n" + tail if tail else "")
+                num_pages = len(pages)
+                
+                if num_pages == 1:
+                    # Single page: include beginning, middle, and end
+                    page_content = str(pages[0])
+                    if len(page_content) <= max_chars:
+                        return page_content
+                    
+                    # Split into beginning, middle, and end
+                    chunk_size = max_chars // 3
+                    head = page_content[:chunk_size]
+                    middle_start = len(page_content) // 2 - chunk_size // 2
+                    middle = page_content[middle_start:middle_start + chunk_size]
+                    tail = page_content[-chunk_size:]
+                    return f"{head}\n...\n{middle}\n...\n{tail}"
+                
+                elif num_pages == 2:
+                    # Two pages: include beginning of first, end of last, and middle section
+                    first_page = str(pages[0])
+                    last_page = str(pages[1])
+                    chunk_size = max_chars // 3
+                    
+                    head = first_page[:chunk_size]
+                    # Get middle from end of first page and beginning of last page
+                    first_tail = first_page[-chunk_size//2:] if len(first_page) > chunk_size//2 else first_page
+                    last_head = last_page[:chunk_size//2] if len(last_page) > chunk_size//2 else last_page
+                    middle = first_tail + "\n" + last_head
+                    tail = last_page[-chunk_size:] if len(last_page) > chunk_size else last_page
+                    return f"{head}\n...\n{middle}\n...\n{tail}"
+                
+                else:
+                    # Multiple pages: include first, middle page(s), and last
+                    first_page = str(pages[0])
+                    last_page = str(pages[-1])
+                    
+                    # Calculate chunk sizes
+                    chunk_size = max_chars // 4  # Reserve space for separators
+                    
+                    # First page (beginning)
+                    head = first_page[:chunk_size]
+                    
+                    # Middle page(s) - include one or two middle pages
+                    middle_pages = []
+                    if num_pages >= 3:
+                        # Include middle page
+                        mid_idx = num_pages // 2
+                        middle_pages.append(str(pages[mid_idx]))
+                    if num_pages >= 5:
+                        # Include pages around middle
+                        mid_idx1 = num_pages // 3
+                        mid_idx2 = (num_pages * 2) // 3
+                        if mid_idx1 != mid_idx and mid_idx2 != mid_idx:
+                            middle_pages.append(str(pages[mid_idx1]))
+                            middle_pages.append(str(pages[mid_idx2]))
+                    
+                    # Combine middle pages, taking chunks from each
+                    middle_chunk_size = chunk_size // max(len(middle_pages), 1) if middle_pages else chunk_size
+                    middle_sections = []
+                    for mid_page in middle_pages[:2]:  # Limit to 2 middle pages
+                        if len(mid_page) > middle_chunk_size:
+                            # Take beginning and end of middle page
+                            mid_head = mid_page[:middle_chunk_size//2]
+                            mid_tail = mid_page[-middle_chunk_size//2:]
+                            middle_sections.append(f"{mid_head}...{mid_tail}")
+                        else:
+                            middle_sections.append(mid_page)
+                    middle = "\n".join(middle_sections) if middle_sections else ""
+                    
+                    # Last page (end)
+                    tail = last_page[-chunk_size:] if len(last_page) > chunk_size else last_page
+                    
+                    parts = [head]
+                    if middle:
+                        parts.append(f"...\n{middle}\n...")
+                    parts.append(tail)
+                    return "\n".join(parts)
+            
+            # Fallback: use raw content string
             raw_content = str(di_data.get("content", ""))
-            if len(raw_content) > 2000:
-                head = raw_content[:1200]
-                tail = raw_content[-800:]
-                return head + "\n...\n" + tail
-            return raw_content
-        except Exception:
+            if len(raw_content) <= max_chars:
+                return raw_content
+            
+            # Split content into beginning, middle, and end
+            chunk_size = max_chars // 3
+            head = raw_content[:chunk_size]
+            middle_start = len(raw_content) // 2 - chunk_size // 2
+            middle = raw_content[middle_start:middle_start + chunk_size]
+            tail = raw_content[-chunk_size:]
+            return f"{head}\n...\n{middle}\n...\n{tail}"
+            
+        except Exception as e:
+            logger.warning(f"Error building content snippet: {e}")
             return ""
 
+    def _calculate_llm_confidence(
+        self,
+        field_name: str,
+        original_value: Any,
+        new_value: Any,
+        original_confidence: Optional[float],
+    ) -> float:
+        """
+        Calculate confidence score for LLM-corrected field based on context.
+        
+        Factors considered:
+        - Original value was null/blank: Higher confidence (0.85-0.95) - LLM filled in missing data
+        - Original value existed but was wrong: Medium confidence (0.75-0.85) - LLM corrected existing data
+        - Original value matches new value: Lower confidence (0.70-0.80) - LLM confirmed existing value
+        - Original confidence was very low (<0.5): Higher confidence boost - LLM improved low-confidence field
+        
+        Args:
+            field_name: Name of the field
+            original_value: Original value before LLM correction
+            new_value: New value from LLM
+            original_confidence: Original confidence score (if available)
+            
+        Returns:
+            Confidence score between 0.0 and 1.0
+        """
+        def _is_blank(value: Any) -> bool:
+            """Check if value is blank/null/not extracted"""
+            if value is None:
+                return True
+            if isinstance(value, str):
+                return value.strip() == "" or value.strip().lower() == "not extracted"
+            if isinstance(value, (list, dict)):
+                return len(value) == 0
+            return False
+        
+        original_was_blank = _is_blank(original_value)
+        new_is_blank = _is_blank(new_value)
+        value_changed = original_value != new_value
+        
+        # Base confidence ranges
+        if original_was_blank and not new_is_blank:
+            # LLM filled in a blank field - high confidence
+            base_confidence = 0.90
+        elif value_changed and not original_was_blank:
+            # LLM corrected an existing (wrong) value - medium-high confidence
+            base_confidence = 0.80
+        elif not value_changed and not original_was_blank:
+            # LLM confirmed existing value - medium confidence
+            base_confidence = 0.75
+        elif new_is_blank:
+            # LLM set to null/blank - lower confidence (might be intentional)
+            base_confidence = 0.70
+        else:
+            # Default case
+            base_confidence = 0.80
+        
+        # Adjust based on original confidence
+        if original_confidence is not None:
+            if original_confidence < 0.5:
+                # Original was very low confidence - LLM improvement is more significant
+                base_confidence = min(0.95, base_confidence + 0.05)
+            elif original_confidence > 0.85:
+                # Original was already high - LLM confirmation is less significant
+                base_confidence = max(0.70, base_confidence - 0.05)
+        
+        # Field-specific adjustments
+        # Critical fields get slight confidence boost if filled from blank
+        critical_fields = {"invoice_number", "invoice_date", "total_amount", "vendor_name"}
+        if field_name in critical_fields and original_was_blank and not new_is_blank:
+            base_confidence = min(0.95, base_confidence + 0.03)
+        
+        # Ensure confidence is within valid range
+        return max(0.0, min(1.0, base_confidence))
+    
+    def _validate_llm_suggestion(
+        self,
+        field_name: str,
+        value: Any,
+        invoice: Invoice,
+        original_value: Any = None,
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Validate an LLM suggestion before applying it.
+        
+        Args:
+            field_name: Name of the field
+            value: Suggested value from LLM
+            invoice: Current invoice object (for context)
+            original_value: Original value before LLM suggestion
+            
+        Returns:
+            (is_valid, error_message) - is_valid is False if value should be rejected
+        """
+        from datetime import date, datetime
+        from decimal import Decimal, InvalidOperation
+        
+        # Allow null values (LLM may intentionally set to null)
+        if value is None:
+            return (True, None)
+        
+        # Date field validations
+        date_fields = {
+            "invoice_date", "due_date", "period_start", "period_end",
+            "shipping_date", "delivery_date"
+        }
+        if field_name in date_fields:
+            try:
+                if isinstance(value, str):
+                    from dateutil.parser import parse
+                    parsed_date = parse(value).date()
+                elif isinstance(value, date):
+                    parsed_date = value
+                elif isinstance(value, datetime):
+                    parsed_date = value.date()
+                else:
+                    return (False, f"Invalid date format for {field_name}: {value}")
+                
+                # Check if date is in the future (with 1 year buffer for reasonable invoices)
+                today = date.today()
+                max_future_date = date(today.year + 1, 12, 31)
+                if parsed_date > max_future_date:
+                    return (False, f"Date {parsed_date} is too far in the future for {field_name}")
+                
+                # Check date logic relative to other dates
+                if field_name == "due_date" and invoice.invoice_date:
+                    if parsed_date < invoice.invoice_date:
+                        return (False, f"Due date {parsed_date} is before invoice date {invoice.invoice_date}")
+                
+                if field_name == "period_end" and invoice.period_start:
+                    if parsed_date < invoice.period_start:
+                        return (False, f"Period end {parsed_date} is before period start {invoice.period_start}")
+                
+                if field_name == "delivery_date" and invoice.shipping_date:
+                    if parsed_date < invoice.shipping_date:
+                        return (False, f"Delivery date {parsed_date} is before shipping date {invoice.shipping_date}")
+                
+                return (True, None)
+            except Exception as e:
+                return (False, f"Invalid date value for {field_name}: {str(e)}")
+        
+        # Amount field validations
+        amount_fields = {
+            "subtotal", "tax_amount", "total_amount", "discount_amount",
+            "shipping_amount", "handling_fee", "deposit_amount",
+            "gst_amount", "hst_amount", "qst_amount", "pst_amount",
+            "acceptance_percentage"
+        }
+        if field_name in amount_fields:
+            try:
+                if isinstance(value, (int, float, Decimal)):
+                    decimal_value = Decimal(str(value))
+                elif isinstance(value, str):
+                    # Try to parse as decimal
+                    decimal_value = Decimal(value.replace(",", "").replace("$", "").strip())
+                else:
+                    return (False, f"Invalid amount format for {field_name}: {value}")
+                
+                # Check for negative amounts (allow only for credit notes)
+                if decimal_value < 0:
+                    is_credit = invoice.invoice_type and "credit" in str(invoice.invoice_type).lower()
+                    if not is_credit:
+                        return (False, f"Negative amount {decimal_value} for {field_name} (not a credit note)")
+                
+                # Check for unreasonably large amounts (likely OCR error)
+                max_reasonable_amount = Decimal("999999999.99")  # ~1 billion
+                if abs(decimal_value) > max_reasonable_amount:
+                    return (False, f"Amount {decimal_value} is unreasonably large for {field_name}")
+                
+                # Special validation for percentages
+                if field_name == "acceptance_percentage":
+                    if decimal_value < 0 or decimal_value > 100:
+                        return (False, f"Acceptance percentage {decimal_value} must be between 0 and 100")
+                
+                return (True, None)
+            except (ValueError, InvalidOperation, TypeError) as e:
+                return (False, f"Invalid amount value for {field_name}: {str(e)}")
+        
+        # Tax rate validations
+        rate_fields = {"gst_rate", "hst_rate", "qst_rate", "pst_rate"}
+        if field_name in rate_fields:
+            try:
+                if isinstance(value, (int, float, Decimal)):
+                    rate_value = Decimal(str(value))
+                elif isinstance(value, str):
+                    rate_value = Decimal(value.replace("%", "").strip())
+                else:
+                    return (False, f"Invalid rate format for {field_name}: {value}")
+                
+                # Tax rates should be between 0 and 100 (or 0 and 1 if decimal)
+                if rate_value < 0:
+                    return (False, f"Tax rate {rate_value} cannot be negative for {field_name}")
+                if rate_value > 100:
+                    # Might be decimal format (0.15 = 15%), check if reasonable
+                    if rate_value > 1:
+                        return (False, f"Tax rate {rate_value} seems too high for {field_name} (expected 0-100% or 0-1)")
+                
+                return (True, None)
+            except (ValueError, InvalidOperation, TypeError) as e:
+                return (False, f"Invalid rate value for {field_name}: {str(e)}")
+        
+        # String field validations
+        if isinstance(value, str):
+            # Check for extremely long strings (likely OCR error or concatenation issue)
+            max_string_length = 1000
+            if len(value) > max_string_length:
+                return (False, f"String value too long ({len(value)} chars) for {field_name}")
+            
+            # Check for suspicious patterns (all numbers, all special chars, etc.)
+            if len(value) > 50:
+                # For long strings, check if it's mostly one character (likely OCR error)
+                if len(set(value)) < 3:
+                    return (False, f"Suspicious string pattern for {field_name} (too repetitive)")
+        
+        # Address field validations
+        if field_name in {"vendor_address", "bill_to_address", "remit_to_address"}:
+            if isinstance(value, dict):
+                # Validate address structure
+                required_keys = {"street", "city", "province", "postal_code", "country"}
+                if not all(k in value for k in required_keys):
+                    # Not an error - address can have partial data
+                    pass
+                # Check postal code format (basic validation for Canadian postal codes)
+                if "postal_code" in value and value["postal_code"]:
+                    postal_code = str(value["postal_code"]).upper().replace(" ", "")
+                    # Canadian postal code: A1A1A1 or A1A 1A1
+                    if len(postal_code) == 6:
+                        # Check format: letter-digit-letter-digit-letter-digit
+                        import re
+                        if not re.match(r"^[A-Z]\d[A-Z]\d[A-Z]\d$", postal_code):
+                            # Not an error - might be US zip or other format
+                            pass
+        
+        # All other validations passed
+        return (True, None)
+    
     def _apply_llm_suggestions(self, invoice: Invoice, suggestions: Any, low_conf_fields: List[str]):
         """
         Apply LLM suggestions to the invoice. Accepts either raw text or a parsed dict.
-        Validates that LLM only returns canonical field names.
+        Validates that LLM only returns canonical field names and validates field values.
         """
         if isinstance(suggestions, str):
             llm_suggestions = self._coerce_llm_json(suggestions)
@@ -896,10 +1565,34 @@ class ExtractionService:
         logger.info("LLM suggestions (validated): %s", llm_suggestions)
 
         before = invoice.model_dump()
+        validation_errors = []
+        
         for field, value in llm_suggestions.items():
             try:
                 # Field names from LLM should already be canonical
                 target_field = field
+                
+                # Get original value and confidence for confidence calculation
+                original_value = before.get(target_field)
+                original_confidence = None
+                if invoice.field_confidence:
+                    original_confidence = invoice.field_confidence.get(target_field)
+
+                # Validate the LLM suggestion before applying
+                is_valid, error_msg = self._validate_llm_suggestion(
+                    target_field,
+                    value,
+                    invoice,
+                    original_value,
+                )
+                
+                if not is_valid:
+                    logger.warning(
+                        f"LLM suggestion rejected for {target_field}: {error_msg}. "
+                        f"Original value: {original_value}, Suggested value: {value}"
+                    )
+                    validation_errors.append(f"{target_field}: {error_msg}")
+                    continue  # Skip applying this invalid suggestion
 
                 # Allow explicit null to clear a low-confidence field
                 if value is None:
@@ -928,9 +1621,19 @@ class ExtractionService:
                 else:
                     setattr(invoice, target_field, value)
 
+                # Calculate dynamic confidence based on context
                 if invoice.field_confidence is None:
                     invoice.field_confidence = {}
-                invoice.field_confidence[target_field] = 0.9
+                
+                # Get new value after setting
+                new_value = getattr(invoice, target_field, None)
+                calculated_confidence = self._calculate_llm_confidence(
+                    target_field,
+                    original_value,
+                    new_value,
+                    original_confidence,
+                )
+                invoice.field_confidence[target_field] = calculated_confidence
             except Exception as e:
                 logger.warning(f"Could not apply LLM suggestion for {field}: {e}")
 
@@ -941,6 +1644,9 @@ class ExtractionService:
             if before.get(k) != after.get(k)
         }
         logger.info("LLM applied diff: %s", diff)
+        
+        if validation_errors:
+            logger.warning(f"LLM suggestions had {len(validation_errors)} validation errors: {validation_errors}")
 
         # Recompute overall confidence after applying suggestions
         try:

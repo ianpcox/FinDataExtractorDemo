@@ -385,18 +385,32 @@ async def get_invoice_for_validation(
         
         def get_conf(key: str, default: float = 0.0):
             if invoice.field_confidence:
-                # exact match
+                # exact match (canonical field name)
                 if key in invoice.field_confidence:
                     try:
                         return float(invoice.field_confidence.get(key) or 0.0)
                     except Exception:
                         return default
-                # address fallback bill_to -> customer_address
-                if key == "bill_to_address" and "customer_address" in invoice.field_confidence:
-                    try:
-                        return float(invoice.field_confidence.get("customer_address") or 0.0)
-                    except Exception:
-                        return default
+                
+                # Fallback mappings for legacy/DI field names that might be in old data
+                fallback_mappings = {
+                    # Address fallbacks
+                    "bill_to_address": "customer_address",
+                    # Legacy/DI field name fallbacks
+                    "purchase_order": "po_number",
+                    "total_tax": "tax_amount",
+                    "invoice_total": "total_amount",
+                    "payment_term": "payment_terms",
+                }
+                
+                # Try fallback mapping
+                if key in fallback_mappings:
+                    fallback_key = fallback_mappings[key]
+                    if fallback_key in invoice.field_confidence:
+                        try:
+                            return float(invoice.field_confidence.get(fallback_key) or 0.0)
+                        except Exception:
+                            return default
             return default
 
         # Build response with field-level confidence
@@ -434,6 +448,16 @@ async def get_invoice_for_validation(
                     "confidence": get_conf("invoice_date"),
                     "validated": False
                 },
+                "invoice_type": {
+                    "value": to_str(getattr(invoice, "invoice_type", None), None),
+                    "confidence": get_conf("invoice_type"),
+                    "validated": False
+                },
+                "reference_number": {
+                    "value": to_str(getattr(invoice, "reference_number", None), None),
+                    "confidence": get_conf("reference_number"),
+                    "validated": False
+                },
                 "due_date": {
                     "value": to_date_str(invoice.due_date),
                     "confidence": get_conf("due_date"),
@@ -454,6 +478,41 @@ async def get_invoice_for_validation(
                     "confidence": get_conf("vendor_phone"),
                     "validated": False
                 },
+                "vendor_fax": {
+                    "value": to_str(getattr(invoice, "vendor_fax", None), None),
+                    "confidence": get_conf("vendor_fax"),
+                    "validated": False
+                },
+                "vendor_email": {
+                    "value": to_str(getattr(invoice, "vendor_email", None), None),
+                    "confidence": get_conf("vendor_email"),
+                    "validated": False
+                },
+                "vendor_website": {
+                    "value": to_str(getattr(invoice, "vendor_website", None), None),
+                    "confidence": get_conf("vendor_website"),
+                    "validated": False
+                },
+                "business_number": {
+                    "value": to_str(getattr(invoice, "business_number", None), None),
+                    "confidence": get_conf("business_number"),
+                    "validated": False
+                },
+                "gst_number": {
+                    "value": to_str(getattr(invoice, "gst_number", None), None),
+                    "confidence": get_conf("gst_number"),
+                    "validated": False
+                },
+                "qst_number": {
+                    "value": to_str(getattr(invoice, "qst_number", None), None),
+                    "confidence": get_conf("qst_number"),
+                    "validated": False
+                },
+                "pst_number": {
+                    "value": to_str(getattr(invoice, "pst_number", None), None),
+                    "confidence": get_conf("pst_number"),
+                    "validated": False
+                },
                 "customer_name": {
                     "value": to_str(invoice.customer_name, "Not extracted"),
                     "confidence": get_conf("customer_name"),
@@ -464,6 +523,26 @@ async def get_invoice_for_validation(
                     "confidence": get_conf("customer_id"),
                     "validated": False
                 },
+                "customer_phone": {
+                    "value": to_str(getattr(invoice, "customer_phone", None), None),
+                    "confidence": get_conf("customer_phone"),
+                    "validated": False
+                },
+                "customer_email": {
+                    "value": to_str(getattr(invoice, "customer_email", None), None),
+                    "confidence": get_conf("customer_email"),
+                    "validated": False
+                },
+                "customer_fax": {
+                    "value": to_str(getattr(invoice, "customer_fax", None), None),
+                    "confidence": get_conf("customer_fax"),
+                    "validated": False
+                },
+                "entity": {
+                    "value": to_str(getattr(invoice, "entity", None), None),
+                    "confidence": get_conf("entity"),
+                    "validated": False
+                },
                 "remit_to_name": {
                     "value": to_str(getattr(invoice, "remit_to_name", None), None),
                     "confidence": get_conf("remit_to_name"),
@@ -471,7 +550,7 @@ async def get_invoice_for_validation(
                 },
                 "po_number": {
                     "value": to_str(invoice.po_number, None),
-                    "confidence": get_conf("purchase_order"),
+                    "confidence": get_conf("po_number"),
                     "validated": False
                 },
                 "contract_id": {
@@ -491,12 +570,12 @@ async def get_invoice_for_validation(
                 },
                 "tax_amount": {
                     "value": to_decimal_str(invoice.tax_amount),
-                    "confidence": get_conf("total_tax"),
+                    "confidence": get_conf("tax_amount"),
                     "validated": False
                 },
                 "total_amount": {
                     "value": to_decimal_str(invoice.total_amount),
-                    "confidence": get_conf("invoice_total"),
+                    "confidence": get_conf("total_amount"),
                     "validated": False
                 },
                 "currency": {
@@ -506,7 +585,7 @@ async def get_invoice_for_validation(
                 },
                 "payment_terms": {
                     "value": to_str(invoice.payment_terms, None),
-                    "confidence": get_conf("payment_term"),
+                    "confidence": get_conf("payment_terms"),
                     "validated": False
                 },
                 "acceptance_percentage": {
@@ -517,6 +596,96 @@ async def get_invoice_for_validation(
                 "tax_registration_number": {
                     "value": to_str(getattr(invoice, "tax_registration_number", None), None),
                     "confidence": get_conf("tax_registration_number"),
+                    "validated": False
+                },
+                "discount_amount": {
+                    "value": to_decimal_str(getattr(invoice, "discount_amount", None)),
+                    "confidence": get_conf("discount_amount"),
+                    "validated": False
+                },
+                "shipping_amount": {
+                    "value": to_decimal_str(getattr(invoice, "shipping_amount", None)),
+                    "confidence": get_conf("shipping_amount"),
+                    "validated": False
+                },
+                "handling_fee": {
+                    "value": to_decimal_str(getattr(invoice, "handling_fee", None)),
+                    "confidence": get_conf("handling_fee"),
+                    "validated": False
+                },
+                "deposit_amount": {
+                    "value": to_decimal_str(getattr(invoice, "deposit_amount", None)),
+                    "confidence": get_conf("deposit_amount"),
+                    "validated": False
+                },
+                "gst_amount": {
+                    "value": to_decimal_str(getattr(invoice, "gst_amount", None)),
+                    "confidence": get_conf("gst_amount"),
+                    "validated": False
+                },
+                "gst_rate": {
+                    "value": to_decimal_str(getattr(invoice, "gst_rate", None)),
+                    "confidence": get_conf("gst_rate"),
+                    "validated": False
+                },
+                "hst_amount": {
+                    "value": to_decimal_str(getattr(invoice, "hst_amount", None)),
+                    "confidence": get_conf("hst_amount"),
+                    "validated": False
+                },
+                "hst_rate": {
+                    "value": to_decimal_str(getattr(invoice, "hst_rate", None)),
+                    "confidence": get_conf("hst_rate"),
+                    "validated": False
+                },
+                "qst_amount": {
+                    "value": to_decimal_str(getattr(invoice, "qst_amount", None)),
+                    "confidence": get_conf("qst_amount"),
+                    "validated": False
+                },
+                "qst_rate": {
+                    "value": to_decimal_str(getattr(invoice, "qst_rate", None)),
+                    "confidence": get_conf("qst_rate"),
+                    "validated": False
+                },
+                "pst_amount": {
+                    "value": to_decimal_str(getattr(invoice, "pst_amount", None)),
+                    "confidence": get_conf("pst_amount"),
+                    "validated": False
+                },
+                "pst_rate": {
+                    "value": to_decimal_str(getattr(invoice, "pst_rate", None)),
+                    "confidence": get_conf("pst_rate"),
+                    "validated": False
+                },
+                "payment_method": {
+                    "value": to_str(getattr(invoice, "payment_method", None), None),
+                    "confidence": get_conf("payment_method"),
+                    "validated": False
+                },
+                "payment_due_upon": {
+                    "value": to_str(getattr(invoice, "payment_due_upon", None), None),
+                    "confidence": get_conf("payment_due_upon"),
+                    "validated": False
+                },
+                "period_start": {
+                    "value": to_date_str(getattr(invoice, "period_start", None)),
+                    "confidence": get_conf("period_start"),
+                    "validated": False
+                },
+                "period_end": {
+                    "value": to_date_str(getattr(invoice, "period_end", None)),
+                    "confidence": get_conf("period_end"),
+                    "validated": False
+                },
+                "shipping_date": {
+                    "value": to_date_str(getattr(invoice, "shipping_date", None)),
+                    "confidence": get_conf("shipping_date"),
+                    "validated": False
+                },
+                "delivery_date": {
+                    "value": to_date_str(getattr(invoice, "delivery_date", None)),
+                    "confidence": get_conf("delivery_date"),
                     "validated": False
                 }
             },
@@ -562,7 +731,7 @@ async def get_invoice_for_validation(
                         "postal_code": None,
                         "country": None
                     },
-                    "confidence": get_conf("customer_address"),
+                    "confidence": get_conf("bill_to_address"),  # Use canonical field name for confidence lookup
                     "validated": False
                 }
             },

@@ -98,6 +98,10 @@ class Settings(BaseSettings):
 
     # LLM Fallback (optional)
     USE_LLM_FALLBACK: bool = os.getenv("USE_LLM_FALLBACK", "False").lower() == "true"
+    LLM_CACHE_TTL_SECONDS: int = int(os.getenv("LLM_CACHE_TTL_SECONDS", "3600"))  # 1 hour default
+    LLM_CACHE_MAX_SIZE: int = int(os.getenv("LLM_CACHE_MAX_SIZE", "1000"))  # Max 1000 entries default
+    LLM_LOW_CONF_THRESHOLD: float = float(os.getenv("LLM_LOW_CONF_THRESHOLD", "0.75"))  # Threshold for triggering LLM fallback (0.0-1.0)
+    LLM_OCR_SNIPPET_MAX_CHARS: int = int(os.getenv("LLM_OCR_SNIPPET_MAX_CHARS", "3000"))  # Max characters for OCR snippet (default: 3000)
     # Try Key Vault first, fallback to .env (try alternative names too)
     AOAI_ENDPOINT: Optional[str] = _get_secret_from_keyvault(["aoai-endpoint", "azure-openai-endpoint"], os.getenv("AOAI_ENDPOINT"))
     AOAI_API_KEY: Optional[str] = _get_secret_from_keyvault(["aoai-api-key", "azure-openai-key"], os.getenv("AOAI_API_KEY"))
