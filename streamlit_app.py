@@ -639,66 +639,8 @@ def main():
             st.warning("Could not inline-load the PDF. Use the link above to open/download.")
 
     with col_main:
-        # Handle buttons outside form (buttons can't be inside forms)
-        line_items_for_add = st.session_state.get("edited_line_items", [])
-        
-        # Add line item button
-        add_line_clicked = st.button("➕ Add line item", key=f"add_line_item_{selected_invoice_id}")
-        if add_line_clicked:
-            existing_numbers = [item.get("line_number", 0) for item in line_items_for_add]
-            next_line_number = max(existing_numbers or [0]) + 1
-            new_item = {
-                "line_number": next_line_number,
-                "description": "",
-                "quantity": None,
-                "unit_price": None,
-                "amount": None,
-                "tax_amount": None,
-                "gst_amount": None,
-                "pst_amount": None,
-                "qst_amount": None,
-                "combined_tax": None,
-                "confidence": 0.99,
-            }
-            st.session_state["edited_line_items"] = line_items_for_add + [new_item]
-            st.session_state[f"item_{selected_invoice_id}_{next_line_number}_desc"] = ""
-            st.session_state[f"item_{selected_invoice_id}_{next_line_number}_qty"] = 0.0
-            st.session_state[f"item_{selected_invoice_id}_{next_line_number}_price"] = 0.0
-            st.session_state[f"item_{selected_invoice_id}_{next_line_number}_gst"] = 0.0
-            st.session_state[f"item_{selected_invoice_id}_{next_line_number}_pstqst"] = 0.0
-            st.session_state[f"item_{selected_invoice_id}_{next_line_number}_combined"] = 0.0
-            st.session_state[f"item_{selected_invoice_id}_{next_line_number}_amount"] = 0.0
-            st.session_state[f"item_{selected_invoice_id}_{next_line_number}_subtotal"] = 0.0
-            st.rerun()
-        
-        # Clean empty lines button (only show if there are line items)
-        if line_items_for_add:
-            clean_empty_clicked = st.button("🧹 Clean Empty Lines", help="Remove line items that are empty across all fields", key=f"clean_empty_{selected_invoice_id}")
-            if clean_empty_clicked:
-                empty_count = 0
-                for item in line_items_for_add:
-                    ln = item.get("line_number")
-                    desc = item.get("description", "")
-                    qty = item.get("quantity")
-                    price = item.get("unit_price")
-                    amount = item.get("amount")
-                    is_empty = (
-                        (not desc or desc.strip() == "") and
-                        (qty is None or qty == 0) and
-                        (price is None or price == 0) and
-                        (amount is None or amount == 0)
-                    )
-                    if is_empty:
-                        st.session_state[f"item_{selected_invoice_id}_{ln}_delete"] = True
-                        empty_count += 1
-                if empty_count > 0:
-                    st.success(f"Marked {empty_count} empty line item(s) for deletion. Submit to save changes.")
-                else:
-                    st.info("No empty line items found.")
-                st.rerun()
-        
         with st.form("invoice_review_form"):
-            tab1, tab2, tab3, tab4, tab5 = st.tabs(["Company and Vendor", "Financial", "Line Items", "Addresses", "Validation"])
+            tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Company and Vendor", "Financial", "Payment & Dates", "Line Items", "Addresses", "Validation"])
 
         # Tab 1: Company and Vendor
             with tab1:
@@ -914,25 +856,6 @@ def main():
                     ("pst_amount", "pst_rate"),
                 ]
                 
-                # Payment Fields
-                st.markdown("#### Payment Information")
-                payment_fields = [
-                    "payment_terms",
-                    "payment_method",
-                    "payment_due_upon",
-                    "acceptance_percentage",
-                    "tax_registration_number",
-                ]
-                
-                # Date Fields
-                st.markdown("#### Dates")
-                date_fields = [
-                    "period_start",
-                    "period_end",
-                    "shipping_date",
-                    "delivery_date",
-                ]
-                
                 financial_cols = st.columns(3)
                 tax_breakdown = invoice_data.get("tax_breakdown", {}) or {}
 
@@ -1054,10 +977,31 @@ def main():
                             st.caption("✓ Edited")
                         elif confidence > 0:
                             st.caption(f"{format_confidence(confidence)}")
+
+            # Tab 3: Payment & Dates
+            with tab3:
+                st.subheader("Payment & Dates")
+                fields = invoice_data.get("fields", {}) or {}
+                
+                # Payment Fields
+                payment_fields = [
+                    "payment_terms",
+                    "payment_method",
+                    "payment_due_upon",
+                    "acceptance_percentage",
+                    "tax_registration_number",
+                ]
+                
+                # Date Fields
+                date_fields = [
+                    "period_start",
+                    "period_end",
+                    "shipping_date",
+                    "delivery_date",
+                ]
                 
                 # Display Payment Fields
-                st.markdown("---")
-                st.markdown("**Payment Information:**")
+                st.markdown("#### Payment Information")
                 cols_pay = st.columns(2)
                 for i, field_name in enumerate(payment_fields):
                     field_data = fields.get(field_name) or {"value": None, "confidence": 0.0}
@@ -1113,7 +1057,7 @@ def main():
                 
                 # Display Date Fields
                 st.markdown("---")
-                st.markdown("**Important Dates:**")
+                st.markdown("#### Important Dates")
                 cols_date = st.columns(2)
                 for i, field_name in enumerate(date_fields):
                     field_data = fields.get(field_name) or {"value": None, "confidence": 0.0}
@@ -1157,187 +1101,226 @@ def main():
                                 unsafe_allow_html=True,
                             )
 
-            # Tab 3: Line Items
-        with tab3:
-            st.subheader("Line Items")
-            st.info("💡 Use the '➕ Add line item' button above the form to add new line items.")
-            
-            line_items = st.session_state.get("edited_line_items", [])
-            
-            if line_items:
-                # Display summary (cleanup button is now outside the form)
-                marked_for_deletion = sum(
-                    1 for item in line_items
-                    if st.session_state.get(f"item_{selected_invoice_id}_{item.get('line_number')}_delete", False)
-                )
-                st.markdown(f"**Total Line Items:** {len(line_items)} ({marked_for_deletion} marked for deletion)")
-                st.info("💡 Use the '🧹 Clean Empty Lines' button above the form to clean up empty line items.")
+            # Tab 4: Line Items
+            with tab4:
+                st.subheader("Line Items")
                 
-                def safe_num(val, default=0.0):
-                    try:
-                        if val is None:
-                            return default
-                        return float(val)
-                    except Exception:
-                        return default
-                def current_line_value(ln: int, key: str, fallback):
-                    return st.session_state.get(f"item_{selected_invoice_id}_{ln}_{key}", fallback)
-
-                def compute_display_values(item):
-                    ln = item.get("line_number")
-                    qty = current_line_value(ln, "qty", item.get("quantity"))
-                    unit_price = current_line_value(ln, "price", item.get("unit_price"))
-                    gst = current_line_value(ln, "gst", item.get("gst_amount"))
-                    pstqst = current_line_value(
-                        ln,
-                        "pstqst",
-                        item.get("pst_amount") if item.get("pst_amount") is not None else item.get("qst_amount"),
+                line_items = st.session_state.get("edited_line_items", [])
+                add_cols = st.columns([1, 3])
+                with add_cols[0]:
+                    add_line_item = st.form_submit_button("➕ Add line item")
+                if add_line_item:
+                    existing_numbers = [item.get("line_number", 0) for item in line_items]
+                    next_line_number = max(existing_numbers or [0]) + 1
+                    new_item = {
+                        "line_number": next_line_number,
+                        "description": "",
+                        "quantity": None,
+                        "unit_price": None,
+                        "amount": None,
+                        "tax_amount": None,
+                        "gst_amount": None,
+                        "pst_amount": None,
+                        "qst_amount": None,
+                        "combined_tax": None,
+                        "confidence": 0.99,
+                    }
+                    st.session_state["edited_line_items"] = line_items + [new_item]
+                    st.session_state[f"item_{selected_invoice_id}_{next_line_number}_desc"] = ""
+                    st.session_state[f"item_{selected_invoice_id}_{next_line_number}_qty"] = 0.0
+                    st.session_state[f"item_{selected_invoice_id}_{next_line_number}_price"] = 0.0
+                    st.session_state[f"item_{selected_invoice_id}_{next_line_number}_gst"] = 0.0
+                    st.session_state[f"item_{selected_invoice_id}_{next_line_number}_pstqst"] = 0.0
+                    st.session_state[f"item_{selected_invoice_id}_{next_line_number}_combined"] = 0.0
+                    st.session_state[f"item_{selected_invoice_id}_{next_line_number}_amount"] = 0.0
+                    st.session_state[f"item_{selected_invoice_id}_{next_line_number}_subtotal"] = 0.0
+                    st.rerun()
+                
+                if line_items:
+                    # Display summary (cleanup button is now outside the form)
+                    marked_for_deletion = sum(
+                        1 for item in line_items
+                        if st.session_state.get(f"item_{selected_invoice_id}_{item.get('line_number')}_delete", False)
                     )
-                    combined = current_line_value(ln, "combined", item.get("combined_tax"))
-                    tax_amount = current_line_value(ln, "tax_amount", item.get("tax_amount"))
-                    amt = current_line_value(ln, "amount", item.get("amount"))
-                    line_total = None
-                    try:
-                        if amt is not None:
-                            line_total = float(amt)
-                        elif qty is not None and unit_price is not None:
-                            line_total = float(qty) * float(unit_price)
-                    except Exception:
-                        line_total = safe_num(amt, 0.0)
-                    if line_total is None:
-                        line_total = safe_num(amt, 0.0)
-                    # allow editable subtotal override
-                    subtotal_override = current_line_value(ln, "subtotal", None)
-                    subtotal = safe_num(subtotal_override, line_total) if subtotal_override is not None else line_total
-                    try:
-                        if subtotal_override is None:
-                            if tax_amount not in [None, ""]:
-                                subtotal = line_total - float(tax_amount)
-                            elif combined not in [None, ""]:
-                                subtotal = line_total - float(combined)
-                            else:
-                                parts = [gst, pstqst]
-                                if any(p is not None for p in parts):
-                                    subtotal = line_total - sum(float(p) for p in parts if p is not None)
-                    except Exception:
-                        subtotal = line_total
-                    return line_total, subtotal
+                    st.markdown(f"**Total Line Items:** {len(line_items)} ({marked_for_deletion} marked for deletion)")
+                    
+                    def safe_num(val, default=0.0):
+                        try:
+                            if val is None:
+                                return default
+                            return float(val)
+                        except Exception:
+                            return default
+                    def current_line_value(ln: int, key: str, fallback):
+                        return st.session_state.get(f"item_{selected_invoice_id}_{ln}_{key}", fallback)
 
-                # Line items table with delete buttons
-                st.markdown("#### Line Items Overview")
-                
-                for item in line_items:
-                    ln = item.get("line_number")
-                    line_total, subtotal = compute_display_values(item)
-                    delete_key = f"item_{selected_invoice_id}_{ln}_delete"
-                    is_deleted = st.session_state.get(delete_key, False)
+                    def compute_display_values(item):
+                        ln = item.get("line_number")
+                        qty = current_line_value(ln, "qty", item.get("quantity"))
+                        unit_price = current_line_value(ln, "price", item.get("unit_price"))
+                        gst = current_line_value(ln, "gst", item.get("gst_amount"))
+                        pstqst = current_line_value(
+                            ln,
+                            "pstqst",
+                            item.get("pst_amount") if item.get("pst_amount") is not None else item.get("qst_amount"),
+                        )
+                        combined = current_line_value(ln, "combined", item.get("combined_tax"))
+                        tax_amount = current_line_value(ln, "tax_amount", item.get("tax_amount"))
+                        amt = current_line_value(ln, "amount", item.get("amount"))
+                        line_total = None
+                        try:
+                            if amt is not None:
+                                line_total = float(amt)
+                            elif qty is not None and unit_price is not None:
+                                line_total = float(qty) * float(unit_price)
+                        except Exception:
+                            line_total = safe_num(amt, 0.0)
+                        if line_total is None:
+                            line_total = safe_num(amt, 0.0)
+                        # allow editable subtotal override
+                        subtotal_override = current_line_value(ln, "subtotal", None)
+                        subtotal = safe_num(subtotal_override, line_total) if subtotal_override is not None else line_total
+                        try:
+                            if subtotal_override is None:
+                                if tax_amount not in [None, ""]:
+                                    subtotal = line_total - float(tax_amount)
+                                elif combined not in [None, ""]:
+                                    subtotal = line_total - float(combined)
+                                else:
+                                    parts = [gst, pstqst]
+                                    if any(p is not None for p in parts):
+                                        subtotal = line_total - sum(float(p) for p in parts if p is not None)
+                        except Exception:
+                            subtotal = line_total
+                        return line_total, subtotal
+
+                    # Line items table with delete buttons
+                    st.markdown("#### Line Items Overview")
                     
-                    # Create a container for each line item
-                    with st.container():
-                        cols = st.columns([0.5, 3, 1, 1, 1, 1, 1, 0.8])
+                    for item in line_items:
+                        ln = item.get("line_number")
+                        line_total, subtotal = compute_display_values(item)
+                        delete_key = f"item_{selected_invoice_id}_{ln}_delete"
+                        is_deleted = st.session_state.get(delete_key, False)
                         
-                        with cols[0]:
-                            st.markdown(f"**{ln}**")
-                        
-                        with cols[1]:
-                            desc = item.get("description", "")[:60]
-                            if is_deleted:
-                                st.markdown(f"~~{desc}~~ *(marked for deletion)*")
-                            else:
-                                st.text(desc)
-                        
-                        with cols[2]:
-                            qty = safe_num(current_line_value(ln, "qty", item.get("quantity")))
-                            st.text(f"{qty:.2f}")
-                        
-                        with cols[3]:
-                            price = safe_num(current_line_value(ln, 'price', item.get('unit_price')))
-                            st.text(f"${price:,.2f}")
-                        
-                        with cols[4]:
-                            st.text(f"${subtotal:,.2f}")
-                        
-                        with cols[5]:
-                            st.text(f"${line_total:,.2f}")
-                        
-                        with cols[6]:
-                            conf = item.get("confidence", 0.0)
-                            conf_icon = get_confidence_icon(conf)
-                            st.markdown(f"{conf_icon} {conf*100:.0f}%")
-                        
-                        with cols[7]:
-                            # Delete button with X
-                            if is_deleted:
-                                if st.button("↺", key=f"restore_{selected_invoice_id}_{ln}", help="Restore this line item"):
-                                    st.session_state[delete_key] = False
-                                    st.rerun()
-                            else:
-                                if st.button("❌", key=f"delete_{selected_invoice_id}_{ln}", help="Delete this line item"):
-                                    st.session_state[delete_key] = True
-                                    st.rerun()
-                        
-                        st.divider()
-                
-                # Column headers (display after buttons to show what each column means)
-                st.markdown("**Columns:** Line # | Description | Qty | Unit Price | Subtotal | Total | Conf | Action")
-                
-                # Detailed view for editing
-                st.markdown("---")
-                st.markdown("#### Detailed Edit View")
-                st.caption("Expand a line item to edit its details")
-                
-                for item in line_items:
-                    ln = item.get("line_number")
-                    line_total, subtotal = compute_display_values(item)
-                    delete_key = f"item_{selected_invoice_id}_{ln}_delete"
-                    is_deleted = st.session_state.get(delete_key, False)
-                    
-                    # Show deletion status in expander title
-                    title_suffix = " 🗑️ MARKED FOR DELETION" if is_deleted else ""
-                    with st.expander(f"Line {ln}: {item.get('description', '')[:50]}{title_suffix}"):
-                        # Delete toggle at the top
-                        col_del1, col_del2 = st.columns([1, 3])
-                        with col_del1:
-                            delete_flag = st.checkbox("Mark for Deletion", key=delete_key, value=bool(st.session_state.get(delete_key, False)))
-                        with col_del2:
-                            if delete_flag:
-                                st.error("⚠️ This line item will be removed when you submit validation.")
-                        
-                        # Only show edit fields if not deleted
-                        if not delete_flag:
-                            col1, col2 = st.columns(2)
+                        # Create a container for each line item
+                        with st.container():
+                            cols = st.columns([0.5, 3, 1, 1, 1, 1, 1, 0.8])
                             
-                            with col1:
-                                st.text_input("Description", value=item.get("description", ""), key=f"item_{selected_invoice_id}_{ln}_desc")
-                                st.number_input("Quantity", value=safe_num(item.get("quantity"), 0.0), key=f"item_{selected_invoice_id}_{ln}_qty")
-                                st.number_input("GST", value=safe_num(item.get("gst_amount"), 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_gst")
-                                st.number_input(
-                                    "PST/QST",
-                                    value=safe_num(
-                                        item.get("pst_amount") if item.get("pst_amount") is not None else item.get("qst_amount"),
-                                        0.0,
-                                    ),
-                                    format="%.2f",
-                                    key=f"item_{selected_invoice_id}_{ln}_pstqst",
-                                )
-
-                            with col2:
-                                st.number_input("Unit Price", value=safe_num(item.get("unit_price"), 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_price")
-                                st.number_input("Combined Tax", value=safe_num(item.get("combined_tax"), 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_combined")
-                                st.number_input("Line Total", value=safe_num(line_total, 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_amount")
-                                st.number_input("Subtotal", value=safe_num(subtotal, 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_subtotal")
+                            with cols[0]:
+                                st.markdown(f"**{ln}**")
+                            
+                            with cols[1]:
+                                desc = item.get("description", "")[:60]
+                                if is_deleted:
+                                    st.markdown(f"~~{desc}~~ *(marked for deletion)*")
+                                else:
+                                    st.text(desc)
+                            
+                            with cols[2]:
+                                qty = safe_num(current_line_value(ln, "qty", item.get("quantity")))
+                                st.text(f"{qty:.2f}")
+                            
+                            with cols[3]:
+                                price = safe_num(current_line_value(ln, 'price', item.get('unit_price')))
+                                st.text(f"${price:,.2f}")
+                            
+                            with cols[4]:
+                                st.text(f"${subtotal:,.2f}")
+                            
+                            with cols[5]:
+                                st.text(f"${line_total:,.2f}")
+                            
+                            with cols[6]:
                                 conf = item.get("confidence", 0.0)
-                                conf_class = get_confidence_color(conf)
-                                st.markdown(f'<span class="{conf_class}">{get_confidence_icon(conf)} Confidence: {format_confidence(conf)}</span>', 
-                                          unsafe_allow_html=True)
-                        else:
-                            st.info("Line item is marked for deletion. Uncheck 'Mark for Deletion' to edit.")
-            else:
-                st.info("No line items found.")
+                                conf_icon = get_confidence_icon(conf)
+                                st.markdown(f"{conf_icon} {conf*100:.0f}%")
+                            
+                            with cols[7]:
+                                # Delete checkbox (checkboxes can be used inside forms)
+                                # Use unique key for overview, but sync to the same session state variable
+                                overview_checkbox_key = f"{delete_key}_overview"
+                                # Read current value from session state
+                                current_delete_state = st.session_state.get(delete_key, False)
+                                overview_value = st.checkbox(
+                                    "Delete",
+                                    value=current_delete_state,
+                                    key=overview_checkbox_key,
+                                    help="Mark this line item for deletion"
+                                )
+                                # Sync overview checkbox changes to the main delete_key session state
+                                if st.session_state.get(overview_checkbox_key) != current_delete_state:
+                                    st.session_state[delete_key] = st.session_state.get(overview_checkbox_key, False)
+                            
+                            st.divider()
+                    
+                    # Column headers (display after buttons to show what each column means)
+                    st.markdown("**Columns:** Line # | Description | Qty | Unit Price | Subtotal | Total | Conf | Action")
+                    
+                    # Detailed view for editing
+                    st.markdown("---")
+                    st.markdown("#### Detailed Edit View")
+                    st.caption("Expand a line item to edit its details")
+                    
+                    for item in line_items:
+                        ln = item.get("line_number")
+                        line_total, subtotal = compute_display_values(item)
+                        delete_key = f"item_{selected_invoice_id}_{ln}_delete"
+                        is_deleted = st.session_state.get(delete_key, False)
+                        
+                        # Show deletion status in expander title
+                        title_suffix = " 🗑️ MARKED FOR DELETION" if is_deleted else ""
+                        with st.expander(f"Line {ln}: {item.get('description', '')[:50]}{title_suffix}"):
+                            # Delete toggle at the top
+                            col_del1, col_del2 = st.columns([1, 3])
+                            with col_del1:
+                                # Use unique key for detail view, but sync to the same session state variable
+                                detail_checkbox_key = f"{delete_key}_detail"
+                                # Read current value from session state
+                                current_delete_state = st.session_state.get(delete_key, False)
+                                delete_flag = st.checkbox("Mark for Deletion", key=detail_checkbox_key, value=current_delete_state)
+                                # Sync detail checkbox changes to the main delete_key session state
+                                if st.session_state.get(detail_checkbox_key) != current_delete_state:
+                                    st.session_state[delete_key] = st.session_state.get(detail_checkbox_key, False)
+                            with col_del2:
+                                if delete_flag:
+                                    st.error("⚠️ This line item will be removed when you submit validation.")
+                            
+                            # Only show edit fields if not deleted
+                            if not delete_flag:
+                                col1, col2 = st.columns(2)
+                                
+                                with col1:
+                                    st.text_input("Description", value=item.get("description", ""), key=f"item_{selected_invoice_id}_{ln}_desc")
+                                    st.number_input("Quantity", value=safe_num(item.get("quantity"), 0.0), key=f"item_{selected_invoice_id}_{ln}_qty")
+                                    st.number_input("GST", value=safe_num(item.get("gst_amount"), 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_gst")
+                                    st.number_input(
+                                        "PST/QST",
+                                        value=safe_num(
+                                            item.get("pst_amount") if item.get("pst_amount") is not None else item.get("qst_amount"),
+                                            0.0,
+                                        ),
+                                        format="%.2f",
+                                        key=f"item_{selected_invoice_id}_{ln}_pstqst",
+                                    )
+
+                                with col2:
+                                    st.number_input("Unit Price", value=safe_num(item.get("unit_price"), 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_price")
+                                    st.number_input("Combined Tax", value=safe_num(item.get("combined_tax"), 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_combined")
+                                    st.number_input("Line Total", value=safe_num(line_total, 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_amount")
+                                    st.number_input("Subtotal", value=safe_num(subtotal, 0.0), format="%.2f", key=f"item_{selected_invoice_id}_{ln}_subtotal")
+                                    conf = item.get("confidence", 0.0)
+                                    conf_class = get_confidence_color(conf)
+                                    st.markdown(f'<span class="{conf_class}">{get_confidence_icon(conf)} Confidence: {format_confidence(conf)}</span>', 
+                                              unsafe_allow_html=True)
+                            else:
+                                st.info("Line item is marked for deletion. Uncheck 'Mark for Deletion' to edit.")
+                else:
+                    st.info("No line items found.")
     
-        # Tab 4: Addresses
-        with tab4:
-            addresses = st.session_state.get("edited_addresses", {})
+            # Tab 5: Addresses
+            with tab5:
+                addresses = st.session_state.get("edited_addresses", {})
             if addresses:
                 st.subheader("Addresses")
                 for addr_type, addr_data in addresses.items():
@@ -1359,8 +1342,8 @@ def main():
             else:
                 st.info("No addresses available.")
     
-            # Tab 5: Validation
-            with tab5:
+            # Tab 6: Validation
+            with tab6:
                 st.subheader("Submit Validation")
                 
                 reviewer_name = st.session_state.get("reviewer_name", "")
