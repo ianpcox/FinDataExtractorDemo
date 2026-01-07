@@ -135,6 +135,29 @@ class DatabaseService:
         )
 
     @staticmethod
+    async def reset_for_reextract(
+        invoice_id: str,
+        db: Optional[AsyncSession] = None,
+    ) -> bool:
+        """
+        Reset an invoice to PENDING so re-extraction can proceed.
+        Returns False if currently PROCESSING or otherwise not eligible.
+        """
+        return await DatabaseService.transition_state(
+            invoice_id=invoice_id,
+            from_states={
+                InvoiceState.PENDING.value,
+                InvoiceState.EXTRACTED.value,
+                InvoiceState.FAILED.value,
+                InvoiceState.VALIDATED.value,
+                InvoiceState.STAGED.value,
+            },
+            to_state=InvoiceState.PENDING.value,
+            error_on_invalid=False,
+            db=db,
+        )
+
+    @staticmethod
     async def set_extraction_result(
         invoice_id: str,
         patch: dict,

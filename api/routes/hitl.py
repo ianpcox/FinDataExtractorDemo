@@ -1033,6 +1033,10 @@ async def reextract_invoice(
         if not invoice.file_path:
             raise HTTPException(status_code=400, detail="Missing file_path for invoice")
 
+        reset_ok = await DatabaseService.reset_for_reextract(invoice_id, db=db)
+        if not reset_ok:
+            raise HTTPException(status_code=409, detail="Invoice is already processing")
+
         extraction_service = _get_extraction_service()
         from datetime import datetime
         result = await extraction_service.extract_invoice(
@@ -1042,6 +1046,8 @@ async def reextract_invoice(
             upload_date=invoice.upload_date or datetime.utcnow(),
             db=db,
         )
+        if result.get("status") == "conflict":
+            raise HTTPException(status_code=409, detail="Invoice is already processing")
         if result.get("status") not in ["extracted"]:
             status = result.get("status", "unknown")
             errors = result.get("errors", [])

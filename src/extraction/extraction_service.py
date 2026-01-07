@@ -206,12 +206,17 @@ class ExtractionService:
             invoice.id = invoice_id
             invoice.status = "extracted"
             
+            await progress_tracker.update(invoice_id, 70, "Fields mapped, saving to database...")
+            
             # Step 5: Save to database
             logger.info(f"Saving extracted invoice to database: {invoice_id}")
             patch = self._invoice_to_patch(invoice)
             ok = await DatabaseService.set_extraction_result(invoice_id, patch, db=db)
             if not ok:
                 raise ValueError("Failed to persist extraction result; state mismatch")
+            
+            await progress_tracker.update(invoice_id, 75, "Extraction complete, checking for LLM evaluation...")
+            await progress_tracker.complete_step(invoice_id, ProcessingStep.EXTRACTION, "Extraction complete")
             
             # Prepare JSON-serializable payload
             invoice_dict = invoice.model_dump(mode="json")
@@ -1096,4 +1101,3 @@ class ExtractionService:
 
         # Everything else
         return str(data)
-
