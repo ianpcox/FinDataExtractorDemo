@@ -484,7 +484,12 @@ class ExtractionService:
 
         if not settings.AOAI_ENDPOINT or not settings.AOAI_API_KEY or not settings.AOAI_DEPLOYMENT_NAME:
             logger.warning("AOAI config missing; skipping LLM fallback.")
+            logger.warning("AOAI_ENDPOINT: %s, AOAI_API_KEY: %s, AOAI_DEPLOYMENT_NAME: %s", 
+                          bool(settings.AOAI_ENDPOINT), bool(settings.AOAI_API_KEY), bool(settings.AOAI_DEPLOYMENT_NAME))
             return
+        
+        # Normalize endpoint (remove trailing slash if present)
+        aoai_endpoint = settings.AOAI_ENDPOINT.rstrip('/')
 
         try:
             # group fields to reduce payload; process sequentially with small jitter
@@ -538,19 +543,26 @@ class ExtractionService:
 
                 suggestion_text = self._llm_cache.get(cache_key)
                 if suggestion_text is None:
+                    logger.info(
+                        "Calling Azure OpenAI chat.completions for group %s. Endpoint: %s, Deployment: %s, API Version: %s",
+                        grp_name,
+                        aoai_endpoint,
+                        settings.AOAI_DEPLOYMENT_NAME,
+                        settings.AOAI_API_VERSION
+                    )
+                    
                     client = AzureOpenAI(
                         api_key=settings.AOAI_API_KEY,
                         api_version=settings.AOAI_API_VERSION,
-                        azure_endpoint=settings.AOAI_ENDPOINT,
+                        azure_endpoint=aoai_endpoint,
                     )
-
-                    logger.info("Calling Azure OpenAI chat.completions for group %s.", grp_name)
                     
                     # Retry logic for OpenAI calls
                     max_retries = 3
                     initial_delay = 1.0
                     max_delay = 60.0
                     exponential_base = 2.0
+                    resp = None
                     
                     for attempt in range(max_retries + 1):
                         try:
@@ -592,19 +604,30 @@ class ExtractionService:
                             # Other API errors - retry if not max attempts
                             elif APIError and isinstance(call_err, APIError) and attempt < max_retries:
                                 delay = min(initial_delay * (exponential_base ** attempt), max_delay)
+                                error_msg = str(call_err)
+                                if hasattr(call_err, 'response') and hasattr(call_err.response, 'url'):
+                                    error_msg += f" (URL: {call_err.response.url})"
                                 logger.warning(
                                     f"LLM fallback API error on group {grp_name}, "
-                                    f"attempt {attempt + 1}/{max_retries}: {call_err}, retrying in {delay:.2f}s"
+                                    f"attempt {attempt + 1}/{max_retries}: {error_msg}, retrying in {delay:.2f}s"
                                 )
                                 time.sleep(delay)
                                 continue
                             
                             # Non-retryable error or max retries reached
-                            logger.error("LLM fallback call failed for group %s: %s", grp_name, call_err, exc_info=True)
+                            error_msg = str(call_err)
+                            if hasattr(call_err, 'response') and hasattr(call_err.response, 'url'):
+                                error_msg += f" (URL: {call_err.response.url})"
+                            logger.error("LLM fallback call failed for group %s: %s. Endpoint: %s, Deployment: %s", 
+                                       grp_name, error_msg, aoai_endpoint, settings.AOAI_DEPLOYMENT_NAME, exc_info=True)
                             break
                     else:
                         # All retries exhausted without success
                         logger.error("LLM fallback exhausted all retries for group %s", grp_name)
+                        continue
+
+                    if resp is None:
+                        logger.error("LLM fallback failed: no response received for group %s", grp_name)
                         continue
 
                     if not resp.choices or not resp.choices[0].message or not resp.choices[0].message.content:
