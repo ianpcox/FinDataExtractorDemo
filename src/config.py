@@ -98,6 +98,7 @@ class Settings(BaseSettings):
 
     # LLM Fallback (optional)
     USE_LLM_FALLBACK: bool = os.getenv("USE_LLM_FALLBACK", "False").lower() == "true"
+    USE_MULTIMODAL_LLM_FALLBACK: bool = os.getenv("USE_MULTIMODAL_LLM_FALLBACK", "False").lower() == "true"
     LLM_CACHE_TTL_SECONDS: int = int(os.getenv("LLM_CACHE_TTL_SECONDS", "3600"))  # 1 hour default
     LLM_CACHE_MAX_SIZE: int = int(os.getenv("LLM_CACHE_MAX_SIZE", "1000"))  # Max 1000 entries default
     LLM_LOW_CONF_THRESHOLD: float = float(os.getenv("LLM_LOW_CONF_THRESHOLD", "0.75"))  # Threshold for triggering LLM fallback (0.0-1.0)
@@ -106,7 +107,10 @@ class Settings(BaseSettings):
     AOAI_ENDPOINT: Optional[str] = _get_secret_from_keyvault(["aoai-endpoint", "azure-openai-endpoint"], os.getenv("AOAI_ENDPOINT"))
     AOAI_API_KEY: Optional[str] = _get_secret_from_keyvault(["aoai-api-key", "azure-openai-key"], os.getenv("AOAI_API_KEY"))
     AOAI_DEPLOYMENT_NAME: Optional[str] = _get_secret_from_keyvault(["aoai-deployment-name", "azure-openai-deployment"], os.getenv("AOAI_DEPLOYMENT_NAME"))
+    AOAI_MULTIMODAL_DEPLOYMENT_NAME: Optional[str] = os.getenv("AOAI_MULTIMODAL_DEPLOYMENT_NAME")
     AOAI_API_VERSION: str = os.getenv("AOAI_API_VERSION", "2024-02-15-preview")
+    MULTIMODAL_MAX_PAGES: int = int(os.getenv("MULTIMODAL_MAX_PAGES", "2"))
+    MULTIMODAL_IMAGE_SCALE: float = float(os.getenv("MULTIMODAL_IMAGE_SCALE", "2.0"))
     
     # File Processing
     MAX_FILE_SIZE_MB: int = int(os.getenv("MAX_FILE_SIZE_MB", "50"))

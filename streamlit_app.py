@@ -418,7 +418,7 @@ def main():
                         with st.spinner("Processing invoice... This may take 2-5 minutes for complex documents."):
                             try:
                                 files = {"file": (upload_file.name, upload_file.getvalue(), "application/pdf")}
-                                resp = requests.post(f"{API_BASE_URL}/api/ingestion/upload", files=files, timeout=180)
+                                resp = requests.post(f"{API_BASE_URL}/api/ingestion/upload", files=files, timeout=60)
                                 if resp.status_code == 201:
                                     data = resp.json()
                                     invoice_id = data.get("invoice_id")
@@ -449,6 +449,15 @@ def main():
                                         st.info("3. Use the 'Re-run Extraction' button if needed")
                                         # Store invoice ID for later
                                         st.session_state["pending_extraction_id"] = invoice_id
+                                    except requests.exceptions.RequestException as req_err:
+                                        error_msg = str(req_err)
+                                        if "503" in error_msg or "Upstream service unavailable" in error_msg:
+                                            st.error("**Azure Document Intelligence is not configured.**")
+                                            st.info("Please configure Azure Document Intelligence credentials:")
+                                            st.code("AZURE_FORM_RECOGNIZER_ENDPOINT=...\nAZURE_FORM_RECOGNIZER_KEY=...")
+                                        else:
+                                            st.error(f"Extraction request failed: {error_msg}")
+                                        st.info(f"Invoice uploaded with ID: {invoice_id}. You can try re-extracting manually.")
                                     except requests.exceptions.ConnectionError:
                                         st.error("Cannot connect to API server. Please ensure the API server is running on port 8000.")
                                     except Exception as extract_err:

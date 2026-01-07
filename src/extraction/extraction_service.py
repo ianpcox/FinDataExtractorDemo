@@ -3,10 +3,12 @@
 from typing import Optional, Dict, Any, List, Tuple
 from datetime import datetime, date
 from decimal import Decimal
+from io import BytesIO
 import logging
 import json
 import re
 import hashlib
+import base64
 from typing import Any, Mapping, Dict
 import time
 import asyncio
@@ -218,9 +220,18 @@ class ExtractionService:
             file_handler: FileHandler instance
             field_extractor: FieldExtractor instance
         """
-        self.doc_intelligence_client = (
-            doc_intelligence_client or DocumentIntelligenceClient()
-        )
+        # Initialize Document Intelligence client - will raise ValueError if credentials missing
+        # This is intentional - we want to fail fast if Azure DI is not configured
+        try:
+            self.doc_intelligence_client = (
+                doc_intelligence_client or DocumentIntelligenceClient()
+            )
+        except ValueError as e:
+            logger.warning(f"Document Intelligence client initialization failed: {e}")
+            logger.warning("Azure Document Intelligence credentials are required for extraction.")
+            # Store the error to provide better error messages later
+            self.doc_intelligence_client = None
+            self._di_init_error = str(e)
         self.file_handler = file_handler or FileHandler()
         self.field_extractor = field_extractor or FieldExtractor()
         self.validation_service = ValidationService()
@@ -276,6 +287,16 @@ class ExtractionService:
                 }
             
             # Step 2: Analyze with Document Intelligence
+            if self.doc_intelligence_client is None:
+                error_msg = getattr(self, '_di_init_error', 'Document Intelligence client not initialized')
+                errors.append(f"Document Intelligence not available: {error_msg}")
+                await DatabaseService.set_extraction_failed(invoice_id, "; ".join(errors), db=db)
+                return {
+                    "invoice_id": invoice_id,
+                    "status": "upstream_error",
+                    "errors": errors
+                }
+            
             logger.info(f"Analyzing invoice with Document Intelligence: {invoice_id}")
             doc_intelligence_data = await run_in_threadpool(
                 self.doc_intelligence_client.analyze_invoice,
@@ -423,50 +444,96 @@ class ExtractionService:
                     invoice_before_llm = invoice.model_dump(mode="json")
                     llm_error_details = []
                     try:
-                        llm_result = await self._run_low_confidence_fallback(
+                        # Get file content for multimodal fallback if needed
+                        file_content = None
+                        use_multimodal = bool(getattr(settings, "USE_MULTIMODAL_LLM_FALLBACK", False))
+                        if use_multimodal:
+                            try:
+                                file_content = await run_in_threadpool(
+                                    self.file_handler.download_file,
+                                    invoice.file_path
+                                )
+                            except Exception as e:
+                                logger.warning(f"Could not download file for multimodal fallback: {e}")
+                                file_content = None
+                        
+                        # Check if PDF is scanned and use multimodal if appropriate
+                        is_scanned = False
+                        if file_content and use_multimodal:
+                            is_scanned = await run_in_threadpool(
+                                self._is_scanned_pdf,
+                                file_content
+                            )
+                        
+                        if is_scanned and use_multimodal:
+                            logger.info("PDF detected as scanned, using multimodal LLM fallback")
+                            llm_result = await self._run_multimodal_fallback(
+                                invoice,
+                                low_conf_fields,
+                                doc_intelligence_data,
+                                fc,
+                                file_content,
+                                invoice_id=invoice_id,
+                            )
+                        else:
+                            llm_result = await self._run_low_confidence_fallback(
                                 invoice,
                                 low_conf_fields,
                                 doc_intelligence_data,
                                 fc,
                                 invoice_id=invoice_id,
                             )
-                            # Log per-group results
-                            if llm_result:
-                                groups_succeeded = llm_result.get("groups_succeeded", 0)
-                                groups_failed = llm_result.get("groups_failed", 0)
-                                overall_success = llm_result.get("success", False)
-                                
-                                if groups_succeeded > 0:
-                                    logger.info(
-                                        f"LLM fallback partial success: {groups_succeeded} groups succeeded, "
-                                        f"{groups_failed} groups failed for invoice {invoice_id}"
-                                    )
-                                    # Log failed groups for debugging
-                                    for grp_name, result in llm_result.get("group_results", {}).items():
-                                        if not result.get("success"):
-                                            logger.warning(
-                                                f"LLM group '{grp_name}' failed: {result.get('error', 'Unknown error')}"
-                                            )
-                                
-                                if groups_failed > 0 and groups_succeeded == 0:
-                                    # All groups failed - this is a complete failure
-                                    failed_groups = [
-                                        f"{name}: {r.get('error', 'Unknown')}"
-                                        for name, r in llm_result.get("group_results", {}).items()
-                                        if not r.get("success")
-                                    ]
-                                    error_summary = f"LLM evaluation failed for all {groups_failed} groups"
-                                    if failed_groups:
-                                        error_summary += f": {', '.join(failed_groups[:3])}"
-                                    await progress_tracker.error(invoice_id, error_summary, ProcessingStep.LLM_EVALUATION)
-                                elif overall_success:
-                                    # At least one group succeeded
-                                    await progress_tracker.complete_step(
-                                        invoice_id, 
-                                        ProcessingStep.LLM_EVALUATION, 
-                                        f"LLM evaluation complete ({groups_succeeded} groups succeeded, {groups_failed} failed)"
-                                    )
-                        
+                            # If text-based LLM didn't improve fields and multimodal is enabled, try multimodal
+                            if llm_result and llm_result.get("groups_succeeded", 0) == 0 and use_multimodal and file_content:
+                                logger.info("Text-based LLM did not improve fields, trying multimodal fallback")
+                                multimodal_result = await self._run_multimodal_fallback(
+                                    invoice,
+                                    low_conf_fields,
+                                    doc_intelligence_data,
+                                    fc,
+                                    file_content,
+                                    invoice_id=invoice_id,
+                                )
+                                # Use multimodal result if it succeeded
+                                if multimodal_result and multimodal_result.get("groups_succeeded", 0) > 0:
+                                    llm_result = multimodal_result
+                        # Log per-group results
+                        if llm_result:
+                            groups_succeeded = llm_result.get("groups_succeeded", 0)
+                            groups_failed = llm_result.get("groups_failed", 0)
+                            overall_success = llm_result.get("success", False)
+                            
+                            if groups_succeeded > 0:
+                                logger.info(
+                                    f"LLM fallback partial success: {groups_succeeded} groups succeeded, "
+                                    f"{groups_failed} groups failed for invoice {invoice_id}"
+                                )
+                                # Log failed groups for debugging
+                                for grp_name, result in llm_result.get("group_results", {}).items():
+                                    if not result.get("success"):
+                                        logger.warning(
+                                            f"LLM group '{grp_name}' failed: {result.get('error', 'Unknown error')}"
+                                        )
+                            
+                            if groups_failed > 0 and groups_succeeded == 0:
+                                # All groups failed - this is a complete failure
+                                failed_groups = [
+                                    f"{name}: {r.get('error', 'Unknown')}"
+                                    for name, r in llm_result.get("group_results", {}).items()
+                                    if not r.get("success")
+                                ]
+                                error_summary = f"LLM evaluation failed for all {groups_failed} groups"
+                                if failed_groups:
+                                    error_summary += f": {', '.join(failed_groups[:3])}"
+                                await progress_tracker.error(invoice_id, error_summary, ProcessingStep.LLM_EVALUATION)
+                            elif overall_success:
+                                # At least one group succeeded
+                                await progress_tracker.complete_step(
+                                    invoice_id, 
+                                    ProcessingStep.LLM_EVALUATION, 
+                                    f"LLM evaluation complete ({groups_succeeded} groups succeeded, {groups_failed} failed)"
+                                )
+                    
                         llm_changed = invoice.model_dump(mode="json") != invoice_before_llm
                         if llm_changed:
                             await progress_tracker.update(invoice_id, 95, "LLM evaluation complete - fields updated")
@@ -501,7 +568,7 @@ class ExtractionService:
                         llm_error_details.append({
                             "error": error_msg,
                             "fields_affected": low_conf_fields,
-                            "endpoint": aoai_endpoint,
+                            "endpoint": settings.AOAI_ENDPOINT,
                             "deployment": settings.AOAI_DEPLOYMENT_NAME
                         })
 
@@ -627,14 +694,68 @@ class ExtractionService:
             # Store before state
             invoice_before = invoice.model_dump(mode="json")
             
+            # Get file content for multimodal fallback if needed
+            file_content = None
+            use_multimodal = bool(getattr(settings, "USE_MULTIMODAL_LLM_FALLBACK", False))
+            if use_multimodal and invoice.file_path:
+                try:
+                    file_content = await run_in_threadpool(
+                        self.file_handler.download_file,
+                        invoice.file_path
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not download file for multimodal fallback: {e}")
+                    file_content = None
+            
+            # Check if PDF is scanned and use multimodal if appropriate
+            is_scanned = False
+            if file_content and use_multimodal:
+                is_scanned = await run_in_threadpool(
+                    self._is_scanned_pdf,
+                    file_content
+                )
+            
             # Run LLM fallback
-            await self._run_low_confidence_fallback(
-                invoice,
-                low_conf_fields,
-                di_data,
-                fc,
-                invoice_id=invoice_id,
-            )
+            if is_scanned and use_multimodal:
+                logger.info("PDF detected as scanned, using multimodal LLM fallback")
+                multimodal_result = await self._run_multimodal_fallback(
+                    invoice,
+                    low_conf_fields,
+                    di_data,
+                    fc,
+                    file_content,
+                )
+                # Check if multimodal improved fields
+                if not multimodal_result or multimodal_result.get("groups_succeeded", 0) == 0:
+                    # Try text-based fallback as backup
+                    await self._run_low_confidence_fallback(
+                        invoice,
+                        low_conf_fields,
+                        di_data,
+                        fc,
+                        invoice_id=invoice_id,
+                    )
+            else:
+                await self._run_low_confidence_fallback(
+                    invoice,
+                    low_conf_fields,
+                    di_data,
+                    fc,
+                    invoice_id=invoice_id,
+                )
+                # If text-based LLM didn't improve fields and multimodal is enabled, try multimodal
+                if use_multimodal and file_content:
+                    invoice_after_text = invoice.model_dump(mode="json")
+                    text_changed = invoice_after_text != invoice_before
+                    if not text_changed:
+                        logger.info("Text-based LLM did not improve fields, trying multimodal fallback")
+                        await self._run_multimodal_fallback(
+                            invoice,
+                            low_conf_fields,
+                            di_data,
+                            fc,
+                            file_content,
+                        )
             
             # Check what changed
             invoice_after = invoice.model_dump(mode="json")
@@ -1051,11 +1172,11 @@ class ExtractionService:
         low_conf_fields: List[str],
         di_data: Dict[str, Any],
         di_field_confidence: Optional[Dict[str, float]] = None,
-    ) -> None:
+    ) -> bool:
         """Demo-mode LLM fallback that uses deterministic heuristics (no external calls)."""
         logger.info("Running mock LLM fallback for low confidence fields: %s", low_conf_fields)
         if not low_conf_fields:
-            return
+            return False
 
         canonical = self.field_extractor.normalize_di_data(di_data or {})
         di_raw = di_data or {}
@@ -1134,6 +1255,9 @@ class ExtractionService:
                 )
         except Exception:
             pass
+        
+        # Return True if any fields were updated
+        return True  # Mock LLM always attempts to update fields
 
     def _has_aoai_config(self) -> bool:
         """Return True if AOAI client/config is available for real LLM fallback."""
@@ -1143,6 +1267,327 @@ class ExtractionService:
             and settings.AOAI_API_KEY
             and settings.AOAI_DEPLOYMENT_NAME
         )
+    
+    def _has_multimodal_config(self) -> bool:
+        """Return True if AOAI client/config is available for multimodal LLM fallback."""
+        return bool(
+            AsyncAzureOpenAI is not None
+            and settings.AOAI_ENDPOINT
+            and settings.AOAI_API_KEY
+            and (settings.AOAI_MULTIMODAL_DEPLOYMENT_NAME or settings.AOAI_DEPLOYMENT_NAME)
+        )
+    
+    def _is_scanned_pdf(self, file_content: bytes) -> bool:
+        """Detect if PDF is primarily scanned/images (vs text-based)."""
+        try:
+            import PyPDF2
+        except Exception:
+            return False
+
+        try:
+            pdf_file = BytesIO(file_content)
+            pdf_reader = PyPDF2.PdfReader(pdf_file)
+            if len(pdf_reader.pages) == 0:
+                return False
+            first_page = pdf_reader.pages[0]
+            text = first_page.extract_text()
+            return text is None or len(text.strip()) < 50
+        except Exception:
+            logger.debug("Could not determine if PDF is scanned, assuming text-based")
+            return False
+
+    def _render_multimodal_images(self, file_content: bytes) -> List[str]:
+        """Render a small set of PDF pages as base64 PNGs for multimodal prompts."""
+        try:
+            import fitz  # PyMuPDF
+        except Exception:
+            logger.warning("PyMuPDF not available; skipping multimodal image rendering.")
+            return []
+
+        max_pages = max(1, int(getattr(settings, "MULTIMODAL_MAX_PAGES", 2)))
+        scale = float(getattr(settings, "MULTIMODAL_IMAGE_SCALE", 2.0))
+
+        try:
+            pdf_doc = fitz.open(stream=file_content, filetype="pdf")
+        except Exception as exc:
+            logger.warning("Failed to open PDF for multimodal rendering: %s", exc)
+            return []
+
+        images: List[str] = []
+        try:
+            for page_num in range(min(len(pdf_doc), max_pages)):
+                page = pdf_doc[page_num]
+                pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale))
+                img_bytes = pix.tobytes("png")
+                images.append(base64.b64encode(img_bytes).decode("utf-8"))
+        finally:
+            pdf_doc.close()
+
+        return images
+
+    async def _run_multimodal_fallback(
+        self,
+        invoice: Invoice,
+        low_conf_fields: List[str],
+        di_data: Dict[str, Any],
+        di_field_confidence: Optional[Dict[str, float]] = None,
+        file_content: bytes = b"",
+        invoice_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Run multimodal LLM fallback when OCR quality is low or PDF is image-based."""
+        logger.info("Running multimodal LLM fallback for low confidence fields: %s", low_conf_fields)
+
+        if not low_conf_fields:
+            logger.info("No low-confidence fields to refine; skipping multimodal fallback.")
+            return {
+                "success": False,
+                "groups_processed": 0,
+                "groups_succeeded": 0,
+                "groups_failed": 0,
+                "group_results": {},
+            }
+
+        if not getattr(settings, "USE_MULTIMODAL_LLM_FALLBACK", False):
+            logger.info("Multimodal fallback disabled via settings; skipping.")
+            return {
+                "success": False,
+                "groups_processed": 0,
+                "groups_succeeded": 0,
+                "groups_failed": 0,
+                "group_results": {},
+            }
+
+        if not self._has_multimodal_config():
+            logger.warning("AOAI multimodal config missing; skipping multimodal fallback.")
+            return {
+                "success": False,
+                "groups_processed": 0,
+                "groups_succeeded": 0,
+                "groups_failed": 0,
+                "group_results": {},
+            }
+
+        images = self._render_multimodal_images(file_content)
+        if not images:
+            logger.warning("No images available for multimodal fallback; skipping.")
+            return {
+                "success": False,
+                "groups_processed": 0,
+                "groups_succeeded": 0,
+                "groups_failed": 0,
+                "group_results": {},
+            }
+
+        try:
+            applied_any = False
+            fc = di_field_confidence or {}
+            groups = [
+                (
+                    "fields",
+                    {
+                        "invoice_number", "invoice_date", "due_date",
+                        "vendor_name", "vendor_id", "vendor_phone",
+                        "customer_name", "customer_id",
+                        "subtotal", "tax_amount", "total_amount",
+                        "currency", "payment_terms", "acceptance_percentage",
+                        "tax_registration_number",
+                    },
+                ),
+                ("addresses", {"vendor_address", "bill_to_address", "remit_to_address"}),
+                ("line_items", {f for f in low_conf_fields if f.startswith("line_items")}),
+            ]
+
+            # Prepare sanitized DI snapshot for caching (common)
+            di_snapshot_base = {
+                "di_fields": di_data or {},
+                "di_field_confidence": fc,
+            }
+            try:
+                canonical_di = self.field_extractor.normalize_di_data(di_data or {})
+            except Exception:
+                canonical_di = di_data or {}
+
+            image_content = [
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{img}"},
+                }
+                for img in images
+            ]
+
+            # Track per-group results
+            group_results: Dict[str, Dict[str, Any]] = {}
+            groups_succeeded = 0
+            groups_failed = 0
+
+            for grp_name, grp_fields in groups:
+                sub_fields = [f for f in low_conf_fields if f in grp_fields]
+                if not sub_fields:
+                    continue
+
+                # Initialize group result tracking
+                group_results[grp_name] = {
+                    "success": False,
+                    "fields": sub_fields,
+                    "error": None,
+                }
+
+                di_snapshot = dict(di_snapshot_base)
+                di_snapshot["low_conf_fields"] = sub_fields
+                di_snapshot = self._sanitize_for_json(di_snapshot)
+
+                prompt = self._build_llm_prompt(canonical_di, sub_fields, di_data)
+                if not prompt:
+                    logger.info("No prompt built for group %s; skipping.", grp_name)
+                    group_results[grp_name]["error"] = "No prompt built"
+                    groups_failed += 1
+                    continue
+
+                file_hash = invoice.content_sha256 or hashlib.sha256(file_content).hexdigest()
+                cache_key = (
+                    settings.AOAI_MULTIMODAL_DEPLOYMENT_NAME or settings.AOAI_DEPLOYMENT_NAME or "",
+                    tuple(sorted(sub_fields)),
+                    file_hash,
+                    json.dumps(di_snapshot, sort_keys=True),
+                )
+
+                suggestion_text = self._llm_cache.get(cache_key)
+                if suggestion_text is None:
+                    logger.info(
+                        "Calling Azure OpenAI multimodal chat.completions for group %s. Endpoint: %s, Deployment: %s, API Version: %s",
+                        grp_name,
+                        settings.AOAI_ENDPOINT,
+                        settings.AOAI_MULTIMODAL_DEPLOYMENT_NAME or settings.AOAI_DEPLOYMENT_NAME,
+                        settings.AOAI_API_VERSION
+                    )
+                    
+                    client = AsyncAzureOpenAI(
+                        api_key=settings.AOAI_API_KEY,
+                        api_version=settings.AOAI_API_VERSION,
+                        azure_endpoint=settings.AOAI_ENDPOINT,
+                    )
+                    
+                    # Retry logic for OpenAI calls
+                    max_retries = 3
+                    initial_delay = 1.0
+                    max_delay = 60.0
+                    exponential_base = 2.0
+                    resp = None
+                    
+                    for attempt in range(max_retries + 1):
+                        try:
+                            resp = await client.chat.completions.create(
+                                model=settings.AOAI_MULTIMODAL_DEPLOYMENT_NAME or settings.AOAI_DEPLOYMENT_NAME,
+                                temperature=0.0,
+                                messages=[
+                                    {"role": "system", "content": LLM_SYSTEM_PROMPT},
+                                    {
+                                        "role": "user",
+                                        "content": [{"type": "text", "text": prompt}] + image_content,
+                                    },
+                                ],
+                            )
+                            break  # Success, exit retry loop
+                            
+                        except Exception as call_err:
+                            status = getattr(call_err, "status_code", None)
+                            
+                            # Rate limit error (429) - always retry with backoff
+                            if status == 429 or (RateLimitError and isinstance(call_err, RateLimitError)):
+                                if attempt < max_retries:
+                                    delay = min(initial_delay * (exponential_base ** attempt), max_delay)
+                                    try:
+                                        retry_after = getattr(call_err, "retry_after", None)
+                                        if retry_after:
+                                            delay = max(delay, float(retry_after))
+                                    except (ValueError, AttributeError):
+                                        pass
+                                    
+                                    logger.warning(
+                                        f"Multimodal fallback hit rate limit (429) on group {grp_name}, "
+                                        f"attempt {attempt + 1}/{max_retries}, backing off for {delay:.2f}s"
+                                    )
+                                    await asyncio.sleep(delay)
+                                    continue
+                            
+                            # Other errors - log and retry if attempts remain
+                            if attempt < max_retries:
+                                delay = min(initial_delay * (exponential_base ** attempt), max_delay)
+                                logger.warning(
+                                    f"Multimodal fallback call failed for group {grp_name}, "
+                                    f"attempt {attempt + 1}/{max_retries}, retrying in {delay:.2f}s: {call_err}"
+                                )
+                                await asyncio.sleep(delay)
+                            else:
+                                error_msg = f"Multimodal fallback call failed after {max_retries} retries: {str(call_err)}"
+                                logger.error(f"Multimodal fallback call failed for group {grp_name}: {call_err}", exc_info=True)
+                                group_results[grp_name]["error"] = error_msg
+                                groups_failed += 1
+                                break
+                    else:
+                        # All retries exhausted without success
+                        logger.error("Multimodal fallback exhausted all retries for group %s", grp_name)
+                        continue
+
+                    if not resp or not resp.choices or not resp.choices[0].message or not resp.choices[0].message.content:
+                        logger.warning("Multimodal fallback returned no content for group %s; skipping.", grp_name)
+                        group_results[grp_name]["error"] = "No content in response"
+                        groups_failed += 1
+                        continue
+
+                    suggestion_text = resp.choices[0].message.content.strip()
+                    self._llm_cache.set(cache_key, suggestion_text)
+
+                llm_data = self._coerce_llm_json(suggestion_text)
+                if llm_data is None:
+                    logger.error("Multimodal fallback returned non-JSON content for group %s; skipping.", grp_name)
+                    logger.debug("Raw multimodal suggestion text: %s", suggestion_text)
+                    group_results[grp_name]["error"] = "Non-JSON content"
+                    groups_failed += 1
+                    continue
+
+                if not isinstance(llm_data, dict):
+                    logger.error(
+                        "Multimodal fallback JSON is not an object for group %s; got %s",
+                        grp_name,
+                        type(llm_data),
+                    )
+                    logger.debug("Raw multimodal suggestion text: %s", suggestion_text)
+                    group_results[grp_name]["error"] = f"Invalid JSON type: {type(llm_data)}"
+                    groups_failed += 1
+                    continue
+
+                applied = self._apply_llm_suggestions(invoice, llm_data, sub_fields)
+                if applied:
+                    applied_any = True
+                    logger.info("Multimodal fallback suggestions applied successfully for group %s.", grp_name)
+                    group_results[grp_name]["success"] = True
+                    groups_succeeded += 1
+                else:
+                    logger.info("Multimodal fallback suggestions did not change any fields for group %s.", grp_name)
+                    group_results[grp_name]["error"] = "No fields changed"
+                    groups_failed += 1
+
+            # Return results summary
+            groups_processed = len(group_results)
+            overall_success = groups_succeeded > 0
+            
+            return {
+                "success": overall_success,
+                "groups_processed": groups_processed,
+                "groups_succeeded": groups_succeeded,
+                "groups_failed": groups_failed,
+                "group_results": group_results,
+            }
+        except Exception as exc:
+            logger.exception("Multimodal LLM fallback failed: %s", exc)
+            return {
+                "success": False,
+                "groups_processed": len(group_results),
+                "groups_succeeded": groups_succeeded,
+                "groups_failed": groups_failed + 1,
+                "group_results": group_results,
+            }
 
     def _build_llm_prompt(
         self,
@@ -1525,10 +1970,13 @@ class ExtractionService:
         # All other validations passed
         return (True, None)
     
-    def _apply_llm_suggestions(self, invoice: Invoice, suggestions: Any, low_conf_fields: List[str]):
+    def _apply_llm_suggestions(self, invoice: Invoice, suggestions: Any, low_conf_fields: List[str]) -> bool:
         """
         Apply LLM suggestions to the invoice. Accepts either raw text or a parsed dict.
         Validates that LLM only returns canonical field names and validates field values.
+        
+        Returns:
+            True if any suggestions were applied, False otherwise
         """
         if isinstance(suggestions, str):
             llm_suggestions = self._coerce_llm_json(suggestions)
@@ -1536,11 +1984,11 @@ class ExtractionService:
             llm_suggestions = suggestions
         else:
             logger.warning("LLM suggestions are neither str nor dict; skipping apply.")
-            return
+            return False
 
         if llm_suggestions is None:
             logger.warning("LLM suggestions could not be coerced to JSON; skipping apply.")
-            return
+            return False
 
         # Validate LLM output - only canonical fields allowed
         invalid_fields = set(llm_suggestions.keys()) - CANONICAL_FIELDS
@@ -1551,7 +1999,7 @@ class ExtractionService:
         
         if not llm_suggestions:
             logger.info("No valid canonical fields in LLM suggestions after validation")
-            return
+            return False
 
         logger.info("LLM suggestions (validated): %s", llm_suggestions)
 
