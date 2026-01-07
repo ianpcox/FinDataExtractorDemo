@@ -55,7 +55,6 @@ def _sample_invoice():
         tax_amount=Decimal("5.00"),
         total_amount=Decimal("105.00"),
         currency="CAD",
-        acceptance_percentage=Decimal("12.5"),
         tax_registration_number="TX-123",
         payment_terms="Net 30",
         field_confidence={"total_amount": 0.8, "vendor_name": 0.9, "tax_amount": 0.75},
@@ -74,7 +73,6 @@ def test_db_utils_roundtrip_preserves_fields():
     assert back.bill_to_address.city == inv.bill_to_address.city
     assert back.remit_to_address.city == inv.remit_to_address.city
     assert back.standing_offer_number == inv.standing_offer_number
-    assert back.acceptance_percentage == inv.acceptance_percentage
     assert back.tax_registration_number == inv.tax_registration_number
     assert back.field_confidence == inv.field_confidence
 

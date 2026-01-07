@@ -12,16 +12,16 @@ The dry run successfully processed **2 subscriptions**:
 ## Execution Results
 
 ### Prerequisites Check
-- ✅ Azure CLI: Available
-- ✅ Bicep CLI: Available (optional)
-- ✅ kubectl: Available (optional, for AKS workloads)
-- ✅ helm: Available (optional, for Helm charts)
+-  Azure CLI: Available
+-  Bicep CLI: Available (optional)
+-  kubectl: Available (optional, for AKS workloads)
+-  helm: Available (optional, for Helm charts)
 
 ### Subscription Processing
 
 #### Development Subscription
 - **Subscription ID:** 1e73b158-8845-4984-9a19-fbc26936e3b5
-- **Status:** ✅ Successfully processed
+- **Status:**  Successfully processed
 - **Resource Groups:** 0 found
 - **Actions Performed:**
   - Set Azure subscription context
@@ -30,7 +30,7 @@ The dry run successfully processed **2 subscriptions**:
 
 #### Production Subscription
 - **Subscription ID:** f27c3dc6-1db4-4279-86cc-6226071c07be
-- **Status:** ✅ Successfully processed
+- **Status:**  Successfully processed
 - **Resource Groups:** 0 found
 - **Actions Performed:**
   - Set Azure subscription context
@@ -106,11 +106,11 @@ Services Exported: 0
 
 ## Notes
 
-- ✅ **Dry Run Mode:** No files were written to disk
-- ✅ **Authentication:** Successfully authenticated to Azure CLI
-- ✅ **Subscription Resolution:** Successfully resolved subscription names to IDs
-- ✅ **Tool Detection:** All required and optional tools detected
-- ⚠️ **Resource Groups:** No resource groups were found in either subscription
+-  **Dry Run Mode:** No files were written to disk
+-  **Authentication:** Successfully authenticated to Azure CLI
+-  **Subscription Resolution:** Successfully resolved subscription names to IDs
+-  **Tool Detection:** All required and optional tools detected
+-  **Resource Groups:** No resource groups were found in either subscription
   - This may be expected if:
     - The subscriptions are empty
     - Resource groups are in different locations

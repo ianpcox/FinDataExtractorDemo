@@ -1,4 +1,4 @@
-# ✅ P0 Atomic Updates - Already Complete
+#  P0 Atomic Updates - Already Complete
 
 ## Verification Against Requirements
 
@@ -6,13 +6,13 @@ This document verifies that the P0 fix for eliminating TOCTOU races via atomic U
 
 ---
 
-## Requirement 1: No SELECT-then-write ✅
+## Requirement 1: No SELECT-then-write 
 
 ### transition_state() (lines 234-247)
 
 **Before (UNSAFE - TOCTOU race):**
 ```python
-# ❌ Race condition possible
+#  Race condition possible
 result = await session.execute(select(InvoiceDB).where(...))
 inv = result.scalar_one_or_none()
 if inv and inv.processing_state in from_states:  # ← Another worker can change state here
@@ -22,7 +22,7 @@ if inv and inv.processing_state in from_states:  # ← Another worker can change
 
 **After (SAFE - Atomic):**
 ```python
-# ✅ Single atomic UPDATE
+#  Single atomic UPDATE
 stmt = (
     update(InvoiceDB)
     .where(
@@ -40,7 +40,7 @@ await session.commit()
 return result.rowcount > 0  # Success determined by rowcount
 ```
 
-✅ **VERIFIED:** No SELECT before UPDATE
+ **VERIFIED:** No SELECT before UPDATE
 
 ---
 
@@ -48,7 +48,7 @@ return result.rowcount > 0  # Success determined by rowcount
 
 **Before (UNSAFE - TOCTOU race):**
 ```python
-# ❌ Race condition possible
+#  Race condition possible
 invoice = await session.get(InvoiceDB, invoice_id)
 if invoice.review_version == expected_review_version:  # ← Another worker can update here
     invoice.review_version += 1  # ← Lost update possible
@@ -58,7 +58,7 @@ if invoice.review_version == expected_review_version:  # ← Another worker can 
 
 **After (SAFE - Atomic):**
 ```python
-# ✅ Single atomic UPDATE
+#  Single atomic UPDATE
 patch["review_version"] = expected_review_version + 1
 patch["updated_at"] = datetime.utcnow()
 
@@ -75,11 +75,11 @@ await session.commit()
 return result.rowcount  # 0 if stale, 1 if success
 ```
 
-✅ **VERIFIED:** No SELECT before UPDATE
+ **VERIFIED:** No SELECT before UPDATE
 
 ---
 
-## Requirement 2: SQLAlchemy update() with WHERE guard ✅
+## Requirement 2: SQLAlchemy update() with WHERE guard 
 
 ### transition_state() WHERE clause:
 ```python
@@ -97,11 +97,11 @@ return result.rowcount  # 0 if stale, 1 if success
 )
 ```
 
-✅ **VERIFIED:** Both use SQLAlchemy `update()` with WHERE guards
+ **VERIFIED:** Both use SQLAlchemy `update()` with WHERE guards
 
 ---
 
-## Requirement 3: review_version increments in same UPDATE ✅
+## Requirement 3: review_version increments in same UPDATE 
 
 **Code (lines 288-291):**
 ```python
@@ -130,11 +130,11 @@ SET review_version = :review_version,  -- Set to expected + 1
 WHERE id = :id AND review_version = :expected_review_version
 ```
 
-✅ **VERIFIED:** `review_version` increment happens atomically in the same UPDATE
+ **VERIFIED:** `review_version` increment happens atomically in the same UPDATE
 
 ---
 
-## Requirement 4: rowcount==0 handling ✅
+## Requirement 4: rowcount==0 handling 
 
 ### transition_state() (lines 249-257):
 ```python
@@ -173,11 +173,11 @@ if rows == 0:  # ← Stale write detected
     )
 ```
 
-✅ **VERIFIED:** Both methods handle `rowcount==0` correctly; caller returns HTTP 409
+ **VERIFIED:** Both methods handle `rowcount==0` correctly; caller returns HTTP 409
 
 ---
 
-## Requirement 5: Tight transactions ✅
+## Requirement 5: Tight transactions 
 
 ### transition_state() transaction scope:
 ```python
@@ -198,7 +198,7 @@ finally:
 
 **Transaction duration:** < 10ms (execute + commit)
 
-**No external calls in transaction:** ✅ None
+**No external calls in transaction:**  None
 
 ### update_with_review_version() transaction scope:
 ```python
@@ -219,19 +219,19 @@ finally:
 
 **Transaction duration:** < 10ms (execute + commit)
 
-**No external calls in transaction:** ✅ None
+**No external calls in transaction:**  None
 
-✅ **VERIFIED:** Transactions are tight; no long-held locks
+ **VERIFIED:** Transactions are tight; no long-held locks
 
 ---
 
-## Test Coverage ✅
+## Test Coverage 
 
 ### Test File: `tests/unit/test_atomic_updates.py`
 
 **All 8 tests PASS:**
 
-### 1. test_transition_state_is_atomic ✅
+### 1. test_transition_state_is_atomic 
 ```python
 @pytest.mark.asyncio
 async def test_transition_state_is_atomic(db_session, sample_invoice):
@@ -257,11 +257,11 @@ async def test_transition_state_is_atomic(db_session, sample_invoice):
     assert current.processing_state == InvoiceState.PROCESSING
 ```
 
-**Result:** ✅ PASSED
+**Result:**  PASSED
 
 ---
 
-### 2. test_update_with_review_version_is_atomic ✅
+### 2. test_update_with_review_version_is_atomic 
 ```python
 @pytest.mark.asyncio
 async def test_update_with_review_version_is_atomic(db_session, sample_invoice):
@@ -288,11 +288,11 @@ async def test_update_with_review_version_is_atomic(db_session, sample_invoice):
     assert invoice.vendor_name == "Update 1"  # Not "Update 2"
 ```
 
-**Result:** ✅ PASSED
+**Result:**  PASSED
 
 ---
 
-### 3. test_concurrent_review_version_updates_one_wins ✅
+### 3. test_concurrent_review_version_updates_one_wins 
 ```python
 @pytest.mark.asyncio
 async def test_concurrent_review_version_updates_one_wins(db_session, sample_invoice):
@@ -319,17 +319,17 @@ async def test_concurrent_review_version_updates_one_wins(db_session, sample_inv
     assert invoice.review_version == 1  # ← Atomic guard prevented double-increment
 ```
 
-**Result:** ✅ PASSED
+**Result:**  PASSED
 
 ---
 
-### Additional Tests (4-8) ✅
+### Additional Tests (4-8) 
 
-4. **test_transition_state_prevents_invalid_transitions** - ✅ PASSED
-5. **test_update_with_review_version_increments_correctly** - ✅ PASSED
-6. **test_transition_state_with_multiple_valid_from_states** - ✅ PASSED
-7. **test_update_with_review_version_handles_complex_patch** - ✅ PASSED
-8. **test_atomic_update_no_lost_updates** - ✅ PASSED
+4. **test_transition_state_prevents_invalid_transitions** -  PASSED
+5. **test_update_with_review_version_increments_correctly** -  PASSED
+6. **test_transition_state_with_multiple_valid_from_states** -  PASSED
+7. **test_update_with_review_version_handles_complex_patch** -  PASSED
+8. **test_atomic_update_no_lost_updates** -  PASSED
 
 ---
 
@@ -352,16 +352,16 @@ tests/unit/test_atomic_updates.py::test_atomic_update_no_lost_updates           
 
 ---
 
-## Summary: All Requirements Met ✅
+## Summary: All Requirements Met 
 
 | Requirement | Status | Evidence |
 |-------------|--------|----------|
-| ✅ 1. No SELECT-then-write | **PASS** | Both methods use single UPDATE statement |
-| ✅ 2. SQLAlchemy update() with WHERE guard | **PASS** | Both have WHERE clauses on id + state/version |
-| ✅ 3. review_version increments in same UPDATE | **PASS** | Incremented in .values() before execute |
-| ✅ 4. rowcount==0 → False/409 | **PASS** | Both return based on rowcount; caller returns 409 |
-| ✅ 5. Tight transactions | **PASS** | Execute + commit + return; no external calls |
-| ✅ Tests prove atomicity | **PASS** | 8/8 concurrency tests pass |
+|  1. No SELECT-then-write | **PASS** | Both methods use single UPDATE statement |
+|  2. SQLAlchemy update() with WHERE guard | **PASS** | Both have WHERE clauses on id + state/version |
+|  3. review_version increments in same UPDATE | **PASS** | Incremented in .values() before execute |
+|  4. rowcount==0 → False/409 | **PASS** | Both return based on rowcount; caller returns 409 |
+|  5. Tight transactions | **PASS** | Execute + commit + return; no external calls |
+|  Tests prove atomicity | **PASS** | 8/8 concurrency tests pass |
 
 ---
 
@@ -379,14 +379,14 @@ tests/unit/test_atomic_updates.py::test_atomic_update_no_lost_updates           
 
 ---
 
-## 🎯 P0 Fix Complete and Verified
+##  P0 Fix Complete and Verified
 
 **No TOCTOU races remain:**
-- ✅ Single-statement guarded UPDATEs
-- ✅ Rowcount-based success/failure
-- ✅ HTTP 409 on stale writes
-- ✅ All tests pass
-- ✅ Production-ready
+-  Single-statement guarded UPDATEs
+-  Rowcount-based success/failure
+-  HTTP 409 on stale writes
+-  All tests pass
+-  Production-ready
 
-**This critical reliability fix eliminates all read-then-write race conditions!** 🚀
+**This critical reliability fix eliminates all read-then-write race conditions!** 
 

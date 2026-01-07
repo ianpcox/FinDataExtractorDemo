@@ -11,12 +11,12 @@ This guide covers Azure resource setup for FinDataExtractor Vanilla. You have tw
 
 ### Why Separate Resources?
 
-- ✅ **Complete Independence** - No coupling with full version
-- ✅ **Isolated Scaling** - Scale resources independently
-- ✅ **Separate Cost Tracking** - Clear billing separation
-- ✅ **Different Access Controls** - Different security requirements
-- ✅ **Safe Testing** - Test changes without affecting production
-- ✅ **Different Resource Tiers** - Optimize costs for simpler needs
+-  **Complete Independence** - No coupling with full version
+-  **Isolated Scaling** - Scale resources independently
+-  **Separate Cost Tracking** - Clear billing separation
+-  **Different Access Controls** - Different security requirements
+-  **Safe Testing** - Test changes without affecting production
+-  **Different Resource Tiers** - Optimize costs for simpler needs
 
 ### Required Azure Resources
 
@@ -97,15 +97,15 @@ DATABASE_URL=mssql+pyodbc://user:password@server:1433/database?driver=SQL+Server
 If you want to use existing Azure resources for development/testing:
 
 ### Shared Document Intelligence
-- ✅ Same endpoint and key
-- ⚠️ Watch rate limits if both projects are active
-- ⚠️ Cost attribution is shared
+-  Same endpoint and key
+-  Watch rate limits if both projects are active
+-  Cost attribution is shared
 
 ### Shared Storage Account
-- ✅ Use separate containers with `vanilla-` prefix
-- ✅ Easy to set up
-- ⚠️ Less isolation
-- ⚠️ Shared quotas and limits
+-  Use separate containers with `vanilla-` prefix
+-  Easy to set up
+-  Less isolation
+-  Shared quotas and limits
 
 **Container Strategy:**
 ```
@@ -218,14 +218,14 @@ DATABASE_URL=mssql+pyodbc://user:password@vanilla-server:1433/FinDataExtractorVa
 ## Recommendation Summary
 
 ### For Development/Testing
-- ✅ **Shared Document Intelligence** - Same endpoint/key
-- ✅ **Shared Storage Account** - Separate containers (`vanilla-*`)
-- ✅ **SQLite Database** - No Azure SQL needed
+-  **Shared Document Intelligence** - Same endpoint/key
+-  **Shared Storage Account** - Separate containers (`vanilla-*`)
+-  **SQLite Database** - No Azure SQL needed
 
 ### For Production
-- ✅ **Separate Document Intelligence** - Dedicated resource
-- ✅ **Separate Storage Account** - Complete isolation
-- ✅ **Separate Azure SQL** - Or continue with SQLite if volume is low
+-  **Separate Document Intelligence** - Dedicated resource
+-  **Separate Storage Account** - Complete isolation
+-  **Separate Azure SQL** - Or continue with SQLite if volume is low
 
 ## Migration Path
 

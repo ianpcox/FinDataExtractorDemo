@@ -53,33 +53,33 @@ FinDataExtractorVanilla/
 
 ## Key Features Implemented
 
-✅ **Simplified Configuration**
+ **Simplified Configuration**
 - Environment variables only (no Key Vault)
 - Simple setup process
 - Local storage by default
 
-✅ **Core Invoice Processing**
+ **Core Invoice Processing**
 - PDF validation and ingestion
 - Azure Document Intelligence integration
 - Data extraction (invoice number, date, amount, vendor, line items)
 - Basic document matching
 
-✅ **Simplified API**
+ **Simplified API**
 - No versioning complexity
 - Straightforward REST endpoints
 - Clear API documentation
 
-✅ **Flexible Storage**
+ **Flexible Storage**
 - Local file storage (default)
 - Optional Azure Blob Storage
 - Automatic fallback
 
-✅ **Simple Database**
+ **Simple Database**
 - SQLite for local development
 - Optional Azure SQL for production
 - Alembic migrations
 
-✅ **Comprehensive Documentation**
+ **Comprehensive Documentation**
 - Getting started guide
 - Architecture overview
 - Repository relationship guide
@@ -87,14 +87,14 @@ FinDataExtractorVanilla/
 
 ## What Was Removed (Simplifications)
 
-❌ API versioning
-❌ ML observability and A/B testing
-❌ Event sourcing and saga patterns
-❌ Circuit breakers and advanced retry logic
-❌ Dead letter queues
-❌ Complex workflow orchestration
-❌ Azure Key Vault integration
-❌ Advanced error handling patterns
+ API versioning
+ ML observability and A/B testing
+ Event sourcing and saga patterns
+ Circuit breakers and advanced retry logic
+ Dead letter queues
+ Complex workflow orchestration
+ Azure Key Vault integration
+ Advanced error handling patterns
 
 ## Next Steps for GitHub
 

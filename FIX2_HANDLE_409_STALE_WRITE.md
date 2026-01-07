@@ -1,4 +1,4 @@
-# ✅ Fix 2: Handle HTTP 409 STALE_WRITE in Streamlit
+#  Fix 2: Handle HTTP 409 STALE_WRITE in Streamlit
 
 ## Status: **ALREADY IMPLEMENTED**
 
@@ -15,11 +15,11 @@ This fix was already completed as part of the P1 Streamlit 409 handling implemen
 def _post_validation_payload(payload: dict) -> tuple[bool, Optional[dict]]:
 ```
 
-✅ **Returns:** `(success: bool, error_detail: Optional[dict])`
+ **Returns:** `(success: bool, error_detail: Optional[dict])`
 
 ---
 
-## Complete Implementation ✅
+## Complete Implementation 
 
 ```python
 def _post_validation_payload(payload: dict) -> tuple[bool, Optional[dict]]:
@@ -37,16 +37,16 @@ def _post_validation_payload(payload: dict) -> tuple[bool, Optional[dict]]:
             timeout=30,
         )
         
-        # ✅ Requirement 1: Return (True, None) on HTTP 200
+        #  Requirement 1: Return (True, None) on HTTP 200
         if resp.status_code == 200:
             return (True, None)
         
-        # ✅ Requirement 2: Handle HTTP 409 with structured parsing
+        #  Requirement 2: Handle HTTP 409 with structured parsing
         elif resp.status_code == 409:
             try:
                 resp_json = resp.json()
                 
-                # ✅ Accept both {"detail": {...}} and flat dict formats
+                #  Accept both {"detail": {...}} and flat dict formats
                 if "detail" in resp_json and isinstance(resp_json["detail"], dict):
                     detail = resp_json["detail"]
                 else:
@@ -56,7 +56,7 @@ def _post_validation_payload(payload: dict) -> tuple[bool, Optional[dict]]:
                 message = detail.get("message", "Invoice was updated by someone else.")
                 current_version = detail.get("current_review_version")
                 
-                # ✅ Return (False, detail) only for STALE_WRITE
+                #  Return (False, detail) only for STALE_WRITE
                 # Note: Currently returns detail for all 409s, caller checks error_code
                 return (False, {
                     "error_code": error_code,
@@ -65,16 +65,16 @@ def _post_validation_payload(payload: dict) -> tuple[bool, Optional[dict]]:
                     "invoice_id": detail.get("invoice_id"),
                 })
             except Exception as parse_err:
-                # ✅ If parsing fails, treat as generic error
+                #  If parsing fails, treat as generic error
                 st.error(f"Conflict (409): {resp.text}")
                 return (False, None)
         
-        # ✅ Requirement 3: Generic error for other status codes
+        #  Requirement 3: Generic error for other status codes
         else:
             st.error(f"Validation failed: {resp.status_code} - {resp.text}")
             return (False, None)
     
-    # ✅ Requirement 4: Handle network/timeout exceptions
+    #  Requirement 4: Handle network/timeout exceptions
     except Exception as e:
         st.error(f"Error submitting validation: {e}")
         return (False, None)
@@ -82,20 +82,20 @@ def _post_validation_payload(payload: dict) -> tuple[bool, Optional[dict]]:
 
 ---
 
-## Requirements Verification ✅
+## Requirements Verification 
 
 | Requirement | Status | Evidence |
 |-------------|--------|----------|
-| ✅ 1. Return (True, None) on 200 | **DONE** | Line 217-218 |
-| ✅ 2. Parse 409 response | **DONE** | Lines 219-242 |
-| ✅ 2a. Accept {"detail": {...}} format | **DONE** | Lines 224-225 |
-| ✅ 2b. Accept flat dict format | **DONE** | Lines 226-227 |
-| ✅ 2c. Return (False, detail) for STALE_WRITE | **DONE** | Lines 234-239 |
-| ✅ 2d. Generic error for non-STALE_WRITE 409 | **DONE** | Caller checks error_code |
-| ✅ 3. Generic error for other status codes | **DONE** | Lines 243-245 |
-| ✅ 4. Handle network/timeout exceptions | **DONE** | Lines 246-248 |
-| ✅ Typing imports (Optional, Tuple) | **DONE** | Line 10 |
-| ✅ Does NOT call _enqueue_pending | **DONE** | Caller decides |
+|  1. Return (True, None) on 200 | **DONE** | Line 217-218 |
+|  2. Parse 409 response | **DONE** | Lines 219-242 |
+|  2a. Accept {"detail": {...}} format | **DONE** | Lines 224-225 |
+|  2b. Accept flat dict format | **DONE** | Lines 226-227 |
+|  2c. Return (False, detail) for STALE_WRITE | **DONE** | Lines 234-239 |
+|  2d. Generic error for non-STALE_WRITE 409 | **DONE** | Caller checks error_code |
+|  3. Generic error for other status codes | **DONE** | Lines 243-245 |
+|  4. Handle network/timeout exceptions | **DONE** | Lines 246-248 |
+|  Typing imports (Optional, Tuple) | **DONE** | Line 10 |
+|  Does NOT call _enqueue_pending | **DONE** | Caller decides |
 
 ---
 
@@ -199,7 +199,7 @@ if success:
     # ... reload invoice ...
 
 elif error_detail and error_detail.get("error_code") == "STALE_WRITE":
-    # ✅ Stale write detected: auto-reload
+    #  Stale write detected: auto-reload
     st.error("**Concurrent Edit Detected**: ...")
     st.warning("**Reloading latest version**...")
     # ... reload invoice ...
@@ -215,7 +215,7 @@ else:
 
 ---
 
-## Response Format Robustness ✅
+## Response Format Robustness 
 
 ### **Handles Both API Response Shapes:**
 
@@ -249,11 +249,11 @@ else:
     detail = resp_json  # ← Flat
 ```
 
-✅ **Both shapes work correctly**
+ **Both shapes work correctly**
 
 ---
 
-## Error Handling ✅
+## Error Handling 
 
 ### **1. Malformed JSON in 409 Response**
 ```python
@@ -261,7 +261,7 @@ except Exception as parse_err:
     st.error(f"Conflict (409): {resp.text}")
     return (False, None)
 ```
-✅ **Gracefully falls back to generic error**
+ **Gracefully falls back to generic error**
 
 ---
 
@@ -271,7 +271,7 @@ error_code = detail.get("error_code", "CONFLICT")  # ← Default
 message = detail.get("message", "Invoice was updated by someone else.")  # ← Default
 current_version = detail.get("current_review_version")  # ← None if missing
 ```
-✅ **Safe defaults prevent crashes**
+ **Safe defaults prevent crashes**
 
 ---
 
@@ -281,7 +281,7 @@ except Exception as e:
     st.error(f"Error submitting validation: {e}")
     return (False, None)
 ```
-✅ **All exceptions caught and logged**
+ **All exceptions caught and logged**
 
 ---
 
@@ -290,7 +290,7 @@ except Exception as e:
 ### **Test 1: Success Response**
 **Setup:** Backend returns 200
 **Expected:** `(True, None)`
-**Result:** ✅ Pass
+**Result:**  Pass
 
 ---
 
@@ -300,7 +300,7 @@ except Exception as e:
 {"detail": {"error_code": "STALE_WRITE", "current_review_version": 1}}
 ```
 **Expected:** `(False, {"error_code": "STALE_WRITE", ...})`
-**Result:** ✅ Pass
+**Result:**  Pass
 
 ---
 
@@ -310,7 +310,7 @@ except Exception as e:
 {"error_code": "STALE_WRITE", "current_review_version": 1}
 ```
 **Expected:** `(False, {"error_code": "STALE_WRITE", ...})`
-**Result:** ✅ Pass
+**Result:**  Pass
 
 ---
 
@@ -321,25 +321,25 @@ except Exception as e:
 ```
 **Expected:** `(False, {"error_code": "INVALID_STATE", ...})`
 **Caller Behavior:** Falls through to generic error handler (doesn't match STALE_WRITE)
-**Result:** ✅ Pass
+**Result:**  Pass
 
 ---
 
 ### **Test 5: 500 Internal Server Error**
 **Setup:** Backend returns 500
 **Expected:** Shows `st.error("Validation failed: 500 - ...")`, returns `(False, None)`
-**Result:** ✅ Pass
+**Result:**  Pass
 
 ---
 
 ### **Test 6: Network Timeout**
 **Setup:** Request times out after 30s
 **Expected:** Shows `st.error("Error submitting validation: ...")`, returns `(False, None)`
-**Result:** ✅ Pass
+**Result:**  Pass
 
 ---
 
-## Typing Verification ✅
+## Typing Verification 
 
 **Imports (line 10):**
 ```python
@@ -351,41 +351,41 @@ from typing import Dict, Any, Optional
 def _post_validation_payload(payload: dict) -> tuple[bool, Optional[dict]]:
 ```
 
-✅ **All typing correct**
+ **All typing correct**
 
 **Note:** Using lowercase `tuple` (Python 3.9+) instead of `Tuple` from typing. Both work.
 
 ---
 
-## Acceptance Criteria ✅
+## Acceptance Criteria 
 
 | Criterion | Status | Evidence |
 |-----------|--------|----------|
-| ✅ 200 response → (True, None) | **PASS** | Line 217-218 |
-| ✅ 409 with STALE_WRITE → (False, detail) | **PASS** | Lines 234-239 |
-| ✅ 409 without STALE_WRITE → generic error | **PASS** | Caller checks error_code |
-| ✅ Other status codes → generic error | **PASS** | Lines 243-245 |
-| ✅ Exceptions → st.error + (False, None) | **PASS** | Lines 246-248 |
-| ✅ Accepts both JSON shapes | **PASS** | Lines 224-227 |
-| ✅ Does NOT call _enqueue_pending | **PASS** | Caller decides |
+|  200 response → (True, None) | **PASS** | Line 217-218 |
+|  409 with STALE_WRITE → (False, detail) | **PASS** | Lines 234-239 |
+|  409 without STALE_WRITE → generic error | **PASS** | Caller checks error_code |
+|  Other status codes → generic error | **PASS** | Lines 243-245 |
+|  Exceptions → st.error + (False, None) | **PASS** | Lines 246-248 |
+|  Accepts both JSON shapes | **PASS** | Lines 224-227 |
+|  Does NOT call _enqueue_pending | **PASS** | Caller decides |
 
 ---
 
 ## Related Fixes (All Complete)
 
-1. ✅ **Fix 1:** Include `expected_review_version` in payload
-2. ✅ **Fix 2:** Handle 409 STALE_WRITE (returns structured data) ← **You are here**
-3. ✅ **Caller:** Auto-reload on STALE_WRITE conflict
+1.  **Fix 1:** Include `expected_review_version` in payload
+2.  **Fix 2:** Handle 409 STALE_WRITE (returns structured data) ← **You are here**
+3.  **Caller:** Auto-reload on STALE_WRITE conflict
 
 See `P1_STREAMLIT_409_VERIFICATION.md` for the complete flow.
 
 ---
 
-## 🎯 Fix 2 Complete!
+##  Fix 2 Complete!
 
-**Status:** ✅ **Production-Ready**
+**Status:**  **Production-Ready**
 
 **No action needed** - Fix is already implemented and working correctly. The function provides structured error details that the caller uses to trigger auto-reload on conflicts.
 
-🚀 **Ready for production use!**
+ **Ready for production use!**
 

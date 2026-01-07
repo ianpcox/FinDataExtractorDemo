@@ -108,84 +108,84 @@ Robust JSON extraction with multiple fallback strategies:
 
 ## Key Issues & Observations
 
-### ✅ **Strengths**
+###  **Strengths**
 1. **Field Grouping**: Reduces token usage by processing fields in batches
 2. **Caching**: Prevents duplicate LLM calls
 3. **Retry Logic**: Handles rate limits and transient errors
 4. **Validation**: Only accepts canonical field names
 5. **Error Handling**: Comprehensive logging and graceful degradation
 
-### ⚠️ **Potential Issues** - **ALL RESOLVED** ✅
+###  **Potential Issues** - **ALL RESOLVED** 
 
-1. **Synchronous Execution in Threadpool**: ✅ **RESOLVED**
+1. **Synchronous Execution in Threadpool**:  **RESOLVED**
    - `_run_low_confidence_fallback` is now fully async (converted from sync)
    - Uses `AsyncAzureOpenAI` client with `await` calls
    - No longer blocks threads during LLM calls
    - **Resolution**: Method converted to async, all LLM calls use `await`
 
-2. **In-Memory Cache**: ✅ **RESOLVED**
+2. **In-Memory Cache**:  **RESOLVED**
    - Implemented `TTLCache` class with configurable TTL (default 3600s) and max size (default 1000)
    - Automatic cleanup of expired entries
    - LRU eviction when cache exceeds max size
    - **Resolution**: Cache now has TTL and size limits, preventing memory leaks
 
-3. **Hard-Coded Threshold**: ✅ **RESOLVED**
+3. **Hard-Coded Threshold**:  **RESOLVED**
    - `low_conf_threshold` is now configurable via `settings.LLM_LOW_CONF_THRESHOLD`
    - Defaults to 0.75 if not set
    - **Resolution**: Can be tuned via environment variable without code changes
 
-4. **No Partial Success Handling**: ✅ **RESOLVED**
+4. **No Partial Success Handling**:  **RESOLVED**
    - Tracks per-group success/failure independently
    - Returns detailed results dictionary with per-group status
    - Continues processing other groups if one fails
    - Overall success determined if at least one group succeeds
    - **Resolution**: Comprehensive per-group tracking and partial success support
 
-5. **Confidence Always Set to 0.9**: ✅ **RESOLVED**
+5. **Confidence Always Set to 0.9**:  **RESOLVED**
    - Implemented `_calculate_llm_confidence` method with dynamic confidence scoring
    - Considers context: blank field filled (0.85-0.95), wrong value corrected (0.75-0.85), value confirmed (0.70-0.80)
    - Adjusts based on original confidence and field importance
    - **Resolution**: Confidence now dynamically calculated based on correction context
 
-6. **OCR Snippet Truncation**: ✅ **RESOLVED**
+6. **OCR Snippet Truncation**:  **RESOLVED**
    - Enhanced `_build_content_snippet` to intelligently extract OCR context
    - For multi-page: includes first page, middle page(s), and last page
    - For single-page: includes beginning, middle, and end sections
    - Configurable max chars via `settings.LLM_OCR_SNIPPET_MAX_CHARS`
    - **Resolution**: OCR snippets now include comprehensive document context
 
-7. **No LLM Response Validation**: ✅ **RESOLVED**
+7. **No LLM Response Validation**:  **RESOLVED**
    - Implemented `_validate_llm_suggestion` method with comprehensive validation
    - Validates dates (not too far in future, date logic), amounts (not negative, reasonable size), tax rates, percentages, strings, addresses
    - Invalid suggestions are rejected with warning logs
    - **Resolution**: All LLM suggestions validated before application
 
-8. **Re-extraction Clears All Fields**: ⚠️ **VERIFIED - BY DESIGN**
+8. **Re-extraction Clears All Fields**:  **VERIFIED - BY DESIGN**
    - `reset_for_reextract` only resets processing state, not field values
    - Fields are cleared during re-extraction as part of the extraction flow
    - **Status**: This is intentional behavior for re-extraction
 
-9. **No Progress Updates During LLM Calls**: ✅ **RESOLVED**
+9. **No Progress Updates During LLM Calls**:  **RESOLVED**
    - Added background progress update task that runs in parallel with LLM calls
    - Sends periodic updates every 7 seconds during long LLM calls
    - Updates progress at key points: before calls, during retries, after group completion
    - **Resolution**: Users now see progress updates throughout LLM processing
 
-10. **Canadian Tax Fields Not in LLM Prompt**: ✅ **RESOLVED**
+10. **Canadian Tax Fields Not in LLM Prompt**:  **RESOLVED**
     - Canadian tax fields are included in the "canadian_taxes" group
     - All 58 canonical fields are now in the LLM system prompt
     - **Resolution**: Tax fields are evaluated by LLM when low confidence
 
 ## Recommendations
 
-### ✅ **Completed (High Priority)**
-1. ✅ **Make LLM calls truly async**: Converted to fully async with `AsyncAzureOpenAI`
-2. ✅ **Add cache TTL/size limits**: Implemented `TTLCache` with TTL and LRU eviction
-3. ✅ **Make threshold configurable**: Added `LLM_LOW_CONF_THRESHOLD` setting
-4. ✅ **Handle partial success**: Implemented per-group tracking and partial success handling
-5. ✅ **Validate LLM responses**: Added comprehensive field validation before applying suggestions
-6. ✅ **Add progress updates during LLM calls**: Background task sends periodic updates
-7. ✅ **Include tax fields in grouping**: Canadian tax fields included in LLM evaluation
+###  **Completed (High Priority)**
+1.  **Make LLM calls truly async**: Converted to fully async with `AsyncAzureOpenAI`
+2.  **Add cache TTL/size limits**: Implemented `TTLCache` with TTL and LRU eviction
+3.  **Make threshold configurable**: Added `LLM_LOW_CONF_THRESHOLD` setting
+4.  **Handle partial success**: Implemented per-group tracking and partial success handling
+5.  **Validate LLM responses**: Added comprehensive field validation before applying suggestions
+6.  **Add progress updates during LLM calls**: Background task sends periodic updates
+7.  **Include tax fields in grouping**: Canadian tax fields included in LLM evaluation
 
 ### 🔄 **Future Enhancements (Medium Priority)**
 8. **Preserve manual corrections on re-extract**: Only reset auto-extracted fields
@@ -200,10 +200,10 @@ Robust JSON extraction with multiple fallback strategies:
 
 ## Code Quality
 
-- **Error Handling**: ✅ Comprehensive
-- **Logging**: ✅ Good coverage
-- **Type Hints**: ⚠️ Some missing (e.g., `_sanitize_for_json` return type)
-- **Documentation**: ✅ Good docstrings
+- **Error Handling**:  Comprehensive
+- **Logging**:  Good coverage
+- **Type Hints**:  Some missing (e.g., `_sanitize_for_json` return type)
+- **Documentation**:  Good docstrings
 - **Testing**: ❓ Need to check test coverage
 
 ## Performance Considerations
@@ -216,41 +216,41 @@ Robust JSON extraction with multiple fallback strategies:
 
 ## Recent Improvements (All Issues Resolved)
 
-### ✅ **Issue #1: Async Execution**
+###  **Issue #1: Async Execution**
 - Converted `_run_low_confidence_fallback` to fully async
 - Uses `AsyncAzureOpenAI` client
 - No thread blocking during LLM calls
 
-### ✅ **Issue #2: Cache Management**
+###  **Issue #2: Cache Management**
 - Implemented `TTLCache` class with TTL (3600s) and max size (1000)
 - Automatic cleanup of expired entries
 - LRU eviction when cache is full
 
-### ✅ **Issue #3: Configurable Threshold**
+###  **Issue #3: Configurable Threshold**
 - Added `LLM_LOW_CONF_THRESHOLD` setting (default: 0.75)
 - Configurable via environment variable
 
-### ✅ **Issue #4: Partial Success Handling**
+###  **Issue #4: Partial Success Handling**
 - Per-group success/failure tracking
 - Detailed results dictionary
 - Continues processing even if some groups fail
 
-### ✅ **Issue #5: Dynamic Confidence Scoring**
+###  **Issue #5: Dynamic Confidence Scoring**
 - `_calculate_llm_confidence` method considers context
 - Different confidence ranges for blank fills, corrections, confirmations
 - Adjusts based on original confidence and field importance
 
-### ✅ **Issue #6: Enhanced OCR Snippets**
+###  **Issue #6: Enhanced OCR Snippets**
 - Intelligent extraction from first, middle, and last sections
 - Multi-page document support
 - Configurable max characters via `LLM_OCR_SNIPPET_MAX_CHARS`
 
-### ✅ **Issue #7: LLM Response Validation**
+###  **Issue #7: LLM Response Validation**
 - `_validate_llm_suggestion` validates dates, amounts, rates, strings, addresses
 - Rejects invalid suggestions with detailed error messages
 - Prevents incorrect data from being applied
 
-### ✅ **Issue #9: Progress Updates**
+###  **Issue #9: Progress Updates**
 - Background task sends periodic updates every 7 seconds
 - Updates at key points: before calls, during retries, after completion
 - Users see progress throughout long LLM processing

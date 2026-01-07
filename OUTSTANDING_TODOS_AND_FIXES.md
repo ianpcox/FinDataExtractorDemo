@@ -2,7 +2,7 @@
 
 ## Summary Status
 
-### ✅ Completed (Production Ready)
+###  Completed (Production Ready)
 1. **P0 Atomic TOCTOU Fix** - Eliminates race conditions in `transition_state()` and `update_with_review_version()`
    - 12/12 tests passing
    - All acceptance criteria met
@@ -24,7 +24,7 @@
 
 ## Outstanding Issues (Priority Order)
 
-### 🔴 P0 - Critical (Blocking)
+###  P0 - Critical (Blocking)
 
 #### 1. Concurrent Extraction Test DB Isolation Issue
 **File:** `tests/integration/test_concurrent_extraction.py`
@@ -60,7 +60,7 @@ Expected: 1x 200 OK, 4x 409 Conflict
 
 ---
 
-### 🟡 P1 - Important (Non-Blocking)
+###  P1 - Important (Non-Blocking)
 
 #### 2. Integration Test Coverage for Explicit Clear
 **Files:** `tests/integration/test_hitl_explicit_clear.py`
@@ -89,7 +89,7 @@ Expected: 1x 200 OK, 4x 409 Conflict
 
 ---
 
-### 🟢 P2 - Nice to Have (Future)
+###  P2 - Nice to Have (Future)
 
 #### 4. Streamlit UI Integration for `clear_fields`
 **File:** `streamlit_app.py`
@@ -134,23 +134,23 @@ Expected: 1x 200 OK, 4x 409 Conflict
 ### Unit Tests
 | Test Suite | Status | Pass/Total |
 |------------|--------|------------|
-| `test_atomic_updates.py` | ✅ PASS | 8/8 |
-| `test_concurrency.py` | ✅ PASS | 4/4 |
-| `test_explicit_clear.py` | ✅ PASS | 8/8 |
-| `test_invoice_id_invariants.py` | ✅ PASS | (various) |
-| `test_timestamp_invariants.py` | ✅ PASS | (various) |
-| `test_line_items_clobbering.py` | ✅ PASS | (various) |
-| `test_decimal_wire_contract.py` | ✅ PASS | (various) |
+| `test_atomic_updates.py` |  PASS | 8/8 |
+| `test_concurrency.py` |  PASS | 4/4 |
+| `test_explicit_clear.py` |  PASS | 8/8 |
+| `test_invoice_id_invariants.py` |  PASS | (various) |
+| `test_timestamp_invariants.py` |  PASS | (various) |
+| `test_line_items_clobbering.py` |  PASS | (various) |
+| `test_decimal_wire_contract.py` |  PASS | (various) |
 
-**Total Unit Tests Passing:** ~35+ tests ✅
+**Total Unit Tests Passing:** ~35+ tests 
 
 ### Integration Tests
 | Test Suite | Status | Pass/Total |
 |------------|--------|------------|
-| `test_concurrent_extraction.py` | ❌ FAIL | 0/2 (DB isolation) |
-| `test_hitl_explicit_clear.py` | ⏸️ NOT RUN | 0/7 (pending fixture fix) |
-| `test_hitl_optimistic_locking.py` | ⏸️ UNKNOWN | (may need rerun) |
-| `test_db_isolation.py` | ✅ PASS | 6/6 |
+| `test_concurrent_extraction.py` |  FAIL | 0/2 (DB isolation) |
+| `test_hitl_explicit_clear.py` | ⏸ NOT RUN | 0/7 (pending fixture fix) |
+| `test_hitl_optimistic_locking.py` | ⏸ UNKNOWN | (may need rerun) |
+| `test_db_isolation.py` |  PASS | 6/6 |
 
 **Integration Test Status:** Mixed (fixture issues)
 

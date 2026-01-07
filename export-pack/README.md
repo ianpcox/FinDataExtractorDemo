@@ -13,26 +13,26 @@ This pack provides comprehensive, read-only export capabilities for Azure resour
 
 ## Features
 
-✅ **Comprehensive Export**
+ **Comprehensive Export**
 - Resource inventories (JSON + CSV)
 - ARM templates per resource group
 - Bicep decompilation
 - Service-specific configurations (AKS, Search, OpenAI, SQL, Storage, Redis, Monitor)
 - RBAC assignments
 
-✅ **Security-First**
+ **Security-First**
 - Never exports secrets or keys
 - Redacts sensitive data from outputs
 - Operator-assisted scripts for secret-requiring operations
 - Secure input handling
 
-✅ **Production-Ready**
+ **Production-Ready**
 - Comprehensive error handling and retries
 - Structured logging (JSON + transcript)
 - Idempotent operations
 - Dry-run mode
 
-✅ **Service Coverage**
+ **Service Coverage**
 - AKS clusters and workloads
 - Azure AI Search
 - Azure OpenAI

@@ -54,10 +54,10 @@ async def update_with_review_version(
 ```
 
 **Key Improvements:**
-- ✅ Uses SQLAlchemy expression `InvoiceDB.review_version + 1` for atomic increment
-- ✅ Returns `bool` instead of `int` for clearer semantics
-- ✅ Sanitizes protected fields: `id`, `created_at`, `review_version`, `processing_state`
-- ✅ Single atomic UPDATE statement - no TOCTOU window
+-  Uses SQLAlchemy expression `InvoiceDB.review_version + 1` for atomic increment
+-  Returns `bool` instead of `int` for clearer semantics
+-  Sanitizes protected fields: `id`, `created_at`, `review_version`, `processing_state`
+-  Single atomic UPDATE statement - no TOCTOU window
 
 ### 2. `DatabaseService.transition_state()` (src/services/db_service.py)
 
@@ -124,34 +124,34 @@ tests/unit/test_concurrency.py::test_claim_for_extraction PASSED
 tests/unit/test_concurrency.py::test_set_extraction_result_requires_processing_state PASSED
 tests/unit/test_concurrency.py::test_invalid_transition_processing_to_validated PASSED
 
-12/12 tests passing ✅
+12/12 tests passing 
 ```
 
 ## Concurrency Properties Verified
 
-### 1. ✅ Single-Statement Atomicity
+### 1.  Single-Statement Atomicity
 - No SELECT-then-UPDATE pattern remains
 - All updates use guarded UPDATE with WHERE clause
 - Rowcount determines success/failure
 
-### 2. ✅ Optimistic Locking Works
+### 2.  Optimistic Locking Works
 - `test_update_with_review_version_is_atomic`: First update succeeds, second with stale version fails
 - `test_concurrent_review_version_updates_one_wins`: Two concurrent updates, exactly one succeeds
 - `test_atomic_update_no_lost_updates`: Sequential updates with correct versions all succeed
 
-### 3. ✅ State Transitions Are Guarded
+### 3.  State Transitions Are Guarded
 - `test_transition_state_is_atomic`: PENDING→PROCESSING transition atomic
 - `test_transition_state_with_multiple_valid_from_states`: Multiple valid from_states handled correctly
 - `test_transition_state_prevents_invalid_transitions`: Invalid transitions properly rejected
 
-### 4. ✅ Protected Fields Cannot Be Overwritten
+### 4.  Protected Fields Cannot Be Overwritten
 - `test_update_with_review_version_handles_complex_patch`: Verifies that:
   - `id` cannot be changed
   - `created_at` cannot be changed
   - `review_version` is incremented by the method, not set from patch
   - `processing_state` cannot be changed via HITL updates
 
-### 5. ✅ API Surfaces Conflicts Correctly
+### 5.  API Surfaces Conflicts Correctly
 - HITL validate endpoint returns HTTP 409 with `error_code: "STALE_WRITE"` on conflicts
 - Includes `current_review_version` for client reconciliation
 

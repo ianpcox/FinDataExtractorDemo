@@ -588,11 +588,6 @@ async def get_invoice_for_validation(
                     "confidence": get_conf("payment_terms"),
                     "validated": False
                 },
-                "acceptance_percentage": {
-                    "value": to_decimal_str(getattr(invoice, "acceptance_percentage", None)),
-                    "confidence": get_conf("acceptance_percentage"),
-                    "validated": False
-                },
                 "tax_registration_number": {
                     "value": to_str(getattr(invoice, "tax_registration_number", None), None),
                     "confidence": get_conf("tax_registration_number"),
@@ -859,7 +854,6 @@ async def validate_invoice(
                         "total_amount": "total_amount",
                         "currency": "currency",
                         "payment_terms": "payment_terms",
-                        "acceptance_percentage": "acceptance_percentage",
                         "tax_registration_number": "tax_registration_number",
                         "federal_tax": "tax_breakdown",
                         "provincial_tax": "tax_breakdown",
@@ -876,7 +870,7 @@ async def validate_invoice(
                         else:
                             old_value = getattr(invoice, attr_name, None)
                             # Handle type conversions
-                            if attr_name in ["subtotal", "tax_amount", "total_amount", "acceptance_percentage"]:
+                            if attr_name in ["subtotal", "tax_amount", "total_amount"]:
                                 setattr(invoice, attr_name, Decimal(str(field_validation.corrected_value)))
                             elif attr_name in ["invoice_date", "due_date"]:
                                 from dateutil.parser import parse
@@ -1047,7 +1041,6 @@ async def validate_invoice(
             "tax_amount",
             "total_amount",
             "currency",
-            "acceptance_percentage",
             "tax_registration_number",
             "payment_terms",
             "remit_to_name",

@@ -7,8 +7,8 @@ Successfully implemented explicit clear semantics for HITL invoice validation, a
 ## Problem Statement
 
 After implementing patch-safe persistence (P0), we had conservative behavior where:
-- Omitted fields are not updated (prevents accidental clobber) ✅
-- Empty lists/dicts (`[]`, `{}`) do NOT clear by default (prevents accidental clobber) ✅
+- Omitted fields are not updated (prevents accidental clobber) 
+- Empty lists/dicts (`[]`, `{}`) do NOT clear by default (prevents accidental clobber) 
 
 However, we still needed a way for users to **intentionally** clear fields when truly desired, without ambiguity or clobber risk.
 
@@ -95,17 +95,17 @@ if request.clear_fields:
 
 ## Test Results
 
-### Unit Tests: 8/8 Passing ✅
+### Unit Tests: 8/8 Passing 
 
 ```
-test_default_patch_safe_no_accidental_clear ✅
-test_empty_list_without_clear_flag_does_not_clear ✅
-test_explicit_clear_line_items ✅
-test_explicit_clear_tax_breakdown ✅
-test_explicit_clear_scalar_field ✅
-test_explicit_clear_with_optimistic_lock ✅
-test_explicit_clear_multiple_fields ✅
-test_explicit_clear_and_update_same_request ✅
+test_default_patch_safe_no_accidental_clear 
+test_empty_list_without_clear_flag_does_not_clear 
+test_explicit_clear_line_items 
+test_explicit_clear_tax_breakdown 
+test_explicit_clear_scalar_field 
+test_explicit_clear_with_optimistic_lock 
+test_explicit_clear_multiple_fields 
+test_explicit_clear_and_update_same_request 
 ```
 
 ### Key Test Coverage
@@ -133,34 +133,34 @@ test_explicit_clear_and_update_same_request ✅
 **File: `tests/integration/test_hitl_explicit_clear.py`**
 
 Integration tests verify:
-- ✅ HITL validate endpoint accepts `clear_fields`
-- ✅ Protected fields rejected with HTTP 400
-- ✅ Optimistic locking works with clears (409 on stale)
-- ✅ Clear + corrections in same request
-- ✅ Empty `clear_fields=[]` is no-op (backward compatible)
-- ✅ Omitting `clear_fields` preserves data (backward compatible)
+-  HITL validate endpoint accepts `clear_fields`
+-  Protected fields rejected with HTTP 400
+-  Optimistic locking works with clears (409 on stale)
+-  Clear + corrections in same request
+-  Empty `clear_fields=[]` is no-op (backward compatible)
+-  Omitting `clear_fields` preserves data (backward compatible)
 
 ## Design Guarantees
 
-### 1. **No Accidental Clears** ✅
+### 1. **No Accidental Clears** 
 - Default behavior remains patch-safe
 - Empty lists/dicts do NOT clear unless explicitly requested via `clear_fields`
 - Omitted fields are never touched
 
-### 2. **Explicit Intent Required** ✅
+### 2. **Explicit Intent Required** 
 - Clears only happen when field is in `clear_fields` list
 - User must explicitly specify what to clear
 
-### 3. **Protected Fields Cannot Be Cleared** ✅
+### 3. **Protected Fields Cannot Be Cleared** 
 - Attempting to clear `id`, `created_at`, `review_version`, `processing_state` returns HTTP 400
 - Clear error message lists disallowed fields and allowed fields
 
-### 4. **Atomic with Optimistic Locking** ✅
+### 4. **Atomic with Optimistic Locking** 
 - Clears applied in same guarded UPDATE statement as `review_version` increment
 - No TOCTOU races
 - Stale writes properly detected and rejected with HTTP 409
 
-### 5. **Type-Safe Conventions** ✅
+### 5. **Type-Safe Conventions** 
 - List fields → `[]`
 - Dict fields → `{}`
 - Optional scalars → `None`
@@ -235,9 +235,9 @@ POST /api/hitl/invoice/validate
 
 ## Backward Compatibility
 
-- ✅ `clear_fields` is optional (defaults to `[]`)
-- ✅ Existing requests without `clear_fields` work exactly as before
-- ✅ No breaking changes to API contract
+-  `clear_fields` is optional (defaults to `[]`)
+-  Existing requests without `clear_fields` work exactly as before
+-  No breaking changes to API contract
 
 ## Files Modified
 

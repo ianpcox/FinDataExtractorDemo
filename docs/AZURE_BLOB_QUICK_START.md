@@ -3,10 +3,10 @@
 ## Yes! The application CAN process invoices from Azure Blob Storage
 
 The application has full support for:
-- ✅ Connecting to Azure Blob Storage
-- ✅ Browsing files in specific paths (like "RAW Basic/")
-- ✅ Downloading files from Azure
-- ✅ Running them through the complete end-to-end workflow
+-  Connecting to Azure Blob Storage
+-  Browsing files in specific paths (like "RAW Basic/")
+-  Downloading files from Azure
+-  Running them through the complete end-to-end workflow
 
 ## Quick Example
 

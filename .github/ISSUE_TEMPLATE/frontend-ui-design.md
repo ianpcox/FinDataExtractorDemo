@@ -5,10 +5,10 @@ Design and implement a front-end user interface to complement the FinDataExtract
 
 ## Current State
 The application currently has:
-- ✅ REST API endpoints for all operations
-- ✅ HITL API endpoints with field-level confidence
-- ✅ PDF overlay renderer
-- ❌ No front-end UI
+-  REST API endpoints for all operations
+-  HITL API endpoints with field-level confidence
+-  PDF overlay renderer
+-  No front-end UI
 
 ## Requirements
 

@@ -53,10 +53,10 @@ python demo_06_erp_staging.py
 ## Expected Output
 
 Each demo will:
-- ✅ Show progress and results
-- ✅ Display extracted data
-- ✅ Save output files to `demos/output/`
-- ✅ Provide next steps
+-  Show progress and results
+-  Display extracted data
+-  Save output files to `demos/output/`
+-  Provide next steps
 
 ## Troubleshooting
 

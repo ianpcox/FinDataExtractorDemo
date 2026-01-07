@@ -156,31 +156,88 @@ class DocumentIntelligenceClient:
         fields = invoice_doc.fields
         
         # Extract fields with confidence scores - Using CANONICAL field names
+        # Organized by category for maintainability
         invoice_data = {
             "confidence": invoice_doc.confidence or 0.0,
+            
+            # Header Fields
             "invoice_number": self._get_field_value(fields, "InvoiceId"),
             "invoice_date": self._get_field_value(fields, "InvoiceDate"),
             "due_date": self._get_field_value(fields, "DueDate"),
-            "total_amount": self._get_field_value(fields, "InvoiceTotal"),
-            "subtotal": self._get_field_value(fields, "SubTotal"),
-            "tax_amount": self._get_field_value(fields, "TotalTax"),
+            "invoice_type": self._get_field_value(fields, "InvoiceType"),
+            "reference_number": self._get_field_value(fields, "ReferenceNumber"),
+            "shipping_date": self._get_field_value(fields, "ShippingDate"),
+            "delivery_date": self._get_field_value(fields, "DeliveryDate"),
+            
+            # Vendor Fields
             "vendor_name": self._get_field_value(fields, "VendorName"),
-            "vendor_address": self._get_address(fields, "VendorAddress"),
+            "vendor_id": self._get_field_value(fields, "VendorId"),
             "vendor_phone": self._get_field_value(fields, "VendorPhoneNumber") or self._get_field_value(fields, "VendorPhone"),
+            "vendor_fax": self._get_field_value(fields, "VendorFax") or self._get_field_value(fields, "VendorFaxNumber"),
+            "vendor_email": self._get_field_value(fields, "VendorEmail"),
+            "vendor_website": self._get_field_value(fields, "VendorWebsite"),
+            "vendor_address": self._get_address(fields, "VendorAddress"),
+            
+            # Vendor Tax ID Fields
+            "business_number": self._get_field_value(fields, "BusinessNumber"),
+            "gst_number": self._get_field_value(fields, "GSTNumber"),
+            "qst_number": self._get_field_value(fields, "QSTNumber"),
+            "pst_number": self._get_field_value(fields, "PSTNumber"),
+            
+            # Customer Fields
             "customer_name": self._get_field_value(fields, "CustomerName"),
             "customer_id": self._get_field_value(fields, "CustomerId"),
-            "bill_to_address": self._get_address(fields, "CustomerAddress"),
+            "customer_phone": self._get_field_value(fields, "CustomerPhone"),
+            "customer_email": self._get_field_value(fields, "CustomerEmail"),
+            "customer_fax": self._get_field_value(fields, "CustomerFax"),
+            "bill_to_address": self._get_address(fields, "CustomerAddress") or self._get_address(fields, "BillToAddress"),
+            
+            # Remit-To Fields
             "remit_to_address": self._get_address(fields, "RemitToAddress") or self._get_address(fields, "RemittanceAddress"),
             "remit_to_name": self._get_field_value(fields, "RemitToName"),
-            "payment_terms": self._get_field_value(fields, "PaymentTerm"),
-            "po_number": self._get_field_value(fields, "PurchaseOrder"),
-            "standing_offer_number": self._get_field_value(fields, "ContractId") or self._get_field_value(fields, "StandingOfferNumber"),
-            "acceptance_percentage": self._get_field_value(fields, "AcceptancePercentage"),
-            "tax_registration_number": self._get_field_value(fields, "TaxRegistrationNumber") or self._get_field_value(fields, "SalesTaxNumber"),
+            
+            # Contract Fields
+            "entity": self._get_field_value(fields, "Entity"),
+            "contract_id": self._get_field_value(fields, "ContractId"),
+            "standing_offer_number": self._get_field_value(fields, "StandingOfferNumber"),
+            "po_number": self._get_field_value(fields, "PurchaseOrder") or self._get_field_value(fields, "PONumber"),
+            
+            # Date Fields
             "period_start": self._get_field_value(fields, "ServiceStartDate"),
             "period_end": self._get_field_value(fields, "ServiceEndDate"),
+            
+            # Financial Fields
+            "subtotal": self._get_field_value(fields, "SubTotal"),
+            "discount_amount": self._get_field_value(fields, "DiscountAmount"),
+            "shipping_amount": self._get_field_value(fields, "ShippingAmount"),
+            "handling_fee": self._get_field_value(fields, "HandlingFee"),
+            "deposit_amount": self._get_field_value(fields, "DepositAmount"),
+            
+            # Canadian Tax Fields
+            "gst_amount": self._get_field_value(fields, "GSTAmount"),
+            "gst_rate": self._get_field_value(fields, "GSTRate"),
+            "hst_amount": self._get_field_value(fields, "HSTAmount"),
+            "hst_rate": self._get_field_value(fields, "HSTRate"),
+            "qst_amount": self._get_field_value(fields, "QSTAmount"),
+            "qst_rate": self._get_field_value(fields, "QSTRate"),
+            "pst_amount": self._get_field_value(fields, "PSTAmount"),
+            "pst_rate": self._get_field_value(fields, "PSTRate"),
+            
+            # Total Fields
+            "tax_amount": self._get_field_value(fields, "TotalTax"),
+            "total_amount": self._get_field_value(fields, "InvoiceTotal"),
             "currency": self._get_field_value(fields, "CurrencyCode") or self._get_field_value(fields, "Currency"),
+            
+            # Payment Fields
+            "payment_terms": self._get_field_value(fields, "PaymentTerm") or self._get_field_value(fields, "PaymentTerms"),
+            "payment_method": self._get_field_value(fields, "PaymentMethod"),
+            "payment_due_upon": self._get_field_value(fields, "PaymentDueUpon"),
+            "tax_registration_number": self._get_field_value(fields, "TaxRegistrationNumber") or self._get_field_value(fields, "SalesTaxNumber"),
+            
+            # Line Items
             "items": self._extract_items(fields.get("Items")),
+            
+            # Field Confidence Scores
             "field_confidence": self._extract_field_confidences(fields)
         }
         

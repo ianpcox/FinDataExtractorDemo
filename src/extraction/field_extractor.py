@@ -83,7 +83,6 @@ class FieldExtractor:
         "PaymentTerms": "payment_terms",
         "PaymentMethod": "payment_method",
         "PaymentDueUpon": "payment_due_upon",
-        "AcceptancePercentage": "acceptance_percentage",
         "TaxRegistrationNumber": "tax_registration_number",
         "SalesTaxNumber": "tax_registration_number",
     }
@@ -123,7 +122,7 @@ class FieldExtractor:
             "deposit_amount", "gst_amount", "gst_rate", "hst_amount", "hst_rate",
             "qst_amount", "qst_rate", "pst_amount", "pst_rate",
             "tax_breakdown", "tax_amount", "total_amount",
-            "currency", "acceptance_percentage", "tax_registration_number",
+            "currency", "tax_registration_number",
             "payment_terms", "payment_method", "payment_due_upon", "items", "content"
         ]:
             if key in di_data and key not in canonical:
@@ -353,11 +352,6 @@ class FieldExtractor:
         invoice.payment_due_upon = self._get_field_value(
             canonical_data.get("payment_due_upon"), field_confidence.get("payment_due_upon")
         )
-        
-        # Additional financial fields
-        invoice.acceptance_percentage = self._parse_decimal(
-            canonical_data.get("acceptance_percentage"), field_confidence.get("acceptance_percentage")
-        )
         invoice.tax_registration_number = self._get_field_value(
             canonical_data.get("tax_registration_number"), field_confidence.get("tax_registration_number")
         )
@@ -374,9 +368,6 @@ class FieldExtractor:
                 invoice.total_amount = invoice.subtotal + (invoice.tax_amount or Decimal("0.00"))
             if invoice.tax_amount is None and invoice.total_amount is not None and invoice.subtotal is not None:
                 invoice.tax_amount = invoice.total_amount - invoice.subtotal
-        invoice.acceptance_percentage = self._parse_decimal(
-            canonical_data.get("acceptance_percentage"), field_confidence.get("acceptance_percentage")
-        )
         invoice.tax_registration_number = self._get_field_value(
             canonical_data.get("tax_registration_number"), field_confidence.get("tax_registration_number")
         )

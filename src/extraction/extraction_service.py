@@ -162,7 +162,7 @@ CANONICAL_FIELDS = {
     "tax_amount", "total_amount", "currency", "tax_breakdown",
     # Payment
     "payment_terms", "payment_method", "payment_due_upon", 
-    "acceptance_percentage", "tax_registration_number",
+    "tax_registration_number",
 }
 
 LLM_SYSTEM_PROMPT = """
@@ -193,7 +193,7 @@ Dates: period_start, period_end, shipping_date, delivery_date
 Financial: subtotal, discount_amount, shipping_amount, handling_fee, deposit_amount
 Canadian Taxes: gst_amount, gst_rate, hst_amount, hst_rate, qst_amount, qst_rate, pst_amount, pst_rate
 Total: tax_amount, total_amount, currency
-Payment: payment_terms, payment_method, payment_due_upon, acceptance_percentage, tax_registration_number
+Payment: payment_terms, payment_method, payment_due_upon, tax_registration_number
 
 Formatting rules:
 - Dates must be ISO 8601 date strings: "YYYY-MM-DD".
@@ -239,6 +239,14 @@ class ExtractionService:
         cache_ttl = getattr(settings, "LLM_CACHE_TTL_SECONDS", 3600)
         cache_max_size = getattr(settings, "LLM_CACHE_MAX_SIZE", 1000)
         self._llm_cache = TTLCache(ttl_seconds=cache_ttl, max_size=cache_max_size)
+        # In-memory cache for rendered images to avoid re-rendering the same PDF pages
+        image_cache_enabled = getattr(settings, "MULTIMODAL_IMAGE_CACHE_ENABLED", True)
+        if image_cache_enabled:
+            image_cache_ttl = getattr(settings, "MULTIMODAL_IMAGE_CACHE_TTL_SECONDS", 7200)
+            image_cache_max_size = getattr(settings, "MULTIMODAL_IMAGE_CACHE_MAX_SIZE", 500)
+            self._image_cache = TTLCache(ttl_seconds=image_cache_ttl, max_size=image_cache_max_size)
+        else:
+            self._image_cache = None
     
     async def extract_invoice(
         self,
@@ -889,7 +897,7 @@ class ExtractionService:
                         "customer_name", "customer_id", "customer_phone", "customer_email", "customer_fax",
                         "subtotal", "tax_amount", "total_amount",
                         "currency", "payment_terms", "payment_method", "payment_due_upon",
-                        "acceptance_percentage", "tax_registration_number",
+                        "tax_registration_number",
                         "entity", "contract_id", "standing_offer_number", "po_number",
                         "period_start", "period_end", "shipping_date", "delivery_date",
                         "discount_amount", "shipping_amount", "handling_fee", "deposit_amount",
@@ -1225,7 +1233,7 @@ class ExtractionService:
                         _promote_confidence(field, original_value, parsed)
                     continue
 
-                if field in {"subtotal", "tax_amount", "total_amount", "acceptance_percentage"}:
+                if field in {"subtotal", "tax_amount", "total_amount"}:
                     parsed = self.field_extractor._parse_decimal(canonical.get(field))
                     if parsed is not None:
                         setattr(invoice, field, parsed)
@@ -1296,34 +1304,187 @@ class ExtractionService:
             logger.debug("Could not determine if PDF is scanned, assuming text-based")
             return False
 
-    def _render_multimodal_images(self, file_content: bytes) -> List[str]:
-        """Render a small set of PDF pages as base64 PNGs for multimodal prompts."""
+    def _render_multimodal_images(self, file_content: bytes, file_hash: Optional[str] = None) -> List[str]:
+        """
+        Render a small set of PDF pages as base64-encoded images for multimodal prompts.
+        
+        Supports:
+        - Image caching to avoid re-rendering
+        - Multiple image formats (PNG, JPEG)
+        - Configurable page selection (first, last, middle, all)
+        - Image quality optimization
+        
+        Args:
+            file_content: PDF file content as bytes
+            file_hash: Optional file hash for cache key (if not provided, will be computed)
+            
+        Returns:
+            List of base64-encoded image strings
+        """
         try:
             import fitz  # PyMuPDF
         except Exception:
             logger.warning("PyMuPDF not available; skipping multimodal image rendering.")
             return []
 
+        # Get configuration
         max_pages = max(1, int(getattr(settings, "MULTIMODAL_MAX_PAGES", 2)))
         scale = float(getattr(settings, "MULTIMODAL_IMAGE_SCALE", 2.0))
-
+        image_format = getattr(settings, "MULTIMODAL_IMAGE_FORMAT", "png").lower()
+        jpeg_quality = int(getattr(settings, "MULTIMODAL_JPEG_QUALITY", 85))
+        page_selection = getattr(settings, "MULTIMODAL_PAGE_SELECTION", "first").lower()
+        
+        # Validate image format
+        if image_format not in ["png", "jpeg", "jpg"]:
+            logger.warning(f"Invalid image format '{image_format}', using PNG")
+            image_format = "png"
+        
+        # Normalize JPEG format
+        if image_format == "jpg":
+            image_format = "jpeg"
+        
+        # Validate JPEG quality
+        if image_format == "jpeg":
+            jpeg_quality = max(1, min(100, jpeg_quality))
+        
+        # Check cache if enabled
+        if self._image_cache is not None:
+            # Compute file hash if not provided
+            if file_hash is None:
+                file_hash = hashlib.sha256(file_content).hexdigest()
+            
+            # Create cache key based on file hash, format, scale, max_pages, and page_selection
+            cache_key = (
+                file_hash,
+                image_format,
+                scale,
+                max_pages,
+                page_selection,
+            )
+            
+            cached_images = self._image_cache.get(cache_key)
+            if cached_images is not None:
+                # Parse cached images (stored as JSON string)
+                try:
+                    import json
+                    images = json.loads(cached_images)
+                    logger.debug(f"Retrieved {len(images)} images from cache for file hash {file_hash[:8]}")
+                    return images
+                except Exception as e:
+                    logger.warning(f"Failed to parse cached images: {e}, re-rendering")
+        
         try:
             pdf_doc = fitz.open(stream=file_content, filetype="pdf")
         except Exception as exc:
             logger.warning("Failed to open PDF for multimodal rendering: %s", exc)
             return []
 
+        total_pages = len(pdf_doc)
+        if total_pages == 0:
+            pdf_doc.close()
+            return []
+        
+        # Determine which pages to render based on page_selection
+        page_numbers = self._select_pages_to_render(total_pages, max_pages, page_selection)
+        
         images: List[str] = []
         try:
-            for page_num in range(min(len(pdf_doc), max_pages)):
+            for page_num in page_numbers:
+                if page_num >= total_pages:
+                    continue
+                    
                 page = pdf_doc[page_num]
                 pix = page.get_pixmap(matrix=fitz.Matrix(scale, scale))
-                img_bytes = pix.tobytes("png")
+                
+                # Render based on format
+                if image_format == "jpeg":
+                    # JPEG format with quality setting
+                    img_bytes = pix.tobytes("jpeg", jpeg_quality=jpeg_quality)
+                else:
+                    # PNG format (default, lossless)
+                    img_bytes = pix.tobytes("png")
+                
+                # Encode as base64
                 images.append(base64.b64encode(img_bytes).decode("utf-8"))
         finally:
             pdf_doc.close()
+        
+        # Cache images if caching is enabled
+        if self._image_cache is not None and images:
+            try:
+                import json
+                cache_key = (
+                    file_hash or hashlib.sha256(file_content).hexdigest(),
+                    image_format,
+                    scale,
+                    max_pages,
+                    page_selection,
+                )
+                # Store as JSON string (list of base64 strings)
+                self._image_cache.set(cache_key, json.dumps(images))
+                logger.debug(f"Cached {len(images)} images for file hash {cache_key[0][:8]}")
+            except Exception as e:
+                logger.warning(f"Failed to cache images: {e}")
 
         return images
+    
+    def _select_pages_to_render(
+        self, 
+        total_pages: int, 
+        max_pages: int, 
+        page_selection: str
+    ) -> List[int]:
+        """
+        Select which pages to render based on page_selection strategy.
+        
+        Args:
+            total_pages: Total number of pages in PDF
+            max_pages: Maximum number of pages to render
+            page_selection: Selection strategy: "first", "last", "middle", "all"
+            
+        Returns:
+            List of page numbers (0-indexed) to render
+        """
+        if total_pages == 0:
+            return []
+        
+        if page_selection == "all":
+            # Render all pages (up to max_pages)
+            return list(range(min(total_pages, max_pages)))
+        
+        elif page_selection == "first":
+            # Render first N pages (default behavior)
+            return list(range(min(total_pages, max_pages)))
+        
+        elif page_selection == "last":
+            # Render last N pages
+            start_page = max(0, total_pages - max_pages)
+            return list(range(start_page, total_pages))
+        
+        elif page_selection == "middle":
+            # Render middle pages (distributed across document)
+            if total_pages <= max_pages:
+                return list(range(total_pages))
+            
+            # Distribute pages across the document
+            page_numbers = []
+            if max_pages == 1:
+                # Single page: use middle page
+                page_numbers.append(total_pages // 2)
+            else:
+                # Multiple pages: distribute evenly
+                step = total_pages / (max_pages + 1)
+                for i in range(1, max_pages + 1):
+                    page_num = int(i * step)
+                    if page_num < total_pages:
+                        page_numbers.append(page_num)
+            
+            return sorted(page_numbers)
+        
+        else:
+            # Unknown strategy, default to "first"
+            logger.warning(f"Unknown page selection strategy '{page_selection}', using 'first'")
+            return list(range(min(total_pages, max_pages)))
 
     async def _run_multimodal_fallback(
         self,
@@ -1367,7 +1528,10 @@ class ExtractionService:
                 "group_results": {},
             }
 
-        images = self._render_multimodal_images(file_content)
+        # Get file hash for caching
+        file_hash = invoice.content_sha256 or hashlib.sha256(file_content).hexdigest()
+        
+        images = self._render_multimodal_images(file_content, file_hash=file_hash)
         if not images:
             logger.warning("No images available for multimodal fallback; skipping.")
             return {
@@ -1389,7 +1553,7 @@ class ExtractionService:
                         "vendor_name", "vendor_id", "vendor_phone",
                         "customer_name", "customer_id",
                         "subtotal", "tax_amount", "total_amount",
-                        "currency", "payment_terms", "acceptance_percentage",
+                        "currency", "payment_terms",
                         "tax_registration_number",
                     },
                 ),
@@ -1879,8 +2043,7 @@ class ExtractionService:
         amount_fields = {
             "subtotal", "tax_amount", "total_amount", "discount_amount",
             "shipping_amount", "handling_fee", "deposit_amount",
-            "gst_amount", "hst_amount", "qst_amount", "pst_amount",
-            "acceptance_percentage"
+            "gst_amount", "hst_amount", "qst_amount", "pst_amount"
         }
         if field_name in amount_fields:
             try:
@@ -1902,11 +2065,6 @@ class ExtractionService:
                 max_reasonable_amount = Decimal("999999999.99")  # ~1 billion
                 if abs(decimal_value) > max_reasonable_amount:
                     return (False, f"Amount {decimal_value} is unreasonably large for {field_name}")
-                
-                # Special validation for percentages
-                if field_name == "acceptance_percentage":
-                    if decimal_value < 0 or decimal_value > 100:
-                        return (False, f"Acceptance percentage {decimal_value} must be between 0 and 100")
                 
                 return (True, None)
             except (ValueError, InvalidOperation, TypeError) as e:
@@ -2036,7 +2194,7 @@ class ExtractionService:
                 # Allow explicit null to clear a low-confidence field
                 if value is None:
                     setattr(invoice, target_field, None)
-                elif target_field in ["subtotal", "tax_amount", "total_amount", "acceptance_percentage"]:
+                elif target_field in ["subtotal", "tax_amount", "total_amount"]:
                     parsed = self.field_extractor._parse_decimal(value)
                     setattr(invoice, target_field, parsed)
                 elif target_field in [
@@ -2125,7 +2283,6 @@ class ExtractionService:
             "tax_amount": invoice.tax_amount,
             "total_amount": invoice.total_amount,
             "currency": invoice.currency,
-            "acceptance_percentage": invoice.acceptance_percentage,
             "tax_registration_number": invoice.tax_registration_number,
             "payment_terms": invoice.payment_terms,
             "line_items": line_items_to_json(invoice.line_items),

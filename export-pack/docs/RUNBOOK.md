@@ -100,7 +100,7 @@ out/
 
 ## What Was Exported
 
-### ✅ Fully Automated Exports
+###  Fully Automated Exports
 
 - **Resource Inventory**: Complete JSON and CSV inventory of all resources
 - **ARM Templates**: Full ARM templates for each resource group
@@ -113,7 +113,7 @@ out/
 - **Monitor Resources**: Log Analytics workspaces, DCR/DCE, alert rules, action groups
 - **Storage Account Config**: Account properties (no keys/SAS)
 
-### ⚠️ Operator-Assisted Exports (Require Manual Steps)
+###  Operator-Assisted Exports (Require Manual Steps)
 
 These exports require secrets/keys that cannot be automatically retrieved. Helper scripts are generated for manual execution:
 
@@ -143,7 +143,7 @@ These exports require secrets/keys that cannot be automatically retrieved. Helpe
    - Location: `keyvault/<vault-name>/export_secrets.ps1`
    - Requires: Key Vault access permissions
    - Exports: Secret values to local JSON (encrypted option available)
-   - ⚠️ **WARNING**: Exports secret VALUES. Handle with extreme care.
+   -  **WARNING**: Exports secret VALUES. Handle with extreme care.
 
 6. **Monitor Workbooks** (Opt-In: `-ExportWorkbooks`)
    - Location: `monitor/workspaces/<workspace>/workbooks/export_workbooks.ps1`

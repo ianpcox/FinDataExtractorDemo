@@ -485,7 +485,7 @@ def main():
                 with col1:
                     blob_prefix = st.text_input("Filter prefix", value="", placeholder="e.g., folder/", label_visibility="collapsed")
                 with col2:
-                    if st.button("🔍", help="List blobs"):
+                    if st.button("", help="List blobs"):
                         st.session_state["blob_list"] = list_blobs(default_container, blob_prefix or None)
                 
                 blobs = st.session_state.get("blob_list") or []
@@ -507,7 +507,7 @@ def main():
                                         st.cache_data.clear()
                                         st.rerun()
                 else:
-                    st.info("Click 🔍 to browse Azure blobs")
+                    st.info("Click  to browse Azure blobs")
         
         st.markdown("---")
         
@@ -911,6 +911,48 @@ def main():
                                 conf_class = get_confidence_color(confidence)
                                 st.markdown(f'<span class="{conf_class}">{icon} {format_confidence(confidence)}</span>', 
                                           unsafe_allow_html=True)
+                
+                # Remit-To Information
+                st.markdown("#### Remit-To Information")
+                remit_cols = st.columns(2)
+                
+                remit_fields = ["remit_to_name"]
+                for i, field_name in enumerate(remit_fields):
+                    field_data = fields.get(field_name) or {"value": None, "confidence": 0.0}
+                    value = field_data.get("value")
+                    confidence = field_data.get("confidence", 0.0)
+                    
+                    with remit_cols[i % 2]:
+                        label = field_name.replace("_", " ").title()
+                        widget_key = f"field_{selected_invoice_id}_{field_name}"
+                        
+                        current_value = st.session_state.get(widget_key, str(value) if value else "")
+                        user_edits = st.session_state.get("user_edited_fields", {}).get(selected_invoice_id, set())
+                        is_edited = field_name in user_edits or (current_value != (str(value) if value else ""))
+                        
+                        st.text_input(
+                            label,
+                            value=current_value,
+                            key=widget_key,
+                            help=f"Original confidence: {format_confidence(confidence)}" if not is_edited else "User edited (confidence: 100%)"
+                        )
+                        
+                        # Track edits
+                        new_value = st.session_state.get(widget_key, "")
+                        if new_value != (str(value) if value else ""):
+                            if "user_edited_fields" not in st.session_state:
+                                st.session_state["user_edited_fields"] = {}
+                            if selected_invoice_id not in st.session_state["user_edited_fields"]:
+                                st.session_state["user_edited_fields"][selected_invoice_id] = set()
+                            st.session_state["user_edited_fields"][selected_invoice_id].add(field_name)
+                        
+                        if is_edited:
+                            st.markdown('<span class="confidence-high">[User Edited]</span>', unsafe_allow_html=True)
+                        else:
+                            icon = get_confidence_icon(confidence)
+                            conf_class = get_confidence_color(confidence)
+                            st.markdown(f'<span class="{conf_class}">{icon} {format_confidence(confidence)}</span>', 
+                                      unsafe_allow_html=True)
     
             # Tab 2: Financial
             with tab2:
@@ -968,7 +1010,7 @@ def main():
                         current_value = st.session_state.get(widget_key)
                         is_edited = field_name in user_edits or (current_value is not None and str(current_value) != original_str)
                         
-                        if field_name in ["subtotal", "tax_amount", "total_amount", "acceptance_percentage", "federal_tax", "provincial_tax", "combined_tax"]:
+                        if field_name in ["subtotal", "tax_amount", "total_amount", "federal_tax", "provincial_tax", "combined_tax"]:
                             current_num = current_value if current_value is not None else (float(value) if value else 0.0)
                             st.number_input(
                                 label,
@@ -1105,7 +1147,7 @@ def main():
                         current_value = st.session_state.get(widget_key)
                         is_edited = field_name in user_edits or (current_value is not None and str(current_value) != original_str)
                         
-                        is_numeric = field_name in ["acceptance_percentage"]
+                        is_numeric = False
                         if is_numeric:
                             current_num = current_value if current_value is not None else (float(value) if value else 0.0)
                             st.number_input(

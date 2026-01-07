@@ -24,28 +24,28 @@ Generate operator-assisted scripts per vault that:
 
 ### Evaluation
 
-**✅ High Value**
+** High Value**
 - Key Vault secrets are the #1 manual gap
 - Reduces hours of manual secret lookup/entry
 - Critical for application functionality
 
-**✅ Security Compliant**
+** Security Compliant**
 - Opt-in only (not automatic)
 - Secure prompts (Read-Host -AsSecureString)
 - Local-only storage with clear warnings
 - Scripts can include "DO NOT COMMIT" guards
 
-**✅ Feasible**
+** Feasible**
 - Secret names visible in ARM export
 - `az keyvault secret show` works with proper permissions
 - Can generate per-vault scripts automatically
 
-**✅ Implementation Complexity: Low-Medium**
+** Implementation Complexity: Low-Medium**
 - Add Key Vault detection in inventory
 - Generate script template per vault
 - Include secret name enumeration from ARM
 
-**Recommendation: ✅ IMPLEMENT (Priority: P0)**
+**Recommendation:  IMPLEMENT (Priority: P0)**
 
 **Implementation Notes:**
 - Script should warn about secret storage
@@ -64,17 +64,17 @@ Generate operator-assisted scripts per vault that:
 
 ### Evaluation
 
-**✅ High Value**
+** High Value**
 - App registrations are tenant-level (not exported by ARM)
 - Service principals are critical for automation
 - Manual recreation is error-prone
 
-**✅ Security Compliant**
+** Security Compliant**
 - Only exports IDs (not secrets)
 - Placeholders for secrets/certificates
 - Clear documentation of what's needed
 
-**⚠️ Feasibility: Medium**
+** Feasibility: Medium**
 - Can discover app IDs from:
   - Managed identity references
   - Service principal assignments in RBAC
@@ -82,12 +82,12 @@ Generate operator-assisted scripts per vault that:
 - `az ad app show` requires Graph API permissions
 - May need separate authentication for Graph API
 
-**⚠️ Implementation Complexity: Medium**
+** Implementation Complexity: Medium**
 - Need to parse resource configs for app references
 - Graph API calls require different auth context
 - Service principal creation scripts need careful parameterization
 
-**Recommendation: ✅ IMPLEMENT (Priority: P1)**
+**Recommendation:  IMPLEMENT (Priority: P1)**
 
 **Implementation Notes:**
 - Detect app IDs from:
@@ -113,28 +113,28 @@ Generate operator-assisted scripts per vault that:
 
 ### Evaluation
 
-**✅ High Value**
+** High Value**
 - Networking is complex and often missed
 - Private endpoints require DNS configuration
 - Peerings are cross-subscription/tenant sensitive
 - Route tables are easy to miss
 
-**✅ Security Compliant**
+** Security Compliant**
 - No secrets involved
 - Read-only network configuration
 
-**✅ Feasible**
+** Feasible**
 - Private endpoints: `az network private-endpoint list`
 - DNS zones: `az network private-dns zone list`
 - Peerings: `az network vnet peering list`
 - Route tables: `az network route-table list`
 
-**✅ Implementation Complexity: Low-Medium**
+** Implementation Complexity: Low-Medium**
 - Add network resource detection
 - Generate gap report with detected resources
 - Create Bicep snippets from exported ARM templates
 
-**Recommendation: ✅ IMPLEMENT (Priority: P1)**
+**Recommendation:  IMPLEMENT (Priority: P1)**
 
 **Implementation Notes:**
 - Create `network_gaps_report.md` per subscription
@@ -158,25 +158,25 @@ Generate operator-assisted scripts per vault that:
 
 ### Evaluation
 
-**✅ Medium Value**
+** Medium Value**
 - Workbooks contain valuable monitoring logic
 - Saved queries are reusable
 - Current export may miss these
 
-**✅ Security Compliant**
+** Security Compliant**
 - No secrets (queries may contain resource IDs, but those are visible)
 
-**✅ Feasible**
+** Feasible**
 - Workbooks: `az monitor workbook list` (or REST API)
 - Saved searches: Log Analytics REST API
 - Can export to JSON
 
-**✅ Implementation Complexity: Low**
+** Implementation Complexity: Low**
 - Add to monitor_export.ps1
 - Use REST API or CLI commands
 - Save to JSON files
 
-**Recommendation: ✅ IMPLEMENT (Priority: P2)**
+**Recommendation:  IMPLEMENT (Priority: P2)**
 
 **Implementation Notes:**
 - Add workbook export to `monitor_export.ps1`
@@ -196,26 +196,26 @@ Generate operator-assisted scripts per vault that:
 
 ### Evaluation
 
-**✅ Medium Value**
+** Medium Value**
 - Current scripts are basic
 - Enhanced scaffolds reduce errors
 - Checksum verification adds confidence
 
-**✅ Security Compliant**
+** Security Compliant**
 - Still requires operator input for secrets
 - No secrets in generated commands
 
-**✅ Feasible**
+** Feasible**
 - Can generate AzCopy command templates
 - BACPAC commands are straightforward
 - Checksum commands can be included
 
-**✅ Implementation Complexity: Low**
+** Implementation Complexity: Low**
 - Enhance existing scripts
 - Add command validation helpers
 - Include checksum examples
 
-**Recommendation: ✅ IMPLEMENT (Priority: P2)**
+**Recommendation:  IMPLEMENT (Priority: P2)**
 
 **Implementation Notes:**
 - Enhance `storage_export.ps1` with AzCopy command templates
@@ -234,25 +234,25 @@ Generate operator-assisted scripts per vault that:
 
 ### Evaluation
 
-**✅ Medium Value**
+** Medium Value**
 - Classic resources can't be exported
 - Prevents surprises during rebuild
 - Helps with migration planning
 
-**✅ Security Compliant**
+** Security Compliant**
 - Read-only detection
 
-**✅ Feasible**
+** Feasible**
 - `az resource list` can filter by API version
 - Classic resources have specific API versions
 - Can detect and list them
 
-**✅ Implementation Complexity: Low**
+** Implementation Complexity: Low**
 - Add classic resource detection to inventory
 - Generate report with detected resources
 - Link to migration documentation
 
-**Recommendation: ✅ IMPLEMENT (Priority: P2)**
+**Recommendation:  IMPLEMENT (Priority: P2)**
 
 **Implementation Notes:**
 - Detect resources with API versions containing "classic" or "2014-*"
@@ -275,28 +275,28 @@ Generate operator-assisted scripts per vault that:
 
 ### Evaluation
 
-**✅ High Value**
+** High Value**
 - Prevents deployment failures
 - Saves time during rebuild
 - Critical for production migrations
 
-**✅ Security Compliant**
+** Security Compliant**
 - Read-only checks
 - No secrets
 
-**⚠️ Feasibility: Medium-High**
+** Feasibility: Medium-High**
 - Quota checks: `az vm list-usage --location`
 - SKU availability: `az vm list-sizes --location`
 - But need to check for each resource type
 - Some quotas are subscription-level, some are regional
 
-**⚠️ Implementation Complexity: Medium**
+** Implementation Complexity: Medium**
 - Need to detect all resource types
 - Generate checklist per resource type
 - Include commands to check quotas/SKUs
 - May need REST API for some checks
 
-**Recommendation: ✅ IMPLEMENT (Priority: P1)**
+**Recommendation:  IMPLEMENT (Priority: P1)**
 
 **Implementation Notes:**
 - Generate `quota_sku_checklist.md` per subscription
@@ -320,25 +320,25 @@ Generate operator-assisted scripts per vault that:
 
 ### Evaluation
 
-**✅ Very High Value**
+** Very High Value**
 - Single source of truth for manual work
 - Prevents missed steps
 - Critical for successful migration
 
-**✅ Security Compliant**
+** Security Compliant**
 - Just a checklist, no secrets
 
-**✅ Feasible**
+** Feasible**
 - Can generate from export summary
 - Track which services were found
 - List all operator scripts generated
 
-**✅ Implementation Complexity: Low**
+** Implementation Complexity: Low**
 - Generate from export_summary.json
 - Include all detected services
 - Link to operator scripts
 
-**Recommendation: ✅ IMPLEMENT (Priority: P0)**
+**Recommendation:  IMPLEMENT (Priority: P0)**
 
 **Implementation Notes:**
 - Generate `ENVIRONMENT_PARITY_CHECKLIST.md` in output root
@@ -394,11 +394,11 @@ Generate operator-assisted scripts per vault that:
 ## Security Considerations
 
 All enhancements maintain security principles:
-- ✅ No secrets in automated exports
-- ✅ Opt-in for sensitive operations
-- ✅ Secure prompts for secret input
-- ✅ Local-only storage with warnings
-- ✅ Clear documentation of risks
+-  No secrets in automated exports
+-  Opt-in for sensitive operations
+-  Secure prompts for secret input
+-  Local-only storage with warnings
+-  Clear documentation of risks
 
 ---
 

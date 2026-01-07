@@ -2,7 +2,7 @@
 
 ## Issues Fixed
 
-### 1. ✅ Confidence Numbers Update/Disappear on User Input
+### 1.  Confidence Numbers Update/Disappear on User Input
 **Problem**: Confidence scores remained visible and unchanged even after user edited a field, creating confusion about data quality.
 
 **Solution**: 
@@ -19,7 +19,7 @@
 
 ---
 
-### 2. ✅ User Input Corrections Persist After Changes
+### 2.  User Input Corrections Persist After Changes
 **Problem**: User edits would revert to original extracted values when page reloaded or after submitting validation.
 
 **Solution**: 
@@ -72,18 +72,18 @@ def reset_invoice_state(invoice_id: str, invoice_data: dict, preserve_edits: boo
 ## User Experience Improvements
 
 ### Before:
-- ❌ Confidence always showed original extraction value (e.g., "67%") even after user corrected field
-- ❌ Unclear if field was AI-extracted or user-verified
-- ❌ Edits could disappear on page refresh/reload
-- ❌ No visual feedback for which fields user modified
+-  Confidence always showed original extraction value (e.g., "67%") even after user corrected field
+-  Unclear if field was AI-extracted or user-verified
+-  Edits could disappear on page refresh/reload
+-  No visual feedback for which fields user modified
 
 ### After:
-- ✅ Confidence changes to "[✓] User Edited" when field is modified
-- ✅ Clear visual distinction: AI confidence (colored) vs user input (green checkmark)
-- ✅ Edits persist until successfully saved to database
-- ✅ Edits preserved on conflict for user to review
-- ✅ Explicit reload button clarifies when discarding edits
-- ✅ Tooltip shows "User edited (confidence: 100%)" for modified fields
+-  Confidence changes to "[✓] User Edited" when field is modified
+-  Clear visual distinction: AI confidence (colored) vs user input (green checkmark)
+-  Edits persist until successfully saved to database
+-  Edits preserved on conflict for user to review
+-  Explicit reload button clarifies when discarding edits
+-  Tooltip shows "User edited (confidence: 100%)" for modified fields
 
 ---
 

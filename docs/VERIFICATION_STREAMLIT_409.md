@@ -6,7 +6,7 @@ This document verifies the implementation of P1 user-facing optimistic locking i
 
 ---
 
-## ✅ A) Store review_version at Load Time
+##  A) Store review_version at Load Time
 
 **Location**: `streamlit_app.py` lines 138-156
 
@@ -26,13 +26,13 @@ def load_invoice(invoice_id: str) -> Optional[Dict[str, Any]]:
 ```
 
 **Verification**:
-- ✅ Creates `st.session_state["invoice_review_version"]` dict if missing
-- ✅ Extracts `review_version` from API response (defaults to 0)
-- ✅ Stores version keyed by `invoice_id`
+-  Creates `st.session_state["invoice_review_version"]` dict if missing
+-  Extracts `review_version` from API response (defaults to 0)
+-  Stores version keyed by `invoice_id`
 
 ---
 
-## ✅ B) Add expected_review_version to Validation Payload
+##  B) Add expected_review_version to Validation Payload
 
 **Location**: `streamlit_app.py` lines 1020-1031
 
@@ -55,14 +55,14 @@ def _persist_changes(status_value: str, reviewer_value: str, notes_value: str):
 ```
 
 **Verification**:
-- ✅ Reads `expected_review_version` from session state
-- ✅ Falls back to invoice_data if not in session state
-- ✅ Casts to `int` for safety
-- ✅ Includes in payload sent to API
+-  Reads `expected_review_version` from session state
+-  Falls back to invoice_data if not in session state
+-  Casts to `int` for safety
+-  Includes in payload sent to API
 
 ---
 
-## ✅ C) Robust 409 Handling in HTTP POST Helper
+##  C) Robust 409 Handling in HTTP POST Helper
 
 **Location**: `streamlit_app.py` lines 203-245
 
@@ -105,15 +105,15 @@ def _post_validation_payload(payload: dict) -> tuple[bool, Optional[dict]]:
 ```
 
 **Verification**:
-- ✅ Returns tuple `(success: bool, error_detail: Optional[dict])`
-- ✅ Handles both nested `{"detail": {...}}` and flat dict formats
-- ✅ Extracts `error_code`, `message`, `current_review_version`
-- ✅ Returns structured error detail on 409
-- ✅ Returns `(False, None)` on other errors
+-  Returns tuple `(success: bool, error_detail: Optional[dict])`
+-  Handles both nested `{"detail": {...}}` and flat dict formats
+-  Extracts `error_code`, `message`, `current_review_version`
+-  Returns structured error detail on 409
+-  Returns `(False, None)` on other errors
 
 ---
 
-## ✅ D) UI Behavior on Stale Write
+##  D) UI Behavior on Stale Write
 
 **Location**: `streamlit_app.py` lines 1041-1069
 
@@ -157,18 +157,18 @@ else:
 ```
 
 **Verification**:
-- ✅ Detects `STALE_WRITE` via `error_detail["error_code"]`
-- ✅ Shows clear error message with conflict explanation
-- ✅ Displays current version from error response
-- ✅ Automatically reloads invoice via `load_invoice()`
-- ✅ Resets UI state via `reset_invoice_state()`
-- ✅ `load_invoice()` updates `review_version` in session state
-- ✅ Calls `st.rerun()` to refresh UI
-- ✅ Does NOT enqueue 409 conflicts for retry (only network errors)
+-  Detects `STALE_WRITE` via `error_detail["error_code"]`
+-  Shows clear error message with conflict explanation
+-  Displays current version from error response
+-  Automatically reloads invoice via `load_invoice()`
+-  Resets UI state via `reset_invoice_state()`
+-  `load_invoice()` updates `review_version` in session state
+-  Calls `st.rerun()` to refresh UI
+-  Does NOT enqueue 409 conflicts for retry (only network errors)
 
 ---
 
-## ✅ E) Manual Verification Steps
+##  E) Manual Verification Steps
 
 ### Test Scenario: Concurrent Edits
 
@@ -182,42 +182,42 @@ else:
 **Session A:**
 1. Make a change (e.g., edit vendor name to "Vendor A")
 2. Click "Save Changes (persist to DB)"
-3. ✅ Verify: Success message appears
-4. ✅ Verify: review_version increments (check network tab or logs)
+3.  Verify: Success message appears
+4.  Verify: review_version increments (check network tab or logs)
 
 **Session B (still showing old data):**
 1. Make a different change (e.g., edit vendor name to "Vendor B")
 2. Click "Save Changes (persist to DB)"
-3. ✅ **Verify: Conflict detected**
+3.  **Verify: Conflict detected**
    - Error banner: "Concurrent Edit Detected: Invoice was updated by someone else."
    - Warning: "Reloading latest version (version N)"
-4. ✅ **Verify: Auto-reload**
+4.  **Verify: Auto-reload**
    - UI refreshes automatically (st.rerun())
    - Vendor name shows "Vendor A" (Session A's change)
    - Session B's unsaved change is discarded
-5. ✅ **Verify: Can retry**
+5.  **Verify: Can retry**
    - Make change again: "Vendor B"
    - Click save
    - Should succeed with new review_version
 
 ---
 
-## ✅ Acceptance Criteria
+##  Acceptance Criteria
 
 | Criterion | Status | Evidence |
 |-----------|--------|----------|
-| ✅ Payload includes expected_review_version | **PASS** | Line 1027 in _persist_changes |
-| ✅ Conflicting updates show clear UX message | **PASS** | Lines 1053-1059 in _persist_changes |
-| ✅ Invoice auto-reloads on conflict | **PASS** | Line 1063: `load_invoice()` called |
-| ✅ UI state resets after reload | **PASS** | Line 1065: `reset_invoice_state()` called |
-| ✅ review_version updated after reload | **PASS** | Line 150: `load_invoice()` updates session state |
-| ✅ st.rerun() triggers UI refresh | **PASS** | Line 1068: `st.rerun()` called |
-| ✅ Subsequent save uses new version | **PASS** | Lines 1023-1025: reads from session state |
-| ✅ Conflicts NOT queued for retry | **PASS** | Lines 1071-1072: only network errors enqueued |
+|  Payload includes expected_review_version | **PASS** | Line 1027 in _persist_changes |
+|  Conflicting updates show clear UX message | **PASS** | Lines 1053-1059 in _persist_changes |
+|  Invoice auto-reloads on conflict | **PASS** | Line 1063: `load_invoice()` called |
+|  UI state resets after reload | **PASS** | Line 1065: `reset_invoice_state()` called |
+|  review_version updated after reload | **PASS** | Line 150: `load_invoice()` updates session state |
+|  st.rerun() triggers UI refresh | **PASS** | Line 1068: `st.rerun()` called |
+|  Subsequent save uses new version | **PASS** | Lines 1023-1025: reads from session state |
+|  Conflicts NOT queued for retry | **PASS** | Lines 1071-1072: only network errors enqueued |
 
 ---
 
-## ✅ Updated Function Signatures
+##  Updated Function Signatures
 
 ### _post_validation_payload
 ```python
@@ -229,22 +229,22 @@ def _post_validation_payload(payload: dict) -> tuple[bool, Optional[dict]]
 ```
 
 ### All Callers Updated
-- ✅ `_persist_changes()` - uses tuple unpacking
-- ✅ `_retry_pending_queue()` - uses tuple unpacking
-- ✅ `submit_validation()` - uses tuple unpacking, returns bool for compatibility
+-  `_persist_changes()` - uses tuple unpacking
+-  `_retry_pending_queue()` - uses tuple unpacking
+-  `submit_validation()` - uses tuple unpacking, returns bool for compatibility
 
 ---
 
-## 🎯 Implementation Complete
+##  Implementation Complete
 
 **All P1 requirements met:**
-- ✅ review_version stored in session state on load
-- ✅ expected_review_version included in every validation submit
-- ✅ 409 STALE_WRITE handled with clear UX
-- ✅ Auto-reload on conflict
-- ✅ UI state reset after reload
-- ✅ Conflicts not queued for retry
-- ✅ No silent data clobbering
+-  review_version stored in session state on load
+-  expected_review_version included in every validation submit
+-  409 STALE_WRITE handled with clear UX
+-  Auto-reload on conflict
+-  UI state reset after reload
+-  Conflicts not queued for retry
+-  No silent data clobbering
 
-**Production-ready for deployment!** 🚀
+**Production-ready for deployment!** 
 

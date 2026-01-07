@@ -4,10 +4,10 @@
 Implement a Streamlit-based Human-in-the-Loop (HITL) user interface for invoice validation and approval. This provides a quick-to-implement Python-based UI that integrates seamlessly with the FastAPI backend.
 
 ## Current State
-- ✅ HITL API endpoints implemented (`/api/hitl/*`)
-- ✅ Field-level confidence scores available
-- ✅ PDF retrieval endpoint available
-- ❌ No UI for users to interact with
+-  HITL API endpoints implemented (`/api/hitl/*`)
+-  Field-level confidence scores available
+-  PDF retrieval endpoint available
+-  No UI for users to interact with
 
 ## Requirements
 

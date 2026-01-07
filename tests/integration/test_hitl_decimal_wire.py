@@ -23,7 +23,6 @@ async def test_hitl_get_invoice_emits_decimal_strings(db_session, test_client):
         subtotal=Decimal("100.33"),
         tax_amount=Decimal("13.04"),
         total_amount=Decimal("113.37"),
-        acceptance_percentage=Decimal("95.5"),
         tax_breakdown={
             "GST": Decimal("5.02"),
             "PST": Decimal("8.02"),
@@ -88,9 +87,6 @@ async def test_hitl_get_invoice_emits_decimal_strings(db_session, test_client):
     
     assert isinstance(data["fields"]["total_amount"]["value"], str)
     assert data["fields"]["total_amount"]["value"] == "113.37"
-    
-    assert isinstance(data["fields"]["acceptance_percentage"]["value"], str)
-    assert data["fields"]["acceptance_percentage"]["value"] == "95.5"
     
     # Verify line item decimal fields are strings
     line_items = data["line_items"]
@@ -185,7 +181,6 @@ def test_hitl_decimal_schema_alignment():
         "subtotal",
         "tax_amount",
         "total_amount",
-        "acceptance_percentage",
         # Line item fields
         "quantity",
         "unit_price",

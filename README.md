@@ -5,12 +5,12 @@
 **FinDataExtractor Vanilla** is a simplified, easy-to-use version of the FinDataExtractor system designed for CATSA users who need core invoice processing capabilities without the complexity of advanced features.
 
 This version focuses on:
-- ✅ **Simple PDF invoice ingestion**
-- ✅ **Core data extraction** (invoice number, date, amount, vendor, line items)
-- ✅ **Basic validation** (format checks, required fields)
-- ✅ **Document matching** (invoice to PO matching)
-- ✅ **Straightforward API** (no versioning complexity)
-- ✅ **Easy setup** (minimal configuration)
+-  **Simple PDF invoice ingestion**
+-  **Core data extraction** (invoice number, date, amount, vendor, line items)
+-  **Basic validation** (format checks, required fields)
+-  **Document matching** (invoice to PO matching)
+-  **Straightforward API** (no versioning complexity)
+-  **Easy setup** (minimal configuration)
 
 ## Relationship to Full Version
 
@@ -217,10 +217,10 @@ python scripts/process_azure_invoices.py \
 ```
 
 **Features:**
-- ✅ Browse containers and blobs
-- ✅ Filter by path prefix (e.g., "RAW Basic/")
-- ✅ Download and process files
-- ✅ Complete end-to-end workflow
+-  Browse containers and blobs
+-  Filter by path prefix (e.g., "RAW Basic/")
+-  Download and process files
+-  Complete end-to-end workflow
 
 See [Azure Blob Processing Guide](docs/AZURE_BLOB_PROCESSING.md) for details.
 

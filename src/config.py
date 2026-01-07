@@ -109,8 +109,16 @@ class Settings(BaseSettings):
     AOAI_DEPLOYMENT_NAME: Optional[str] = _get_secret_from_keyvault(["aoai-deployment-name", "azure-openai-deployment"], os.getenv("AOAI_DEPLOYMENT_NAME"))
     AOAI_MULTIMODAL_DEPLOYMENT_NAME: Optional[str] = os.getenv("AOAI_MULTIMODAL_DEPLOYMENT_NAME")
     AOAI_API_VERSION: str = os.getenv("AOAI_API_VERSION", "2024-02-15-preview")
-    MULTIMODAL_MAX_PAGES: int = int(os.getenv("MULTIMODAL_MAX_PAGES", "2"))
-    MULTIMODAL_IMAGE_SCALE: float = float(os.getenv("MULTIMODAL_IMAGE_SCALE", "2.0"))
+    
+    # Multimodal Image Rendering Settings
+    MULTIMODAL_MAX_PAGES: int = int(os.getenv("MULTIMODAL_MAX_PAGES", "2"))  # Max pages to render (default: 2)
+    MULTIMODAL_IMAGE_SCALE: float = float(os.getenv("MULTIMODAL_IMAGE_SCALE", "2.0"))  # Image scaling factor (default: 2.0)
+    MULTIMODAL_IMAGE_FORMAT: str = os.getenv("MULTIMODAL_IMAGE_FORMAT", "png").lower()  # Image format: png, jpeg (default: png)
+    MULTIMODAL_JPEG_QUALITY: int = int(os.getenv("MULTIMODAL_JPEG_QUALITY", "85"))  # JPEG quality 1-100 (default: 85, only for JPEG format)
+    MULTIMODAL_PAGE_SELECTION: str = os.getenv("MULTIMODAL_PAGE_SELECTION", "first").lower()  # Page selection: first, last, middle, all (default: first)
+    MULTIMODAL_IMAGE_CACHE_ENABLED: bool = os.getenv("MULTIMODAL_IMAGE_CACHE_ENABLED", "True").lower() == "true"  # Enable image caching (default: True)
+    MULTIMODAL_IMAGE_CACHE_TTL_SECONDS: int = int(os.getenv("MULTIMODAL_IMAGE_CACHE_TTL_SECONDS", "7200"))  # Image cache TTL (default: 2 hours)
+    MULTIMODAL_IMAGE_CACHE_MAX_SIZE: int = int(os.getenv("MULTIMODAL_IMAGE_CACHE_MAX_SIZE", "500"))  # Max cached images (default: 500)
     
     # File Processing
     MAX_FILE_SIZE_MB: int = int(os.getenv("MAX_FILE_SIZE_MB", "50"))

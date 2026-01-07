@@ -4,9 +4,9 @@
 Implement a modern React-based front-end application for the FinDataExtractorVanilla system. This provides a production-grade, scalable UI solution with better performance and user experience than Streamlit.
 
 ## Current State
-- ✅ REST API endpoints available
-- ✅ HITL API endpoints implemented
-- ❌ No front-end UI
+-  REST API endpoints available
+-  HITL API endpoints implemented
+-  No front-end UI
 
 ## Requirements
 

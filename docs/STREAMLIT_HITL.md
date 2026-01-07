@@ -72,9 +72,9 @@ Navigate through tabs:
 
 ### 3. Confidence Levels
 
-- **✅ High (≥90%)**: Field extracted with high confidence - likely correct
-- **⚠️ Medium (70-89%)**: Field extracted with medium confidence - review recommended
-- **❌ Low (<70%)**: Field extracted with low confidence - correction likely needed
+- ** High (≥90%)**: Field extracted with high confidence - likely correct
+- ** Medium (70-89%)**: Field extracted with medium confidence - review recommended
+- ** Low (<70%)**: Field extracted with low confidence - correction likely needed
 
 ## Configuration
 
