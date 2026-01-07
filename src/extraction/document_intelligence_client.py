@@ -8,7 +8,6 @@ import logging
 
 from src.config import settings
 from src.utils.retry import async_retry_with_backoff, RetryableError
-from src.extraction.mock_document_intelligence_client import MockDocumentIntelligenceClient
 
 logger = logging.getLogger(__name__)
 
@@ -28,13 +27,6 @@ class DocumentIntelligenceClient:
             endpoint: Document Intelligence endpoint URL
             api_key: API key for authentication
         """
-        # In demo mode, use mock client and skip Azure
-        if settings.DEMO_MODE:
-            self.client = MockDocumentIntelligenceClient()
-            self.model_id = "mock-invoice-model"
-            logger.info("Document Intelligence client initialized in DEMO MODE (mock)")
-            return
-
         endpoint = endpoint or settings.AZURE_FORM_RECOGNIZER_ENDPOINT
         api_key = api_key or settings.AZURE_FORM_RECOGNIZER_KEY
         
@@ -82,10 +74,6 @@ class DocumentIntelligenceClient:
         exponential_base = 2.0
         
         try:
-            # In demo mode, use mock client directly (no Azure SDK poller)
-            if settings.DEMO_MODE:
-                return self.client.analyze_invoice(file_content)
-
             # Analyze document - Document Intelligence handles bytes directly
             poller = self.client.begin_analyze_document(
                 model_id=self.model_id,
