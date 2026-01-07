@@ -376,7 +376,8 @@ class ExtractionService:
                 logger.info("Saving extracted invoice to database (after LLM) for: %s", invoice_id)
                 await progress_tracker.update(invoice_id, 98, "Saving LLM-enhanced results...")
                 patch = self._invoice_to_patch(invoice)
-                ok2 = await DatabaseService.set_extraction_result(invoice_id, patch, db=db)
+                # After initial extraction, state is EXTRACTED, so we need to update with that expectation
+                ok2 = await DatabaseService.set_extraction_result(invoice_id, patch, expected_processing_state="EXTRACTED", db=db)
                 if not ok2:
                     raise ValueError("Failed to persist post-LLM extraction result; state mismatch")
             else:
