@@ -1,0 +1,1009 @@
+pdf_name,field_name,field_category,extracted,value,confidence,confidence_category,di_field_sources,false_negative,value_type,line_number,line_item_amount,line_item_quantity,line_item_unit_price
+ACC012 4202092525.pdf,bill_to_address,invoice_field,True,street='99 Bank Street' city='Ottawa' province='ON' postal_code='K1P 6B9' country=None,0.881,high,,False,Address,,,,
+ACC012 4202092525.pdf,business_number,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,contract_id,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,currency,invoice_field,True,CAD,,none,Currency,False,str,,,,
+ACC012 4202092525.pdf,customer_email,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,customer_fax,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,customer_id,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,customer_name,invoice_field,True,CATSA/ACTSA,0.957,high,CustomerName,False,str,,,,
+ACC012 4202092525.pdf,customer_phone,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,delivery_date,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,deposit_amount,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,discount_amount,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,due_date,invoice_field,True,2025-10-25,0.96,high,DueDate,False,date,,,,
+ACC012 4202092525.pdf,entity,invoice_field,False,,,none,Entity,True,NoneType,,,,
+ACC012 4202092525.pdf,gst_amount,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,gst_number,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,gst_rate,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,handling_fee,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,hst_amount,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,hst_rate,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,invoice_date,invoice_field,True,2025-09-25,0.96,high,InvoiceDate,False,date,,,,
+ACC012 4202092525.pdf,invoice_number,invoice_field,True,4202092525,0.96,high,InvoiceId,False,str,,,,
+ACC012 4202092525.pdf,invoice_type,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,payment_due_upon,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,payment_method,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,payment_terms,invoice_field,True,Net 30,0.941,high,PaymentTerm,False,str,,,,
+ACC012 4202092525.pdf,period_end,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,period_start,invoice_field,True,2025-09-25,,none,ServiceStartDate,False,date,,,,
+ACC012 4202092525.pdf,po_number,invoice_field,True,1001401,0.957,high,PurchaseOrder,False,str,,,,
+ACC012 4202092525.pdf,pst_amount,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,pst_number,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,pst_rate,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,qst_amount,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,qst_number,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,qst_rate,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,reference_number,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,remit_to_address,invoice_field,False,,0.0,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,remit_to_name,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,shipping_amount,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,shipping_date,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,standing_offer_number,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,subtotal,invoice_field,True,56.75,0.949,high,SubTotal,False,Decimal,,,,
+ACC012 4202092525.pdf,tax_amount,invoice_field,True,6.81,0.949,high,TotalTax,False,Decimal,,,,
+ACC012 4202092525.pdf,tax_breakdown,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,tax_registration_number,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,total_amount,invoice_field,True,63.56,0.95,high,InvoiceTotal,False,Decimal,,,,
+ACC012 4202092525.pdf,vendor_address,invoice_field,True,street='111 Cole Avenue' city='Winnipeg' province='MB' postal_code='R2L 1J3' country=None,0.845,high,VendorAddress,False,Address,,,,
+ACC012 4202092525.pdf,vendor_email,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,vendor_fax,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,vendor_id,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,vendor_name,invoice_field,True,"ACCURATE
+fire & safety ltd.",0.876,high,VendorName,False,str,,,,
+ACC012 4202092525.pdf,vendor_phone,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,vendor_website,invoice_field,False,,,none,,False,NoneType,,,,
+ACC012 4202092525.pdf,line_item_1,line_item,True,Line 1: Monthly Fire Extinguisher Inspection,0.913,high,Items,False,LineItem,1.0,56.75,1.0,56.75
+ANA005 90443097.pdf,bill_to_address,invoice_field,True,street='99 Bank St.' city='OTTAWA' province=None postal_code='K1P 6B9' country='CANADA',0.878,high,,False,Address,,,,
+ANA005 90443097.pdf,business_number,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,contract_id,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,currency,invoice_field,True,CAD,,none,Currency,False,str,,,,
+ANA005 90443097.pdf,customer_email,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,customer_fax,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,customer_id,invoice_field,True,115156,0.819,high,CustomerId,False,str,,,,
+ANA005 90443097.pdf,customer_name,invoice_field,True,CATSA / ACTSA,0.916,high,CustomerName,False,str,,,,
+ANA005 90443097.pdf,customer_phone,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,delivery_date,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,deposit_amount,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,discount_amount,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,due_date,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,entity,invoice_field,False,,,none,Entity,True,NoneType,,,,
+ANA005 90443097.pdf,gst_amount,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,gst_number,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,gst_rate,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,handling_fee,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,hst_amount,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,hst_rate,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,invoice_date,invoice_field,True,2025-08-19,0.948,high,InvoiceDate,False,date,,,,
+ANA005 90443097.pdf,invoice_number,invoice_field,True,90443097,0.948,high,InvoiceId,False,str,,,,
+ANA005 90443097.pdf,invoice_type,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,payment_due_upon,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,payment_method,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,payment_terms,invoice_field,True,Net due in 30 days,0.893,high,PaymentTerm,False,str,,,,
+ANA005 90443097.pdf,period_end,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,period_start,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,po_number,invoice_field,True,PO1021017;,0.946,high,PurchaseOrder,False,str,,,,
+ANA005 90443097.pdf,pst_amount,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,pst_number,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,pst_rate,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,qst_amount,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,qst_number,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,qst_rate,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,reference_number,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,remit_to_address,invoice_field,True,street='P.O. Box 32026' city='New York' province='NY' postal_code='10087-2026' country=None,0.886,high,RemittanceAddress,False,Address,,,,
+ANA005 90443097.pdf,remit_to_name,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,shipping_amount,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,shipping_date,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,standing_offer_number,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,subtotal,invoice_field,True,186836.85,0.938,high,SubTotal,False,Decimal,,,,
+ANA005 90443097.pdf,tax_amount,invoice_field,True,9341.84,0.933,high,TotalTax,False,Decimal,,,,
+ANA005 90443097.pdf,tax_breakdown,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,tax_registration_number,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,total_amount,invoice_field,True,196178.69,0.945,high,InvoiceTotal,False,Decimal,,,,
+ANA005 90443097.pdf,vendor_address,invoice_field,True,street='8 Centennial Drive' city='PEABODY' province='MA' postal_code='01960' country='USA',0.886,high,VendorAddress,False,Address,,,,
+ANA005 90443097.pdf,vendor_email,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,vendor_fax,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,vendor_id,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,vendor_name,invoice_field,True,analogic,0.947,high,VendorName,False,str,,,,
+ANA005 90443097.pdf,vendor_phone,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,vendor_website,invoice_field,False,,,none,,False,NoneType,,,,
+ANA005 90443097.pdf,line_item_1,line_item,True,"Line 1: PBS CT X-RAY BASE TYPE UNIT (CATSA+) (RIGHT)
+FULLY",0.911,high,Items,False,LineItem,1.0,178276.31,1.0,356552.61
+ANA005 90443097.pdf,line_item_2,line_item,True,"Line 2: non-LIN Calibration Fixture
+50% deemed acceptance ",0.914,high,Items,False,LineItem,2.0,2015.07,1.0,4030.13
+ANA005 90443097.pdf,line_item_3,line_item,True,"Line 3: Pin/Z-Alignment Phantom Assy
+50% deemed acceptance",0.914,high,Items,False,LineItem,3.0,2236.77,1.0,4473.54
+ANA005 90443097.pdf,line_item_4,line_item,True,"Line 4: Seismic Anchoring Brackets
+50% deemed acceptance b",0.914,high,Items,False,LineItem,4.0,909.12,1.0,1818.24
+ANA005 90443097.pdf,line_item_5,line_item,True,"Line 5: Manager Workstation
+50% deemed acceptance billing",0.914,high,Items,False,LineItem,5.0,3399.59,1.0,6799.17
+HYD001 5160530790NOV2025.pdf,bill_to_address,invoice_field,True,street='99 BANK STREET' city='OTTAWA' province='ON' postal_code='K1P 6B9' country=None,0.873,high,CustomerAddress,False,Address,,,,
+HYD001 5160530790NOV2025.pdf,business_number,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,contract_id,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,currency,invoice_field,True,CAD,,none,Currency,False,str,,,,
+HYD001 5160530790NOV2025.pdf,customer_email,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,customer_fax,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,customer_id,invoice_field,True,51605307907507896000,0.925,high,CustomerId,False,str,,,,
+HYD001 5160530790NOV2025.pdf,customer_name,invoice_field,True,CATSA CANADIAN AIR TRANSPORT SECURITY AUTHORITY,0.887,high,CustomerName,False,str,,,,
+HYD001 5160530790NOV2025.pdf,customer_phone,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,delivery_date,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,deposit_amount,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,discount_amount,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,due_date,invoice_field,True,2025-12-18,0.938,high,DueDate,False,date,,,,
+HYD001 5160530790NOV2025.pdf,entity,invoice_field,False,,,none,Entity,True,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,gst_amount,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,gst_number,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,gst_rate,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,handling_fee,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,hst_amount,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,hst_rate,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,invoice_date,invoice_field,True,2025-11-25,0.941,high,InvoiceDate,False,date,,,,
+HYD001 5160530790NOV2025.pdf,invoice_number,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,invoice_type,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,payment_due_upon,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,payment_method,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,payment_terms,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,period_end,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,period_start,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,po_number,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,pst_amount,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,pst_number,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,pst_rate,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,qst_amount,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,qst_number,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,qst_rate,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,reference_number,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,remit_to_address,invoice_field,True,street='PO Box 8700' city='Ottawa' province='ON' postal_code='K1G 3S4' country=None,0.626,medium,RemittanceAddress,False,Address,,,,
+HYD001 5160530790NOV2025.pdf,remit_to_name,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,shipping_amount,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,shipping_date,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,standing_offer_number,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,subtotal,invoice_field,False,,,none,SubTotal,True,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,tax_amount,invoice_field,True,47.53,0.438,low,TotalTax,False,Decimal,,,,
+HYD001 5160530790NOV2025.pdf,tax_breakdown,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,tax_registration_number,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,total_amount,invoice_field,True,353.79,0.937,high,InvoiceTotal,False,Decimal,,,,
+HYD001 5160530790NOV2025.pdf,vendor_address,invoice_field,True,street='PO Box / C. P. 8700' city='Ottawa' province='ON' postal_code='K1G 3S4' country=None,0.714,medium,VendorAddress,False,Address,,,,
+HYD001 5160530790NOV2025.pdf,vendor_email,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,vendor_fax,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,vendor_id,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,vendor_name,invoice_field,True,HydroOttawa,0.95,high,VendorName,False,str,,,,
+HYD001 5160530790NOV2025.pdf,vendor_phone,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,vendor_website,invoice_field,False,,,none,,False,NoneType,,,,
+HYD001 5160530790NOV2025.pdf,line_item_1,line_item,True,Line 1: Off-peak/Période creuse 649.250564 kWh,0.839,high,Items,False,LineItem,1.0,49.34,,0.076
+HYD001 5160530790NOV2025.pdf,line_item_2,line_item,True,Line 2: Mid-peak/Période médiane 333.271520 kWh,0.839,high,Items,False,LineItem,2.0,40.66,,0.122
+HYD001 5160530790NOV2025.pdf,line_item_3,line_item,True,Line 3: On-peak/Période de pointe 407.929666 kWh,0.832,high,Items,False,LineItem,3.0,64.45,,0.158
+HYD001 5160530790NOV2025.pdf,line_item_4,line_item,True,Line 4: Off-peak/Periode creuse 279.714790 kWh,0.838,high,Items,False,LineItem,4.0,27.41,,0.098
+HYD001 5160530790NOV2025.pdf,line_item_5,line_item,True,Line 5: Mid-peak/Période médiane 138.794320 kWh,0.847,high,Items,False,LineItem,5.0,21.79,,0.157
+HYD001 5160530790NOV2025.pdf,line_item_6,line_item,True,"Line 6: On-peak/Période de pointe 103.550689 kWh
+de livrai",0.443,low,Items,False,LineItem,6.0,21.02,,0.203
+HYD001 5160530790NOV2025.pdf,line_item_7,line_item,True,Line 7: ,0.557,medium,Items,False,LineItem,7.0,63.75,,
+HYD001 5160530790NOV2025.pdf,line_item_8,line_item,True,Line 8: ,0.552,medium,Items,False,LineItem,8.0,60.17,,
+HYD001 5160530790NOV2025.pdf,line_item_9,line_item,True,Line 9: ,0.555,medium,Items,False,LineItem,9.0,58.54,,
+HYD001 5160530790NOV2025.pdf,line_item_10,line_item,True,Line 10: ,0.569,medium,Items,False,LineItem,10.0,57.55,,
+HYD001 5160530790NOV2025.pdf,line_item_11,line_item,True,Line 11: ,0.613,medium,Items,False,LineItem,11.0,63.05,,
+HYD001 5160530790NOV2025.pdf,line_item_12,line_item,True,Line 12: ,0.564,medium,Items,False,LineItem,12.0,55.44,,
+HYD001 5160530790NOV2025.pdf,line_item_13,line_item,True,Line 13: ,0.542,medium,Items,False,LineItem,13.0,56.93,,
+HYD001 5160530790NOV2025.pdf,line_item_14,line_item,True,Line 14: ,0.565,medium,Items,False,LineItem,14.0,65.03,,
+HYD001 5160530790NOV2025.pdf,line_item_15,line_item,True,Line 15: ,0.555,medium,Items,False,LineItem,15.0,62.93,,
+HYD001 5160530790NOV2025.pdf,line_item_16,line_item,True,Line 16: ,0.607,medium,Items,False,LineItem,16.0,68.69,,
+HYD001 5160530790NOV2025.pdf,line_item_17,line_item,True,Line 17: ,0.569,medium,Items,False,LineItem,17.0,60.47,,
+HYD001 5160530790NOV2025.pdf,line_item_18,line_item,True,Line 18: ,0.541,medium,Items,False,LineItem,18.0,64.86,,
+HYD001 5160530790NOV2025.pdf,line_item_19,line_item,True,Line 19: ,0.489,low,Items,False,LineItem,19.0,64.12,,
+TEL006 4222600.pdf,bill_to_address,invoice_field,True,street='99 Bank Street' city='Ottawa' province='ON' postal_code='K1P 6B9' country=None,0.879,high,CustomerAddress,False,Address,,,,
+TEL006 4222600.pdf,business_number,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,contract_id,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,currency,invoice_field,True,CAD,,none,Currency,False,str,,,,
+TEL006 4222600.pdf,customer_email,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,customer_fax,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,customer_id,invoice_field,True,160-0000115624-2,0.943,high,CustomerId,False,str,,,,
+TEL006 4222600.pdf,customer_name,invoice_field,True,Canadian Air Transport Security Authority,0.891,high,CustomerName,False,str,,,,
+TEL006 4222600.pdf,customer_phone,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,delivery_date,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,deposit_amount,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,discount_amount,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,due_date,invoice_field,True,2025-11-30,0.939,high,DueDate,False,date,,,,
+TEL006 4222600.pdf,entity,invoice_field,False,,,none,Entity,True,NoneType,,,,
+TEL006 4222600.pdf,gst_amount,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,gst_number,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,gst_rate,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,handling_fee,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,hst_amount,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,hst_rate,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,invoice_date,invoice_field,True,2025-11-01,0.938,high,InvoiceDate,False,date,,,,
+TEL006 4222600.pdf,invoice_number,invoice_field,True,4222600,0.95,high,InvoiceId,False,str,,,,
+TEL006 4222600.pdf,invoice_type,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,payment_due_upon,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,payment_method,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,payment_terms,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,period_end,invoice_field,True,2025-11-30,,none,ServiceEndDate,False,date,,,,
+TEL006 4222600.pdf,period_start,invoice_field,True,2025-11-01,,none,ServiceStartDate,False,date,,,,
+TEL006 4222600.pdf,po_number,invoice_field,True,PO1007427,0.947,high,PurchaseOrder,False,str,,,,
+TEL006 4222600.pdf,pst_amount,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,pst_number,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,pst_rate,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,qst_amount,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,qst_number,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,qst_rate,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,reference_number,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,remit_to_address,invoice_field,True,street='PO Box 2210' city='Vancouver' province='BC' postal_code='V6B 8P3' country=None,0.879,high,RemittanceAddress,False,Address,,,,
+TEL006 4222600.pdf,remit_to_name,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,shipping_amount,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,shipping_date,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,standing_offer_number,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,subtotal,invoice_field,True,166701.24,0.656,medium,SubTotal,False,Decimal,,,,
+TEL006 4222600.pdf,tax_amount,invoice_field,True,20750.66,0.976,high,TotalTax,False,Decimal,,,,
+TEL006 4222600.pdf,tax_breakdown,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,tax_registration_number,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,total_amount,invoice_field,True,550707.25,0.948,high,InvoiceTotal,False,Decimal,,,,
+TEL006 4222600.pdf,vendor_address,invoice_field,False,,0.0,none,,False,NoneType,,,,
+TEL006 4222600.pdf,vendor_email,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,vendor_fax,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,vendor_id,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,vendor_name,invoice_field,True,TELUS® Business,0.71,medium,VendorName,False,str,,,,
+TEL006 4222600.pdf,vendor_phone,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,vendor_website,invoice_field,False,,,none,,False,NoneType,,,,
+TEL006 4222600.pdf,line_item_1,line_item,True,Line 1: Canadian Air Transport Security Authority,0.898,high,Items,False,LineItem,1.0,,,
+TEL006 4222600.pdf,line_item_2,line_item,True,Line 2: CATSA-HQ(P),0.866,high,Items,False,LineItem,2.0,4096.0,,
+TEL006 4222600.pdf,line_item_3,line_item,True,Line 3: CATSA-YHM,0.867,high,Items,False,LineItem,3.0,2225.0,,
+TEL006 4222600.pdf,line_item_4,line_item,True,Line 4: CATSA-HQ(S),0.868,high,Items,False,LineItem,4.0,2776.0,,
+TEL006 4222600.pdf,line_item_5,line_item,True,Line 5: CATSA-YYY,0.868,high,Items,False,LineItem,5.0,817.05,,
+TEL006 4222600.pdf,line_item_6,line_item,True,Line 6: CATSA-YGP,0.868,high,Items,False,LineItem,6.0,817.05,,
+TEL006 4222600.pdf,line_item_7,line_item,True,Line 7: CATSA-YGR,0.867,high,Items,False,LineItem,7.0,1476.14,,
+TEL006 4222600.pdf,line_item_8,line_item,True,Line 8: CATSA-YSB,0.867,high,Items,False,LineItem,8.0,2203.41,,
+TEL006 4222600.pdf,line_item_9,line_item,True,Line 9: Canadian Air Transport Security Authority,0.899,high,Items,False,LineItem,9.0,,,
+TEL006 4222600.pdf,line_item_10,line_item,True,Line 10: CATSA-YTH,0.866,high,Items,False,LineItem,10.0,1873.0,,
+TEL006 4222600.pdf,line_item_11,line_item,True,Line 11: CATSA-YSJ,0.867,high,Items,False,LineItem,11.0,1028.2,,
+TEL006 4222600.pdf,line_item_12,line_item,True,Line 12: CATSA-YHZ,0.868,high,Items,False,LineItem,12.0,2203.41,,
+TEL006 4222600.pdf,line_item_13,line_item,True,Line 13: CATSA-YYC-TC,0.866,high,Items,False,LineItem,13.0,1120.0,,
+TEL006 4222600.pdf,line_item_14,line_item,True,Line 14: Canadian Air Transport Security Authority,0.898,high,Items,False,LineItem,14.0,,,
+TEL006 4222600.pdf,line_item_15,line_item,True,Line 15: Canadian Air Transport Security Authority,0.899,high,Items,False,LineItem,15.0,,,
+TEL006 4222600.pdf,line_item_16,line_item,True,Line 16: CATSA-TC,0.529,medium,Items,False,LineItem,16.0,2156.27,,
+TEL006 4222600.pdf,line_item_17,line_item,True,Line 17: Canadian Air Transport Security Authority,0.164,low,Items,False,LineItem,17.0,,,
+TEL006 4222600.pdf,line_item_18,line_item,True,Line 18: Canadian Air Transport Security Authority,0.124,low,Items,False,LineItem,18.0,,,
+TEL006 4222600.pdf,line_item_19,line_item,True,Line 19: Payment,0.429,low,Items,False,LineItem,19.0,206805.7,,
+TEL006 4222600.pdf,line_item_20,line_item,True,Line 20: Payment,0.434,low,Items,False,LineItem,20.0,183071.04,,
+TEL006 4222600.pdf,line_item_21,line_item,True,Line 21: Payment,0.428,low,Items,False,LineItem,21.0,181963.89,,
+TEL006 4222600.pdf,line_item_22,line_item,True,"Line 22: Adj. WAN L3 VPN - 1.5MBPS
+CATSA-YZFSep-25PA10%",0.828,high,Items,False,LineItem,22.0,100.32,,
+TEL006 4222600.pdf,line_item_23,line_item,True,"Line 23: Adj. WAN L3 VPN - 1.5MBPS
+CATSA-YFBSep-25PA10%",0.827,high,Items,False,LineItem,23.0,422.4,,
+TEL006 4222600.pdf,line_item_24,line_item,True,"Line 24: Adj. WAN L3 VPN - 1.5MBPS
+CATSA-YXYSep-25PA10%",0.827,high,Items,False,LineItem,24.0,100.32,,
+TEL006 4222600.pdf,line_item_25,line_item,True,"Line 25: Adj. WAN L3 VPN - 1.5MBPS
+CATSA-YTMSep-25PTD10%",0.827,high,Items,False,LineItem,25.0,82.36,,
+TEL006 4222600.pdf,line_item_26,line_item,True,"Line 26: Adj. WAN L3_VPN - 10MBPS
+CATSA-YUYSep-25PTD10%",0.834,high,Items,False,LineItem,26.0,79.21,,
+TEL006 4222600.pdf,line_item_27,line_item,True,"Line 27: Adj. WAN L3 VPN - 10MBPS
+CATSA-YUYSep-25PA10%",0.838,high,Items,False,LineItem,27.0,79.2,,
+TEL006 4222600.pdf,line_item_28,line_item,True,"Line 28: Adj. WAN L3 VPN - 256K
+Credit for previously bille",0.294,low,Items,False,LineItem,28.0,207.74,,
+TEL006 4222600.pdf,line_item_29,line_item,True,"Line 29: Ethernet Routed-Frame Gateway-T1*
+Winnipeg POP",0.911,high,Items,False,LineItem,29.0,,,
+TEL006 4222600.pdf,line_item_30,line_item,True,"Line 30: Additional Port*
+99 Bank St Flr 13",0.909,high,Items,False,LineItem,30.0,25.0,,
+TEL006 4222600.pdf,line_item_31,line_item,True,"Line 31: IP QOS Premium - EF WAN Mbps*
+99 Bank St Flr 13",0.906,high,Items,False,LineItem,31.0,375.0,,
+TEL006 4222600.pdf,line_item_32,line_item,True,"Line 32: IP QOS Enhanced AF for 100-500MBPS*
+99 Bank St 13t",0.913,high,Items,False,LineItem,32.0,,,
+TEL006 4222600.pdf,line_item_33,line_item,True,"Line 33: TM - WAN L3 VPN - Ver 2 - 2 Gbps*
+99 Bank St 13th ",0.911,high,Items,False,LineItem,33.0,3696.0,,
+TEL006 4222600.pdf,line_item_34,line_item,True,"Line 34: WAN L3 VPN - 100MBPS*
+John C. Munro Hamilton Int'l",0.908,high,Items,False,LineItem,34.0,2200.0,,
+TEL006 4222600.pdf,line_item_35,line_item,True,"Line 35: IP QOS Enhanced AF for 100-500MBPS*
+John C. Munro ",0.913,high,Items,False,LineItem,35.0,,,
+TEL006 4222600.pdf,line_item_36,line_item,True,"Line 36: Additional Port*
+John C. Munro Hamilton Int'l",0.912,high,Items,False,LineItem,36.0,25.0,,
+TEL006 4222600.pdf,line_item_37,line_item,True,"Line 37: IP QOS Enhanced AF for 100-500MBPS*
+99 Bank St 13t",0.917,high,Items,False,LineItem,37.0,,,
+TEL006 4222600.pdf,line_item_38,line_item,True,"Line 38: IP QOS Premium - EF WAN Mbps*
+99 Bank St",0.914,high,Items,False,LineItem,38.0,375.0,,
+TEL006 4222600.pdf,line_item_39,line_item,True,"Line 39: Additional Port*
+99 Bank St",0.918,high,Items,False,LineItem,39.0,25.0,,
+TEL006 4222600.pdf,line_item_40,line_item,True,"Line 40: TM - WAN L3 VPN - Ver 2 - 2 Gbps*
+99 Bank St 13th ",0.916,high,Items,False,LineItem,40.0,2376.0,,
+TEL006 4222600.pdf,line_item_41,line_item,True,"Line 41: Additional Port*
+Aeroport De Mont-Joli",0.916,high,Items,False,LineItem,41.0,25.0,,
+TEL006 4222600.pdf,line_item_42,line_item,True,"Line 42: WAN L3 VPN - 10MBPS*
+Aeroport De Mont-Joli",0.914,high,Items,False,LineItem,42.0,792.05,,
+TEL006 4222600.pdf,line_item_43,line_item,True,"Line 43: Additional Port*
+CATSA-YGP",0.914,high,Items,False,LineItem,43.0,25.0,,
+TEL006 4222600.pdf,line_item_44,line_item,True,"Line 44: WAN L3 VPN - 10MBPS*
+CATSA-YGP",0.915,high,Items,False,LineItem,44.0,792.05,,
+TEL006 4222600.pdf,line_item_45,line_item,True,"Line 45: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+CATSA-YGP",0.911,high,Items,False,LineItem,45.0,,,
+TEL006 4222600.pdf,line_item_46,line_item,True,"Line 46: WAN L3 VPN - 10MBPS*
+CATSA-YGR",0.915,high,Items,False,LineItem,46.0,1451.14,,
+TEL006 4222600.pdf,line_item_47,line_item,True,"Line 47: Additional Port*
+CATSA-YGR",0.917,high,Items,False,LineItem,47.0,25.0,,
+TEL006 4222600.pdf,line_item_48,line_item,True,"Line 48: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+CATSA-YGR",0.913,high,Items,False,LineItem,48.0,,,
+TEL006 4222600.pdf,line_item_49,line_item,True,"Line 49: WAN L3 VPN - 100MBPS*
+EYRKONAE-CATSA15",0.914,high,Items,False,LineItem,49.0,2178.41,,
+TEL006 4222600.pdf,line_item_50,line_item,True,"Line 50: IP QoS Enhanced AF for 10-30MBPS*
+Greater Sudbury ",0.912,high,Items,False,LineItem,50.0,,,
+TEL006 4222600.pdf,line_item_51,line_item,True,"Line 51: Additional Port*
+Greater Sudbury Airport",0.913,high,Items,False,LineItem,51.0,25.0,,
+TEL006 4222600.pdf,line_item_52,line_item,True,"Line 52: Ethernet Routed-Frame Gateway-T1*
+99 Bank Street 1",0.829,high,Items,False,LineItem,52.0,,,
+TEL006 4222600.pdf,line_item_53,line_item,True,"Line 53: Additional Port*
+CATSA-YTH",0.592,medium,Items,False,LineItem,53.0,25.0,,
+TEL006 4222600.pdf,line_item_54,line_item,True,"Line 54: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+UPG, THSN",0.773,high,Items,False,LineItem,54.0,,,
+TEL006 4222600.pdf,line_item_55,line_item,True,"Line 55: WAN L3 VPN - 1.5MBPS*
+UPG,THSNMB01-CATSA01,Auth#G1",0.824,high,Items,False,LineItem,55.0,1848.0,,
+TEL006 4222600.pdf,line_item_56,line_item,True,"Line 56: IP QOS Enhanced AF for 10-30MBPS*
+Saint John Airpo",0.911,high,Items,False,LineItem,56.0,,,
+TEL006 4222600.pdf,line_item_57,line_item,True,"Line 57: Additional Port*
+Saint John Airport",0.857,high,Items,False,LineItem,57.0,25.0,,
+TEL006 4222600.pdf,line_item_58,line_item,True,"Line 58: WAN L3 VPN - 100MBPS*
+Saint John Airport",0.909,high,Items,False,LineItem,58.0,1003.2,,
+TEL006 4222600.pdf,line_item_59,line_item,True,"Line 59: WAN L3 VPN - 500MBPS*
+Stanfield International Airp",0.911,high,Items,False,LineItem,59.0,1928.41,,
+TEL006 4222600.pdf,line_item_60,line_item,True,"Line 60: IP QOS Premium - EF WAN Mbps*
+Stanfield Internatio",0.911,high,Items,False,LineItem,60.0,250.0,,
+TEL006 4222600.pdf,line_item_61,line_item,True,"Line 61: Additional Port*
+Stanfield International Airport",0.911,high,Items,False,LineItem,61.0,25.0,,
+TEL006 4222600.pdf,line_item_62,line_item,True,"Line 62: IP QOS Enhanced AF for 100-500MBPS*
+Stanfield Inte",0.911,high,Items,False,LineItem,62.0,,,
+TEL006 4222600.pdf,line_item_63,line_item,True,"Line 63: IP QOS Premium - EF WAN Mbps*
+Calgary Internationa",0.858,high,Items,False,LineItem,63.0,25.0,,
+TEL006 4222600.pdf,line_item_64,line_item,True,"Line 64: IP Qos Enhanced AF for 10-30MBPS*
+Calgary Internat",0.904,high,Items,False,LineItem,64.0,,,
+TEL006 4222600.pdf,line_item_65,line_item,True,"Line 65: WAN L3 VPN - 100MBPS*
+Calgary International Airpor",0.91,high,Items,False,LineItem,65.0,1095.0,,
+TEL006 4222600.pdf,line_item_66,line_item,True,"Line 66: Ethernet Routed-Frame T1*
+99 Bank Street 13th Floo",0.824,high,Items,False,LineItem,66.0,,,
+TEL006 4222600.pdf,line_item_67,line_item,True,"Line 67: Ethernet Routed-Frame T1*
+99 Bank Street 13th Floo",0.691,medium,Items,False,LineItem,67.0,,,
+TEL006 4222600.pdf,line_item_68,line_item,True,"Line 68: WAN L3 VPN - 1.5MBPS*
+OTWAON01-CATSA09",0.837,high,Items,False,LineItem,68.0,1246.59,,
+TEL006 4222600.pdf,line_item_69,line_item,True,"Line 69: IP QoS Enhanced AF - under 1.5MBPS/ADSL*
+OTWAON01-",0.823,high,Items,False,LineItem,69.0,,,
+TEL006 4222600.pdf,line_item_70,line_item,True,"Line 70: GOC MNS ISIP 2*
+OTWAON01-CATSA09",0.844,high,Items,False,LineItem,70.0,25.0,,
+TEL006 4222600.pdf,line_item_71,line_item,True,"Line 71: WAN L3 VPN - 1.5MBPS*
+OTWAON01-CATSA09",0.835,high,Items,False,LineItem,71.0,884.68,,
+TEL006 4222600.pdf,line_item_72,line_item,True,"Line 72: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+CATSA-YJT",0.82,high,Items,False,LineItem,72.0,,,
+TEL006 4222600.pdf,line_item_73,line_item,True,"Line 73: WAN L3 VPN - 10MBPS*
+CATSA-YJT",0.845,high,Items,False,LineItem,73.0,1320.45,,
+TEL006 4222600.pdf,line_item_74,line_item,True,"Line 74: Additional Port*
+CATSA-YJT",0.839,high,Items,False,LineItem,74.0,25.0,,
+TEL006 4222600.pdf,line_item_75,line_item,True,"Line 75: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+UPG,SMTRB",0.8,high,Items,False,LineItem,75.0,,,
+TEL006 4222600.pdf,line_item_76,line_item,True,"Line 76: WAN L3 VPN - 1.5MBPS*
+UPG,SMTRBC01-CATSA02,Auth#G1",0.829,high,Items,False,LineItem,76.0,240.24,,
+TEL006 4222600.pdf,line_item_77,line_item,True,"Line 77: Additional Port*
+SMTRBC01-CATSA02",0.822,high,Items,False,LineItem,77.0,25.0,,
+TEL006 4222600.pdf,line_item_78,line_item,True,"Line 78: WAN L3 VPN - 1.5MBPS*
+UPG,KMLPBC01-CATSA01,Auth#G1",0.772,high,Items,False,LineItem,78.0,240.24,,
+TEL006 4222600.pdf,line_item_79,line_item,True,"Line 79: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+UPG,KMLPB",0.757,high,Items,False,LineItem,79.0,,,
+TEL006 4222600.pdf,line_item_80,line_item,True,"Line 80: Additional Port*
+CATSA-YKA",0.746,medium,Items,False,LineItem,80.0,25.0,,
+TEL006 4222600.pdf,line_item_81,line_item,True,"Line 81: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+3000 Airp",0.755,high,Items,False,LineItem,81.0,,,
+TEL006 4222600.pdf,line_item_82,line_item,True,"Line 82: Additional Port*
+3000 Airport Road",0.816,high,Items,False,LineItem,82.0,25.0,,
+TEL006 4222600.pdf,line_item_83,line_item,True,"Line 83: WAN L3 VPN - 10MBPS*
+3000 Airport Road",0.803,high,Items,False,LineItem,83.0,792.05,,
+TEL006 4222600.pdf,line_item_84,line_item,True,"Line 84: IP QOS Enhanced AF for 10-30MBPS*
+Kitchener-Waterl",0.914,high,Items,False,LineItem,84.0,,,
+TEL006 4222600.pdf,line_item_85,line_item,True,"Line 85: Additional Port*
+Kitchener-Waterloo Regional Airpo",0.833,high,Items,False,LineItem,85.0,25.0,,
+TEL006 4222600.pdf,line_item_86,line_item,True,"Line 86: WAN L3 VPN - 100MBPS*
+Kitchener-Waterloo Regional ",0.916,high,Items,False,LineItem,86.0,1240.0,,
+TEL006 4222600.pdf,line_item_87,line_item,True,"Line 87: Ethernet Routed-Frame T1*
+99 Bank Street 13th Floo",0.836,high,Items,False,LineItem,87.0,,,
+TEL006 4222600.pdf,line_item_88,line_item,True,"Line 88: WAN L3 VPN - 10MBPS*
+CHTWPE01-CATSA05",0.86,high,Items,False,LineItem,88.0,406.56,,
+TEL006 4222600.pdf,line_item_89,line_item,True,"Line 89: IP QOS Enhanced AF for 10-30MBPS*
+CHTWPE01-CATSA05",0.913,high,Items,False,LineItem,89.0,,,
+TEL006 4222600.pdf,line_item_90,line_item,True,"Line 90: Additional Port*
+CATSA-YYG",0.857,high,Items,False,LineItem,90.0,25.0,,
+TEL006 4222600.pdf,line_item_91,line_item,True,"Line 91: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+UPG,LLYDA",0.849,high,Items,False,LineItem,91.0,,,
+TEL006 4222600.pdf,line_item_92,line_item,True,"Line 92: WAN L3 VPN - 1.5MBPS*
+UPG,LLYDAB01-CATSA02,Auth#G1",0.827,high,Items,False,LineItem,92.0,240.24,,
+TEL006 4222600.pdf,line_item_93,line_item,True,"Line 93: Additional Port*
+CATSA-YLL",0.777,high,Items,False,LineItem,93.0,25.0,,
+TEL006 4222600.pdf,line_item_94,line_item,True,"Line 94: Ethernet Routed-Frame T1*
+99 Bank Street 13th Floo",0.708,medium,Items,False,LineItem,94.0,,,
+TEL006 4222600.pdf,line_item_95,line_item,True,"Line 95: GOC MNS ISIP 2*
+New, KLWNBC02-CATSA01,Auth#26954",0.915,high,Items,False,LineItem,95.0,25.0,,
+TEL006 4222600.pdf,line_item_96,line_item,True,"Line 96: WAN L3 VPN - 100MBPS*
+UPG,KLWNBC02-CATSA01,Auth#CA",0.915,high,Items,False,LineItem,96.0,1320.0,,
+TEL006 4222600.pdf,line_item_97,line_item,True,"Line 97: IP QOS Enhanced AF for 10-30MBPS*
+NGN,KLWNBC02-CAT",0.914,high,Items,False,LineItem,97.0,,,
+TEL006 4222600.pdf,line_item_98,line_item,True,"Line 98: WAN L3 VPN - 100MBPS*
+UPG,FTMMAB03-CATSA02,Auth#G1",0.915,high,Items,False,LineItem,98.0,1320.0,,
+TEL006 4222600.pdf,line_item_99,line_item,True,"Line 99: IP QOS Enhanced AF for 100-500MBPS*
+UPG,FTMMAB03-C",0.916,high,Items,False,LineItem,99.0,,,
+TEL006 4222600.pdf,line_item_100,line_item,True,"Line 100: Additional Port*
+UPG,FTMMAB03-CATSA02,Auth#G14-020",0.916,high,Items,False,LineItem,100.0,25.0,,
+TEL006 4222600.pdf,line_item_101,line_item,True,"Line 101: Ethernet Routed-Frame T1*
+99 Bank Street 13th Floo",0.752,high,Items,False,LineItem,101.0,,,
+TEL006 4222600.pdf,line_item_102,line_item,True,"Line 102: Ethernet Routed-Frame T1*
+99 Bank Street 13th Floo",0.912,high,Items,False,LineItem,102.0,,,
+TEL006 4222600.pdf,line_item_103,line_item,True,"Line 103: IP QOS Enhanced AF for 10-30MBPS*
+Victoria Interna",0.915,high,Items,False,LineItem,103.0,,,
+TEL006 4222600.pdf,line_item_104,line_item,True,"Line 104: WAN L3 VPN - 100MBPS*
+Victoria International Airpo",0.915,high,Items,False,LineItem,104.0,1320.0,,
+TEL006 4222600.pdf,line_item_105,line_item,True,"Line 105: WAN L3 VPN - 10MBPS*
+TOROONXN-CATSA06",0.912,high,Items,False,LineItem,105.0,1300.0,,
+TEL006 4222600.pdf,line_item_106,line_item,True,"Line 106: Additional Port*
+TOROONXN-CATSA06",0.913,high,Items,False,LineItem,106.0,25.0,,
+TEL006 4222600.pdf,line_item_107,line_item,True,"Line 107: IP QOS Enhanced AF for 10-30MBPS*
+TOROONXN-CATSA06",0.769,high,Items,False,LineItem,107.0,,,
+TEL006 4222600.pdf,line_item_108,line_item,True,"Line 108: Ethernet Routed-Frame T1*
+99 Bank Street 13th Floo",0.659,medium,Items,False,LineItem,108.0,,,
+TEL006 4222600.pdf,line_item_109,line_item,True,"Line 109: WAN L3 VPN - 10MBPS*
+UPG,HLFXNSAL-CATSA09,Auth#G14",0.764,high,Items,False,LineItem,109.0,686.4,,
+TEL006 4222600.pdf,line_item_110,line_item,True,"Line 110: IP QOS Enhanced AF for 10-30MBPS*
+UPG,HLFXNSAL-CAT",0.775,high,Items,False,LineItem,110.0,,,
+TEL006 4222600.pdf,line_item_111,line_item,True,"Line 111: WAN L3 VPN - 1000MBPS*
+130 Thad Johnson Road",0.923,high,Items,False,LineItem,111.0,2095.0,,
+TEL006 4222600.pdf,line_item_112,line_item,True,"Line 112: IP QoS Enhanced - AF*
+130 Thad Johnson Road",0.923,high,Items,False,LineItem,112.0,,,
+TEL006 4222600.pdf,line_item_113,line_item,True,"Line 113: Additional Port*
+130 Thad Johnson Road",0.923,high,Items,False,LineItem,113.0,25.0,,
+TEL006 4222600.pdf,line_item_114,line_item,True,"Line 114: IP QOS Premium - EF WAN Mbps*
+Calgary Internationa",0.923,high,Items,False,LineItem,114.0,25.0,,
+TEL006 4222600.pdf,line_item_115,line_item,True,"Line 115: IP QOS Enhanced AF for 100-500MBPS*
+Calgary Intern",0.923,high,Items,False,LineItem,115.0,,,
+TEL006 4222600.pdf,line_item_116,line_item,True,"Line 116: Additional Port*
+Calgary International Airport",0.923,high,Items,False,LineItem,116.0,25.0,,
+TEL006 4222600.pdf,line_item_117,line_item,True,"Line 117: WAN L3 VPN - 500MBPS*
+Calgary International Airpor",0.923,high,Items,False,LineItem,117.0,1953.6,,
+TEL006 4222600.pdf,line_item_118,line_item,True,"Line 118: Ethernet Routed-Frame T1*
+99 Bank Street 13th Floo",0.923,high,Items,False,LineItem,118.0,,,
+TEL006 4222600.pdf,line_item_119,line_item,True,"Line 119: Additional Port*
+CATSA-YMT",0.87,high,Items,False,LineItem,119.0,25.0,,
+TEL006 4222600.pdf,line_item_120,line_item,True,"Line 120: WAN L3 VPN - 128K*
+CATSA-YMT",0.914,high,Items,False,LineItem,120.0,2217.6,,
+TEL006 4222600.pdf,line_item_121,line_item,True,"Line 121: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+UPG,MTLXP",0.91,high,Items,False,LineItem,121.0,,,
+TEL006 4222600.pdf,line_item_122,line_item,True,"Line 122: WAN L3 VPN - 100MBPS*
+TOROONXN-CATSA03",0.875,high,Items,False,LineItem,122.0,1320.0,,
+TEL006 4222600.pdf,line_item_123,line_item,True,"Line 123: IP QoS Enhanced AF for 100-500MBPS*
+TOROONXN-CATSA",0.873,high,Items,False,LineItem,123.0,,,
+TEL006 4222600.pdf,line_item_124,line_item,True,"Line 124: WAN L3 VPN - 100MBPS*
+HLFXNSAL-CATSA16",0.908,high,Items,False,LineItem,124.0,1320.0,,
+TEL006 4222600.pdf,line_item_125,line_item,True,"Line 125: Additional Port*
+HLFXNSAL-CATSA16",0.912,high,Items,False,LineItem,125.0,25.0,,
+TEL006 4222600.pdf,line_item_126,line_item,True,"Line 126: IP QOS Enhanced AF for 100-500MBPS*
+HLFXNSAL-CATSA",0.911,high,Items,False,LineItem,126.0,,,
+TEL006 4222600.pdf,line_item_127,line_item,True,"Line 127: WAN L3 VPN - 10MBPS*
+SSMRON01-CATSA02 - Sault Ste ",0.904,high,Items,False,LineItem,127.0,1400.0,,
+TEL006 4222600.pdf,line_item_128,line_item,True,"Line 128: Additional Port*
+CATSA-YAM",0.912,high,Items,False,LineItem,128.0,25.0,,
+TEL006 4222600.pdf,line_item_129,line_item,True,"Line 129: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+UPG,SSMRO",0.902,high,Items,False,LineItem,129.0,,,
+TEL006 4222600.pdf,line_item_130,line_item,True,"Line 130: IP QOS Premium - EF WAN Mbps*
+Ottawa International",0.86,high,Items,False,LineItem,130.0,25.0,,
+TEL006 4222600.pdf,line_item_131,line_item,True,"Line 131: WAN L3 VPN - 500MBPS*
+Ottawa International Airport",0.903,high,Items,False,LineItem,131.0,1888.64,,
+TEL006 4222600.pdf,line_item_132,line_item,True,"Line 132: Additional Port*
+Ottawa International Airport",0.909,high,Items,False,LineItem,132.0,25.0,,
+TEL006 4222600.pdf,line_item_133,line_item,True,"Line 133: IP QOS Enhanced AF for 100-500MBPS*
+Ottawa Interna",0.909,high,Items,False,LineItem,133.0,,,
+TEL006 4222600.pdf,line_item_134,line_item,True,"Line 134: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+CATSA-YAY",0.848,high,Items,False,LineItem,134.0,,,
+TEL006 4222600.pdf,line_item_135,line_item,True,"Line 135: Additional Port*
+CATSA-YAY",0.867,high,Items,False,LineItem,135.0,25.0,,
+TEL006 4222600.pdf,line_item_136,line_item,True,"Line 136: WAN L3 VPN - 10MBPS*
+CATSA-YAY",0.871,high,Items,False,LineItem,136.0,1360.23,,
+TEL006 4222600.pdf,line_item_137,line_item,True,"Line 137: Ethernet Routed-Frame T1*
+99 Bank Street 13th Floo",0.701,medium,Items,False,LineItem,137.0,,,
+TEL006 4222600.pdf,line_item_138,line_item,True,"Line 138: WAN L3 VPN - 1.5MBPS*
+UPG,NRBAON01-CATSA02,Auth#G1",0.914,high,Items,False,LineItem,138.0,277.2,,
+TEL006 4222600.pdf,line_item_139,line_item,True,"Line 139: Additional Port*
+CATSA-YYB",0.858,high,Items,False,LineItem,139.0,25.0,,
+TEL006 4222600.pdf,line_item_140,line_item,True,"Line 140: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+UPG,NRBAO",0.862,high,Items,False,LineItem,140.0,,,
+TEL006 4222600.pdf,line_item_141,line_item,True,"Line 141: Ethernet Routed-Frame T1*
+99 Bank Street 13th Floo",0.829,high,Items,False,LineItem,141.0,,,
+TEL006 4222600.pdf,line_item_142,line_item,True,"Line 142: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+CATSA-YUY",0.835,high,Items,False,LineItem,142.0,,,
+TEL006 4222600.pdf,line_item_143,line_item,True,"Line 143: WAN L3 VPN - 10MBPS*
+CATSA-YUY",0.858,high,Items,False,LineItem,143.0,792.05,,
+TEL006 4222600.pdf,line_item_144,line_item,True,"Line 144: Additional Port*
+CATSA-YUY",0.853,high,Items,False,LineItem,144.0,25.0,,
+TEL006 4222600.pdf,line_item_145,line_item,True,"Line 145: Additional Port*
+UPG,WHTHYT01-CATSA02,Auth#CATSA14",0.695,medium,Items,False,LineItem,145.0,25.0,,
+TEL006 4222600.pdf,line_item_146,line_item,True,"Line 146: WAN L3 VPN - 1.5MBPS*
+UPG, WHTHYT01-CATSA02,Auth#C",0.695,medium,Items,False,LineItem,146.0,1003.2,,
+TEL006 4222600.pdf,line_item_147,line_item,True,"Line 147: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+UPG,WHTHY",0.683,medium,Items,False,LineItem,147.0,,,
+TEL006 4222600.pdf,line_item_148,line_item,True,"Line 148: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+UPG,PNLBQ",0.648,medium,Items,False,LineItem,148.0,,,
+TEL006 4222600.pdf,line_item_149,line_item,True,Line 149: Additional Port*,0.57,medium,Items,False,LineItem,149.0,25.0,,
+TEL006 4222600.pdf,line_item_150,line_item,True,"Line 150: WAN L3 VPN - 1.5MBPS*
+UPG,PNLBQC01-CATSA01,Auth#G1",0.678,medium,Items,False,LineItem,150.0,240.24,,
+TEL006 4222600.pdf,line_item_151,line_item,True,"Line 151: Ethernet Routed-Frame T1*
+99 Bank Street 13th Floo",0.912,high,Items,False,LineItem,151.0,,,
+TEL006 4222600.pdf,line_item_152,line_item,True,"Line 152: WAN L3 VPN - 1.5MBPS*
+UPG,VLDRQC01-CATSA01,Auth#G1",0.918,high,Items,False,LineItem,152.0,633.6,,
+TEL006 4222600.pdf,line_item_153,line_item,True,"Line 153: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+UPG, VLDR",0.916,high,Items,False,LineItem,153.0,,,
+TEL006 4222600.pdf,line_item_154,line_item,True,"Line 154: Additional Port*
+CATSA-YVO",0.923,high,Items,False,LineItem,154.0,25.0,,
+TEL006 4222600.pdf,line_item_155,line_item,True,"Line 155: Ethernet Routed-Frame T1*
+99 Bank Street 13th Floo",0.838,high,Items,False,LineItem,155.0,,,
+TEL006 4222600.pdf,line_item_156,line_item,True,"Line 156: IP QOS Enhanced AF for 10-30MBPS*
+NGN,ABFDBC01-CAT",0.918,high,Items,False,LineItem,156.0,,,
+TEL006 4222600.pdf,line_item_157,line_item,True,"Line 157: WAN L3 VPN - 30MBPS*
+Abbotsford Airport",0.917,high,Items,False,LineItem,157.0,675.0,,
+TEL006 4222600.pdf,line_item_158,line_item,True,"Line 158: Additional Port*
+Abbotsford Airport",0.92,high,Items,False,LineItem,158.0,25.0,,
+TEL006 4222600.pdf,line_item_159,line_item,True,"Line 159: IP QOS Enhanced AF for 100-500MBPS*
+Winnipeg Airpo",0.917,high,Items,False,LineItem,159.0,,,
+TEL006 4222600.pdf,line_item_160,line_item,True,"Line 160: Additional Port*
+Winnipeg Airports Authority Inc.",0.919,high,Items,False,LineItem,160.0,25.0,,
+TEL006 4222600.pdf,line_item_161,line_item,True,"Line 161: WAN L3 VPN - 500MBPS*
+Winnipeg Airports Authority ",0.918,high,Items,False,LineItem,161.0,792.05,,
+TEL006 4222600.pdf,line_item_162,line_item,True,"Line 162: IP QOS Premium - EF WAN Mbps*
+Winnipeg Airports Au",0.916,high,Items,False,LineItem,162.0,25.0,,
+TEL006 4222600.pdf,line_item_163,line_item,True,"Line 163: Ethernet Routed-Frame T1*
+99 Bank Street 13th Floo",0.913,high,Items,False,LineItem,163.0,,,
+TEL006 4222600.pdf,line_item_164,line_item,True,"Line 164: Additional Port*
+CATSA-YBG",0.915,high,Items,False,LineItem,164.0,25.0,,
+TEL006 4222600.pdf,line_item_165,line_item,True,"Line 165: WAN L3 VPN - 1.5MBPS*
+UPG,LABCQC01-CATSA01,Auth#G1",0.917,high,Items,False,LineItem,165.0,792.0,,
+TEL006 4222600.pdf,line_item_166,line_item,True,"Line 166: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+UPG,LABCQ",0.91,high,Items,False,LineItem,166.0,,,
+TEL006 4222600.pdf,line_item_167,line_item,True,"Line 167: WAN L3 VPN - 10MBPS*
+Wabush Airport",0.914,high,Items,False,LineItem,167.0,1520.0,,
+TEL006 4222600.pdf,line_item_168,line_item,True,"Line 168: Additional Port*
+Wabush Airport",0.874,high,Items,False,LineItem,168.0,25.0,,
+TEL006 4222600.pdf,line_item_169,line_item,True,"Line 169: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+UPG,HLFXN",0.913,high,Items,False,LineItem,169.0,,,
+TEL006 4222600.pdf,line_item_170,line_item,True,"Line 170: Ethernet Routed-Frame T1*
+768 Seymour St",0.638,medium,Items,False,LineItem,170.0,,,
+TEL006 4222600.pdf,line_item_171,line_item,True,"Line 171: WAN L3 VPN - 100MBPS*
+EYRKONAE-CATSA12",0.838,high,Items,False,LineItem,171.0,1320.0,,
+TEL006 4222600.pdf,line_item_172,line_item,True,"Line 172: Additional Port*
+EYRKONAE-CATSA12",0.856,high,Items,False,LineItem,172.0,25.0,,
+TEL006 4222600.pdf,line_item_173,line_item,True,"Line 173: IP QoS Enhanced AF for 100-500MBPS*
+EYRKONAE-CATSA",0.847,high,Items,False,LineItem,173.0,,,
+TEL006 4222600.pdf,line_item_174,line_item,True,"Line 174: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+UPG,WLWDB",0.368,low,Items,False,LineItem,174.0,,,
+TEL006 4222600.pdf,line_item_175,line_item,True,"Line 175: WAN L3 VPN - 1.5MBPS*
+UPG,WLWDBC01-CATSA01,Auth#G1",0.648,medium,Items,False,LineItem,175.0,240.24,,
+TEL006 4222600.pdf,line_item_176,line_item,True,"Line 176: Additional Port*
+CATSA-YWL",0.722,medium,Items,False,LineItem,176.0,25.0,,
+TEL006 4222600.pdf,line_item_177,line_item,True,"Line 177: Ethernet Routed-Frame T1*
+99 Bank Street 13th Floo",0.833,high,Items,False,LineItem,177.0,,,
+TEL006 4222600.pdf,line_item_178,line_item,True,"Line 178: Additional Port*
+TRRCBC01-CATSA01",0.859,high,Items,False,LineItem,178.0,25.0,,
+TEL006 4222600.pdf,line_item_179,line_item,True,"Line 179: IP QoS Enhanced AF - under 1.5MBPS/ADSL*
+UPG, TRRC",0.875,high,Items,False,LineItem,179.0,,,
+TEL006 4222600.pdf,line_item_180,line_item,True,"Line 180: WAN L3 VPN - 1.5MBPS*
+UPG, TRRCBC01-CATSA01,Auth#G",0.916,high,Items,False,LineItem,180.0,240.24,,
+TEL006 4222600.pdf,line_item_181,line_item,True,"Line 181: Ethernet Routed-Frame T1*
+99 Bank Street 13th Floo",0.914,high,Items,False,LineItem,181.0,,,
+TEL006 4222600.pdf,line_item_182,line_item,True,"Line 182: WAN L3 VPN - 1.5MBPS*
+UPG,CBRVBC01-CATSA02,Auth#G1",0.919,high,Items,False,LineItem,182.0,240.24,,
+TEL006 4222600.pdf,line_item_183,line_item,True,"Line 183: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+UPG,CBRVB",0.916,high,Items,False,LineItem,183.0,,,
+TEL006 4222600.pdf,line_item_184,line_item,True,"Line 184: Additional Port*
+CATSA-YBL",0.923,high,Items,False,LineItem,184.0,25.0,,
+TEL006 4222600.pdf,line_item_185,line_item,True,"Line 185: Ethernet Routed-Frame T1*
+99 Bank Street 13th Floo",0.846,high,Items,False,LineItem,185.0,,,
+TEL006 4222600.pdf,line_item_186,line_item,True,"Line 186: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+CATSA-YBX",0.865,high,Items,False,LineItem,186.0,,,
+TEL006 4222600.pdf,line_item_187,line_item,True,"Line 187: Additional Port*
+CATSA-YBX",0.856,high,Items,False,LineItem,187.0,25.0,,
+TEL006 4222600.pdf,line_item_188,line_item,True,"Line 188: WAN L3 VPN - 10MBPS*
+CATSA-YBX",0.863,high,Items,False,LineItem,188.0,792.05,,
+TEL006 4222600.pdf,line_item_189,line_item,True,"Line 189: IP QOS Enhanced AF for 10-30MBPS*
+4141 Airport Rd",0.911,high,Items,False,LineItem,189.0,,,
+TEL006 4222600.pdf,line_item_190,line_item,True,"Line 190: Additional Port*
+4141 Airport Rd",0.914,high,Items,False,LineItem,190.0,25.0,,
+TEL006 4222600.pdf,line_item_191,line_item,True,"Line 191: WAN L3 VPN - 100MBPS*
+4141 Airport Rd",0.908,high,Items,False,LineItem,191.0,1037.0,,
+TEL006 4222600.pdf,line_item_192,line_item,True,"Line 192: GOC MNS QOS AF *
+NEW, CATSA-YPR",0.863,high,Items,False,LineItem,192.0,,,
+TEL006 4222600.pdf,line_item_193,line_item,True,"Line 193: Additional Port*
+CATSA-YPR",0.856,high,Items,False,LineItem,193.0,25.0,,
+TEL006 4222600.pdf,line_item_194,line_item,True,"Line 194: WAN L3 VPN - 1.5MBPS*
+NEW, CATSA-YPR",0.863,high,Items,False,LineItem,194.0,240.24,,
+TEL006 4222600.pdf,line_item_195,line_item,True,"Line 195: Additional Port*
+9370 Airport Access Road",0.804,high,Items,False,LineItem,195.0,25.0,,
+TEL006 4222600.pdf,line_item_196,line_item,True,"Line 196: WAN L3 VPN - 10MBPS*
+9370 Airport Access Road",0.831,high,Items,False,LineItem,196.0,792.05,,
+TEL006 4222600.pdf,line_item_197,line_item,True,"Line 197: IP QOS Enhanced AF for 10-30MBPS*
+9370 Airport Acc",0.82,high,Items,False,LineItem,197.0,,,
+TEL006 4222600.pdf,line_item_198,line_item,True,"Line 198: WAN L3 VPN - 100MBPS*
+REGNSK01-CATSA05",0.846,high,Items,False,LineItem,198.0,2800.0,,
+TEL006 4222600.pdf,line_item_199,line_item,True,"Line 199: Additional Port*
+REGNSK01-CATSA05",0.84,high,Items,False,LineItem,199.0,25.0,,
+TEL006 4222600.pdf,line_item_200,line_item,True,"Line 200: IP QOS Enhanced AF for 100-500MBPS*
+REGNSK01-CATSA",0.837,high,Items,False,LineItem,200.0,,,
+TEL006 4222600.pdf,line_item_201,line_item,True,"Line 201: Additional Port*
+CATSA-YXJ",0.688,medium,Items,False,LineItem,201.0,25.0,,
+TEL006 4222600.pdf,line_item_202,line_item,True,"Line 202: WAN L3 VPN - 1.5MBPS*
+UPG,FSJNBC01-CATSA01,Auth#G1",0.57,medium,Items,False,LineItem,202.0,240.24,,
+TEL006 4222600.pdf,line_item_203,line_item,True,"Line 203: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+UPG,FSJNB",0.651,medium,Items,False,LineItem,203.0,,,
+TEL006 4222600.pdf,line_item_204,line_item,True,"Line 204: Additional Port*
+CATSA-YXH",0.628,medium,Items,False,LineItem,204.0,25.0,,
+TEL006 4222600.pdf,line_item_205,line_item,True,"Line 205: IP QoS Enhanced AF - under 1.5MBPS/ADSL*
+UPG,MDHTA",0.737,medium,Items,False,LineItem,205.0,,,
+TEL006 4222600.pdf,line_item_206,line_item,True,"Line 206: WAN L3 VPN - 1.5MBPS*
+UPG,MDHTAB01-CATSA01,Auth#G1",0.71,medium,Items,False,LineItem,206.0,240.24,,
+TEL006 4222600.pdf,line_item_207,line_item,True,"Line 207: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+UPG,CSDYB",0.628,medium,Items,False,LineItem,207.0,,,
+TEL006 4222600.pdf,line_item_208,line_item,True,"Line 208: Additional Port*
+CATSA-YCD",0.57,medium,Items,False,LineItem,208.0,25.0,,
+TEL006 4222600.pdf,line_item_209,line_item,True,"Line 209: WAN L3 VPN - 1.5MBPS*
+UPG,CSDYBC01-CATSA01,Auth#G1",0.57,medium,Items,False,LineItem,209.0,240.24,,
+TEL006 4222600.pdf,line_item_210,line_item,True,"Line 210: Ethernet Routed-Frame T1*
+99 Bank Street 13th Floo",0.835,high,Items,False,LineItem,210.0,,,
+TEL006 4222600.pdf,line_item_211,line_item,True,"Line 211: Additional Port*
+Edmonton Int'l Airport",0.867,high,Items,False,LineItem,211.0,25.0,,
+TEL006 4222600.pdf,line_item_212,line_item,True,"Line 212: WAN L3 VPN - 500MBPS*
+Edmonton Int'l Airport",0.87,high,Items,False,LineItem,212.0,1953.0,,
+TEL006 4222600.pdf,line_item_213,line_item,True,"Line 213: IP QOS Premium - EF WAN Mbps*
+Edmonton Int'l Airpo",0.91,high,Items,False,LineItem,213.0,25.0,,
+TEL006 4222600.pdf,line_item_214,line_item,True,"Line 214: IP QOS Enhanced AF for 100-500MBPS*
+Edmonton Int'l",0.915,high,Items,False,LineItem,214.0,,,
+TEL006 4222600.pdf,line_item_215,line_item,True,"Line 215: Additional Port*
+CATSA-YQZ",0.824,high,Items,False,LineItem,215.0,25.0,,
+TEL006 4222600.pdf,line_item_216,line_item,True,"Line 216: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+UPG,QSNLB",0.843,high,Items,False,LineItem,216.0,,,
+TEL006 4222600.pdf,line_item_217,line_item,True,"Line 217: WAN L3 VPN - 1.5MBPS*
+UPG,QSNLBC01-CATSA02,Auth#G1",0.86,high,Items,False,LineItem,217.0,240.24,,
+TEL006 4222600.pdf,line_item_218,line_item,True,"Line 218: Additional Port*
+130-132 Hall Road",0.914,high,Items,False,LineItem,218.0,25.0,,
+TEL006 4222600.pdf,line_item_219,line_item,True,"Line 219: WAN L3 VPN - 10MBPS*
+130-132 Hall Road",0.913,high,Items,False,LineItem,219.0,792.05,,
+TEL006 4222600.pdf,line_item_220,line_item,True,"Line 220: IP QoS Enhanced - AF*
+130-132 Hall Road",0.913,high,Items,False,LineItem,220.0,,,
+TEL006 4222600.pdf,line_item_221,line_item,True,"Line 221: Ethernet Routed-Frame T1*
+99 Bank Street 13th Floo",0.829,high,Items,False,LineItem,221.0,,,
+TEL006 4222600.pdf,line_item_222,line_item,True,"Line 222: WAN L3 VPN - 1.5MBPS*
+NEW, IQLTNT01-CATSA03",0.838,high,Items,False,LineItem,222.0,4224.0,,
+TEL006 4222600.pdf,line_item_223,line_item,True,"Line 223: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+NEW,IQLTN",0.846,high,Items,False,LineItem,223.0,,,
+TEL006 4222600.pdf,line_item_224,line_item,True,"Line 224: Additional Port*
+1 1 Airport Rd",0.817,high,Items,False,LineItem,224.0,25.0,,
+TEL006 4222600.pdf,line_item_225,line_item,True,"Line 225: IP QOS Enhanced AF for 10-30MBPS*
+1 1 Airport Rd",0.834,high,Items,False,LineItem,225.0,,,
+TEL006 4222600.pdf,line_item_226,line_item,True,"Line 226: WAN L3 VPN - 10MBPS*
+1 1 Airport Rd",0.833,high,Items,False,LineItem,226.0,1400.0,,
+TEL006 4222600.pdf,line_item_227,line_item,True,"Line 227: Ethernet Routed-Frame T1*
+99 Bank Street 13th Floo",0.926,high,Items,False,LineItem,227.0,,,
+TEL006 4222600.pdf,line_item_228,line_item,True,"Line 228: Additional Port*
+Windsor Airport",0.927,high,Items,False,LineItem,228.0,25.0,,
+TEL006 4222600.pdf,line_item_229,line_item,True,"Line 229: IP QOS Enhanced AF for 10-30MBPS*
+Windsor Airport",0.927,high,Items,False,LineItem,229.0,,,
+TEL006 4222600.pdf,line_item_230,line_item,True,"Line 230: WAN L3 VPN - 100MBPS*
+EYRKONAE-CATSA11",0.927,high,Items,False,LineItem,230.0,1701.14,,
+TEL006 4222600.pdf,line_item_231,line_item,True,"Line 231: Additional Port*
+Sydney Airport",0.927,high,Items,False,LineItem,231.0,25.0,,
+TEL006 4222600.pdf,line_item_232,line_item,True,"Line 232: IP QOS Enhanced AF for 10-30MBPS*
+Sydney Airport",0.926,high,Items,False,LineItem,232.0,,,
+TEL006 4222600.pdf,line_item_233,line_item,True,"Line 233: WAŃ L3 VPN' - 10MBPS*
+Sydney Airport",0.923,high,Items,False,LineItem,233.0,2200.0,,
+TEL006 4222600.pdf,line_item_234,line_item,True,"Line 234: IP QOS Enhanced AF for 10-30MBPS*
+CATSA-YFC",0.872,high,Items,False,LineItem,234.0,,,
+TEL006 4222600.pdf,line_item_235,line_item,True,"Line 235: Additional Port*
+CATSA-YFC",0.869,high,Items,False,LineItem,235.0,25.0,,
+TEL006 4222600.pdf,line_item_236,line_item,True,"Line 236: WAN L3 VPN - 100MBPS*
+CATSA-YFC",0.87,high,Items,False,LineItem,236.0,2595.0,,
+TEL006 4222600.pdf,line_item_237,line_item,True,"Line 237: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+207 417 S",0.873,high,Items,False,LineItem,237.0,,,
+TEL006 4222600.pdf,line_item_238,line_item,True,"Line 238: Additional Port*
+207 417 Stubb Ross Rd",0.911,high,Items,False,LineItem,238.0,25.0,,
+TEL006 4222600.pdf,line_item_239,line_item,True,"Line 239: WAN L3 VPN - 10MBPS*
+207 417 Stubb Ross Rd",0.91,high,Items,False,LineItem,239.0,792.05,,
+TEL006 4222600.pdf,line_item_240,line_item,True,"Line 240: WAN L3 VPN - 10MBPS*
+CATSA-YGK",0.838,high,Items,False,LineItem,240.0,1030.68,,
+TEL006 4222600.pdf,line_item_241,line_item,True,"Line 241: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+CATSA-YGK",0.833,high,Items,False,LineItem,241.0,,,
+TEL006 4222600.pdf,line_item_242,line_item,True,"Line 242: Additional Port*
+CATSA-YGK",0.831,high,Items,False,LineItem,242.0,25.0,,
+TEL006 4222600.pdf,line_item_243,line_item,True,"Line 243: IP QOS Enhanced AF for 100-500MBPS*
+HLFXNSAL-CATSA",0.838,high,Items,False,LineItem,243.0,,,
+TEL006 4222600.pdf,line_item_244,line_item,True,"Line 244: WAN L3 VPN - 100MBPS*
+HLFXNSAL-CATSA07",0.866,high,Items,False,LineItem,244.0,2500.0,,
+TEL006 4222600.pdf,line_item_245,line_item,True,"Line 245: Additional Port*
+HLFXNSAL-CATSA07",0.843,high,Items,False,LineItem,245.0,25.0,,
+TEL006 4222600.pdf,line_item_246,line_item,True,"Line 246: Additional Port*
+UPG,HLFXNSAL-CATSA14,Auth#G14-020",0.817,high,Items,False,LineItem,246.0,25.0,,
+TEL006 4222600.pdf,line_item_247,line_item,True,"Line 247: IP QOS Enhanced AF for 10-30MBPS*
+UPG,HLFXNSAL-CAT",0.836,high,Items,False,LineItem,247.0,,,
+TEL006 4222600.pdf,line_item_248,line_item,True,"Line 248: WAN L3 VPN - 10MBPS*
+UPG,HLFXNSAL-CATSA14,Auth#G14",0.838,high,Items,False,LineItem,248.0,686.4,,
+TEL006 4222600.pdf,line_item_249,line_item,True,"Line 249: Additional Port*
+RADIQC01-CATSA02",0.918,high,Items,False,LineItem,249.0,25.0,,
+TEL006 4222600.pdf,line_item_250,line_item,True,"Line 250: IP QoS Enhanced AF - under 1.5MBPS/ADSL*
+UPG,RADIQ",0.869,high,Items,False,LineItem,250.0,,,
+TEL006 4222600.pdf,line_item_251,line_item,True,"Line 251: WAN L3 VPN - 1.5MBPS*
+UPG,RADIQC01-CATSA02,Auth#G1",0.918,high,Items,False,LineItem,251.0,2217.6,,
+TEL006 4222600.pdf,line_item_252,line_item,True,"Line 252: Additional Port*
+118 1250 Knight Rd",0.919,high,Items,False,LineItem,252.0,25.0,,
+TEL006 4222600.pdf,line_item_253,line_item,True,"Line 253: WAN L3 VPN - TOMBPS*
+118 1250 Knight Rd",0.912,high,Items,False,LineItem,253.0,792.05,,
+TEL006 4222600.pdf,line_item_254,line_item,True,"Line 254: IP QOS Enhanced - AF*
+118 1250 Knight Rd",0.869,high,Items,False,LineItem,254.0,,,
+TEL006 4222600.pdf,line_item_255,line_item,True,"Line 255: IP QOS Enhanced AF for 100-500MBPS*
+Thunder Bay In",0.829,high,Items,False,LineItem,255.0,,,
+TEL006 4222600.pdf,line_item_256,line_item,True,"Line 256: Additional Port*
+Thunder Bay International Airport",0.643,medium,Items,False,LineItem,256.0,25.0,,
+TEL006 4222600.pdf,line_item_257,line_item,True,"Line 257: WAN L3 VPN - 100MBPS*
+Thunder Bay International Ai",0.818,high,Items,False,LineItem,257.0,2000.0,,
+TEL006 4222600.pdf,line_item_258,line_item,True,"Line 258: WAN L3 VPN - 10MBPS*
+Churchill Falls Airport",0.834,high,Items,False,LineItem,258.0,1280.68,,
+TEL006 4222600.pdf,line_item_259,line_item,True,"Line 259: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+Churchill",0.829,high,Items,False,LineItem,259.0,,,
+TEL006 4222600.pdf,line_item_260,line_item,True,"Line 260: Additional Port*
+Churchill Falls Airport",0.802,high,Items,False,LineItem,260.0,25.0,,
+TEL006 4222600.pdf,line_item_261,line_item,True,"Line 261: IP QOS Enhanced AF for 100-500MBPS*
+UPG, REGNSK01-",0.819,high,Items,False,LineItem,261.0,,,
+TEL006 4222600.pdf,line_item_262,line_item,True,"Line 262: Additional Port*
+UPG,REGNSK01-CATSA04, Auth#CATSA1",0.698,medium,Items,False,LineItem,262.0,25.0,,
+TEL006 4222600.pdf,line_item_263,line_item,True,"Line 263: WAN L3 VPN - 100MBPS*
+UPG,REGNSK01-CATSA04, Auth#C",0.784,high,Items,False,LineItem,263.0,1478.4,,
+TEL006 4222600.pdf,line_item_264,line_item,True,Line 264: Additional Port*,0.544,medium,Items,False,LineItem,264.0,25.0,,
+TEL006 4222600.pdf,line_item_265,line_item,True,"Line 265: WAN L3 VPN - 1.5MBPS*
+UPG, YLKNNT01-CATSA05, Auth#",0.501,medium,Items,False,LineItem,265.0,1003.2,,
+TEL006 4222600.pdf,line_item_266,line_item,True,"Line 266: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+UPG,",0.53,medium,Items,False,LineItem,266.0,,,
+TEL006 4222600.pdf,line_item_267,line_item,True,"Line 267: WAN L3 VPN - 200MBPS*
+500 Rue Principale",0.761,high,Items,False,LineItem,267.0,2000.0,,
+TEL006 4222600.pdf,line_item_268,line_item,True,"Line 268: Additional Port*
+500 Rue Principale",0.65,medium,Items,False,LineItem,268.0,25.0,,
+TEL006 4222600.pdf,line_item_269,line_item,True,"Line 269: IP QOS Enhanced AF for 100-500MBPS*
+500 Rue Princi",0.648,medium,Items,False,LineItem,269.0,,,
+TEL006 4222600.pdf,line_item_270,line_item,True,"Line 270: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+2929 rout",0.906,high,Items,False,LineItem,270.0,,,
+TEL006 4222600.pdf,line_item_271,line_item,True,"Line 271: WAN L3 VPN - 10MBPS*
+2929 Toute 180 - Bathurst Air",0.911,high,Items,False,LineItem,271.0,1360.0,,
+TEL006 4222600.pdf,line_item_272,line_item,True,"Line 272: Additional Port*
+2929 Route 180 - Bathurst Airport",0.911,high,Items,False,LineItem,272.0,25.0,,
+TEL006 4222600.pdf,line_item_273,line_item,True,"Line 273: WAN L3 VPN - 10MBPS*
+1 Airport Road",0.91,high,Items,False,LineItem,273.0,792.05,,
+TEL006 4222600.pdf,line_item_274,line_item,True,"Line 274: Additional Port*
+1 Airport Road",0.914,high,Items,False,LineItem,274.0,25.0,,
+TEL006 4222600.pdf,line_item_275,line_item,True,"Line 275: IP QOS Enhanced AF for 10-30MBPS*
+1 Airport Road",0.912,high,Items,False,LineItem,275.0,,,
+TEL006 4222600.pdf,line_item_276,line_item,True,"Line 276: IP QOS Enhanced AF for 10-30MBPS*
+1000 boul, Laure",0.91,high,Items,False,LineItem,276.0,,,
+TEL006 4222600.pdf,line_item_277,line_item,True,"Line 277: WAN L3 VPN - 10MBPS*
+1000 boul, Laure E",0.908,high,Items,False,LineItem,277.0,792.05,,
+TEL006 4222600.pdf,line_item_278,line_item,True,"Line 278: Additional Port*
+1000 boul, Laure E",0.912,high,Items,False,LineItem,278.0,25.0,,
+TEL006 4222600.pdf,line_item_279,line_item,True,"Line 279: Additional Port*
+SARNON01-CATSA02",0.803,high,Items,False,LineItem,279.0,25.0,,
+TEL006 4222600.pdf,line_item_280,line_item,True,"Line 280: IP QoS Enhanced AF - under 1.5MBPS/ADSL*
+UPG, SARN",0.828,high,Items,False,LineItem,280.0,,,
+TEL006 4222600.pdf,line_item_281,line_item,True,"Line 281: WAN L3 VPN - 1.5MBPS*
+UPG,SARNON01-CATSA02,Auth#G1",0.825,high,Items,False,LineItem,281.0,277.2,,
+TEL006 4222600.pdf,line_item_282,line_item,True,"Line 282: IP QOS Enhanced AF for 100-500MBPS*
+975 Boul Romeo",0.829,high,Items,False,LineItem,282.0,,,
+TEL006 4222600.pdf,line_item_283,line_item,True,"Line 283: WAN L3 VPN - 500MBPS*
+975 Boul Romeo-Vachon Nord",0.83,high,Items,False,LineItem,283.0,1953.6,,
+TEL006 4222600.pdf,line_item_284,line_item,True,"Line 284: IP QoS Premium - EF WAN Mbps*
+975 Boul Romeo-Vacho",0.829,high,Items,False,LineItem,284.0,25.0,,
+TEL006 4222600.pdf,line_item_285,line_item,True,"Line 285: IP QOS Premium - EF WAN Mbps*
+6300 Silverdart Dr",0.471,low,Items,False,LineItem,285.0,25.0,,
+TEL006 4222600.pdf,line_item_286,line_item,True,"Line 286: Additional Port*
+6300",0.41,low,Items,False,LineItem,286.0,25.0,,
+TEL006 4222600.pdf,line_item_287,line_item,True,"Line 287: IP QOS Enhanced AF for 100-500MBPS*
+6300",0.532,medium,Items,False,LineItem,287.0,,,
+TEL006 4222600.pdf,line_item_288,line_item,True,"Line 288: WAN L3 VPN - 1000MBPS*
+6300 Silverdart Dr",0.536,medium,Items,False,LineItem,288.0,3696.0,,
+TEL006 4222600.pdf,line_item_289,line_item,True,"Line 289: Additional Port*
+CATSA-YDQ",0.691,medium,Items,False,LineItem,289.0,25.0,,
+TEL006 4222600.pdf,line_item_290,line_item,True,"Line 290: WAN L3 VPN - 1.5MBPS*
+UPG,DWCKBC01-CATSA01,Auth#G1",0.721,medium,Items,False,LineItem,290.0,240.24,,
+TEL006 4222600.pdf,line_item_291,line_item,True,"Line 291: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+UPG,DWCKB",0.651,medium,Items,False,LineItem,291.0,,,
+TEL006 4222600.pdf,line_item_292,line_item,True,"Line 292: Additional Port*
+220-10610 Airport Drive",0.415,low,Items,False,LineItem,292.0,25.0,,
+TEL006 4222600.pdf,line_item_293,line_item,True,"Line 293: IP QOS Enhanced AF for 10-30MBPS*
+220-10610 Airpor",0.52,medium,Items,False,LineItem,293.0,,,
+TEL006 4222600.pdf,line_item_294,line_item,True,"Line 294: WAN L3 VPN - 10MBPS*
+220-10610 Airport Drive",0.54,medium,Items,False,LineItem,294.0,792.05,,
+TEL006 4222600.pdf,line_item_295,line_item,True,"Line 295: IP QOS Premium - EF WAN Mbps*
+700 Leigh Capreol",0.914,high,Items,False,LineItem,295.0,25.0,,
+TEL006 4222600.pdf,line_item_296,line_item,True,"Line 296: IP QOS Enhanced AF for 100-500MBPS*
+700 Leigh Capr",0.917,high,Items,False,LineItem,296.0,,,
+TEL006 4222600.pdf,line_item_297,line_item,True,"Line 297: WAN L3 VPN - 100MBPS*
+700 Leigh Capreol",0.918,high,Items,False,LineItem,297.0,1320.0,,
+TEL006 4222600.pdf,line_item_298,line_item,True,"Line 298: Additional Port*
+700 Leigh Capreol",0.917,high,Items,False,LineItem,298.0,25.0,,
+TEL006 4222600.pdf,line_item_299,line_item,True,"Line 299: Additional Port*
+Vancouver International Airport",0.916,high,Items,False,LineItem,299.0,25.0,,
+TEL006 4222600.pdf,line_item_300,line_item,True,"Line 300: IP QOS Premium - EF WAN Mbps*
+Vancouver Internatio",0.915,high,Items,False,LineItem,300.0,250.0,,
+TEL006 4222600.pdf,line_item_301,line_item,True,"Line 301: IP QOS Enhanced AF for 100-500MBPS*
+Vancouver Inte",0.916,high,Items,False,LineItem,301.0,,,
+TEL006 4222600.pdf,line_item_302,line_item,True,"Line 302: TM - WAN L3 VPN - Ver 2 - 2 Gbps*
+Vancouver Intern",0.913,high,Items,False,LineItem,302.0,3696.0,,
+TEL006 4222600.pdf,line_item_303,line_item,True,"Line 303: Business Internet 200Mbps 95th $24.00/Mbps
+Vancouv",0.916,high,Items,False,LineItem,303.0,920.0,,
+TEL006 4222600.pdf,line_item_304,line_item,True,"Line 304: IP QOS Enhanced AF for 10-30MBPS*
+Upg,RCMDBC01-CAT",0.844,high,Items,False,LineItem,304.0,,,
+TEL006 4222600.pdf,line_item_305,line_item,True,"Line 305: WAN L3 VPN - 30MBPS*
+UPG,RCMDBC01-CATSA09,Auth#CAT",0.838,high,Items,False,LineItem,305.0,633.6,,
+TEL006 4222600.pdf,line_item_306,line_item,True,"Line 306: GOC MNS ISIP 2*
+New, RCMDBC01-CATSA09, Auth#26954",0.838,high,Items,False,LineItem,306.0,25.0,,
+TEL006 4222600.pdf,line_item_307,line_item,True,"Line 307: Dedicated Hosting - Co-Location
+New, EYRKONAE-CATS",0.836,high,Items,False,LineItem,307.0,,,
+TEL006 4222600.pdf,line_item_308,line_item,True,"Line 308: Dedicated Hosting - Co-Location
+New, CATSA-LAIRD,A",0.829,high,Items,False,LineItem,308.0,,,
+TEL006 4222600.pdf,line_item_309,line_item,True,"Line 309: Dedicated Hosting - Co-Location
+New, EYRKONAE-CATS",0.831,high,Items,False,LineItem,309.0,,,
+TEL006 4222600.pdf,line_item_310,line_item,True,"Line 310: Dedicated Hosting - Co-Location
+New, EYRKONAE-CATS",0.843,high,Items,False,LineItem,310.0,,,
+TEL006 4222600.pdf,line_item_311,line_item,True,"Line 311: Dedicated Hosting - Co-Location
+New, CATSA-LAIRD, ",0.83,high,Items,False,LineItem,311.0,,,
+TEL006 4222600.pdf,line_item_312,line_item,True,"Line 312: Dedicated Hosting - Co-Location
+NEW, EYRKONAE-CATS",0.843,high,Items,False,LineItem,312.0,,,
+TEL006 4222600.pdf,line_item_313,line_item,True,"Line 313: Dedicated Hosting - Co-Location
+NEW, EYRKONAE-CATS",0.844,high,Items,False,LineItem,313.0,,,
+TEL006 4222600.pdf,line_item_314,line_item,True,"Line 314: IP QOS Premium - EF WAN Mbps*
+73 Laird Drive",0.837,high,Items,False,LineItem,314.0,250.0,,
+TEL006 4222600.pdf,line_item_315,line_item,True,"Line 315: Dedicated Hosting - Co-Location
+NEW, EYRKONAE-CATS",0.895,high,Items,False,LineItem,315.0,,,
+TEL006 4222600.pdf,line_item_316,line_item,True,"Line 316: Dedicated Hosting - Co-Location
+NEW, EYRKONAE-CATS",0.896,high,Items,False,LineItem,316.0,,,
+TEL006 4222600.pdf,line_item_317,line_item,True,"Line 317: Dedicated Hosting - Co-Location
+NEW, EYRKONAE-CATS",0.896,high,Items,False,LineItem,317.0,,,
+TEL006 4222600.pdf,line_item_318,line_item,True,"Line 318: Dedicated Hosting - Co-Location
+NEW, EYRKONAE-CATS",0.895,high,Items,False,LineItem,318.0,,,
+TEL006 4222600.pdf,line_item_319,line_item,True,"Line 319: Dedicated Hosting - Co-Location
+NEW, EYRKONAE-CATS",0.896,high,Items,False,LineItem,319.0,39548.5,,
+TEL006 4222600.pdf,line_item_320,line_item,True,"Line 320: Dedicated Hosting - Co-Location
+New, CATSA-LAIRD, ",0.896,high,Items,False,LineItem,320.0,,,
+TEL006 4222600.pdf,line_item_321,line_item,True,"Line 321: Dedicated Hosting - Co-Location
+NEW, EYRKONAE-CATS",0.896,high,Items,False,LineItem,321.0,,,
+TEL006 4222600.pdf,line_item_322,line_item,True,"Line 322: Dedicated Hosting - Co-Location
+NEW, EYRKONAE-CATS",0.895,high,Items,False,LineItem,322.0,,,
+TEL006 4222600.pdf,line_item_323,line_item,True,"Line 323: Dedicated Hosting - Co-Location
+New, CATSA-LAIRD, ",0.896,high,Items,False,LineItem,323.0,,,
+TEL006 4222600.pdf,line_item_324,line_item,True,"Line 324: Dedicated Hosting - Co-Location
+NEW, EYRKONAE-CATS",0.896,high,Items,False,LineItem,324.0,,,
+TEL006 4222600.pdf,line_item_325,line_item,True,"Line 325: Dedicated Hosting - Co-Location
+NEW, EYRKONAE-CATS",0.896,high,Items,False,LineItem,325.0,,,
+TEL006 4222600.pdf,line_item_326,line_item,True,"Line 326: Dedicated Hosting - Co-Location
+NEW, EYRKONAE-CATS",0.896,high,Items,False,LineItem,326.0,,,
+TEL006 4222600.pdf,line_item_327,line_item,True,"Line 327: Dedicated Hosting - Co-Location
+New, CATSA-LAIRD, ",0.896,high,Items,False,LineItem,327.0,,,
+TEL006 4222600.pdf,line_item_328,line_item,True,"Line 328: Dedicated Hosting - Co-Location
+New, EYRKONAE-CATS",0.895,high,Items,False,LineItem,328.0,,,
+TEL006 4222600.pdf,line_item_329,line_item,True,"Line 329: Dedicated Hosting - Co-Location
+New, CATSA-LAIRD, ",0.896,high,Items,False,LineItem,329.0,,,
+TEL006 4222600.pdf,line_item_330,line_item,True,"Line 330: Dedicated Hosting - Co-Location
+New, CATSA-LAIRD,A",0.896,high,Items,False,LineItem,330.0,,,
+TEL006 4222600.pdf,line_item_331,line_item,True,"Line 331: Dedicated Hosting - Co-Location
+New, EYRKONAE-CATS",0.896,high,Items,False,LineItem,331.0,,,
+TEL006 4222600.pdf,line_item_332,line_item,True,"Line 332: Dedicated Hosting - Co-Location
+New, CATSA-LAIRD,A",0.896,high,Items,False,LineItem,332.0,,,
+TEL006 4222600.pdf,line_item_333,line_item,True,"Line 333: Dedicated Hosting - Co-Location
+New, EYRKONAE-CATS",0.896,high,Items,False,LineItem,333.0,,,
+TEL006 4222600.pdf,line_item_334,line_item,True,"Line 334: Dedicated Hosting - Co-Location
+NEW, EYRKONAE-CATS",0.896,high,Items,False,LineItem,334.0,,,
+TEL006 4222600.pdf,line_item_335,line_item,True,"Line 335: Dedicated Hosting - Co-Location
+New, CATSA-LAIRD,A",0.896,high,Items,False,LineItem,335.0,,,
+TEL006 4222600.pdf,line_item_336,line_item,True,"Line 336: IP QOS Enhanced - AF*
+NEW,EYRKONAE-CATSA07,Auth#CA",0.895,high,Items,False,LineItem,336.0,,,
+TEL006 4222600.pdf,line_item_337,line_item,True,"Line 337: TM-WAN L3 VPN Ver2 2Gbps Custom*
+73 Laird Drive",0.838,high,Items,False,LineItem,337.0,4752.0,,
+TEL006 4222600.pdf,line_item_338,line_item,True,"Line 338: Dedicated Hosting - Co-Location
+CSID 1243784: New,",0.819,high,Items,False,LineItem,338.0,,,
+TEL006 4222600.pdf,line_item_339,line_item,True,"Line 339: Dedicated Hosting - Co-Location
+New, CATSA-LAIRD, ",0.861,high,Items,False,LineItem,339.0,,,
+TEL006 4222600.pdf,line_item_340,line_item,True,"Line 340: Dedicated Hosting - Co-Location
+New, EYRKONAE-CATS",0.858,high,Items,False,LineItem,340.0,,,
+TEL006 4222600.pdf,line_item_341,line_item,True,"Line 341: Dedicated Hosting - Co-Location
+New, EYRKONAE-CATS",0.857,high,Items,False,LineItem,341.0,,,
+TEL006 4222600.pdf,line_item_342,line_item,True,"Line 342: Dedicated Hosting - Co-Location
+New, EYRKONAE-CATS",0.856,high,Items,False,LineItem,342.0,,,
+TEL006 4222600.pdf,line_item_343,line_item,True,"Line 343: IP QOS Premium - EF WAN Mbps*
+1070 Morrison Drive",0.905,high,Items,False,LineItem,343.0,25.0,,
+TEL006 4222600.pdf,line_item_344,line_item,True,"Line 344: WAN L3 VPN - 500MBPS*
+1070 Morrison Drive",0.907,high,Items,False,LineItem,344.0,1370.0,,
+TEL006 4222600.pdf,line_item_345,line_item,True,"Line 345: Additional Port*
+1070 Morrison Drive",0.91,high,Items,False,LineItem,345.0,25.0,,
+TEL006 4222600.pdf,line_item_346,line_item,True,"Line 346: IP QOS Enhanced AF for 100-500MBPS*
+1070 Morrison ",0.909,high,Items,False,LineItem,346.0,,,
+TEL006 4222600.pdf,line_item_347,line_item,True,"Line 347: Additional Port*
+Vancouver International Airport",0.907,high,Items,False,LineItem,347.0,25.0,,
+TEL006 4222600.pdf,line_item_348,line_item,True,"Line 348: IP QOS Premium - EF WAN Mbps*
+Vancouver Internatio",0.905,high,Items,False,LineItem,348.0,250.0,,
+TEL006 4222600.pdf,line_item_349,line_item,True,"Line 349: IP QOS Enhanced AF for 100-500MBPS*
+New,RCMDBC01-C",0.813,high,Items,False,LineItem,349.0,,,
+TEL006 4222600.pdf,line_item_350,line_item,True,"Line 350: TM - WAN L3 VPN - Ver 2 - 2 Gbps*
+Vancouver Intern",0.915,high,Items,False,LineItem,350.0,2376.0,,
+TEL006 4222600.pdf,line_item_351,line_item,True,"Line 351: TM-WAN L3 VPN Ver2 2Gbps Custom*
+73 Laird Drive",0.92,high,Items,False,LineItem,351.0,3168.0,,
+TEL006 4222600.pdf,line_item_352,line_item,True,"Line 352: IP QOS Enhanced - AF*
+73 Laird Drive",0.918,high,Items,False,LineItem,352.0,,,
+TEL006 4222600.pdf,line_item_353,line_item,True,"Line 353: IP QOS Premium - EF WAN Mbps*
+73 Laird Drive",0.918,high,Items,False,LineItem,353.0,250.0,,
+TEL006 4222600.pdf,line_item_354,line_item,True,"Line 354: WAN L3 VPN - 1.5MBPS*
+MTRLPQFB-CATSA03",0.918,high,Items,False,LineItem,354.0,823.68,,
+TEL006 4222600.pdf,line_item_355,line_item,True,"Line 355: IP QOS Enhanced AF - under 1.5MBPS/ADSL*
+MTRLPQFB-",0.915,high,Items,False,LineItem,355.0,,,
+TEL006 4222600.pdf,line_item_356,line_item,True,"Line 356: Additional Port*
+CATSA-YTM",0.853,high,Items,False,LineItem,356.0,25.0,,
+TEL006 4222600.pdf,line_item_357,line_item,True,"Line 357: IP QOS Enhanced AF for 10-30MBPS*
+405 Agnew Drive",0.914,high,Items,False,LineItem,357.0,,,
+TEL006 4222600.pdf,line_item_358,line_item,True,"Line 358: WAN L3 VPN - 10MBPS*
+405 Agnew Drive",0.916,high,Items,False,LineItem,358.0,2155.68,,
+TEL006 4222600.pdf,line_item_359,line_item,True,"Line 359: Additional Port*
+405 Agnew Drive",0.84,high,Items,False,LineItem,359.0,25.0,,
+TEL006 4222600.pdf,line_item_360,line_item,True,"Line 360: Business Internet - 1000Mbps
+EYRKONAE-CATSA13",0.839,high,Items,False,LineItem,360.0,277.2,,
+ENB001 166574659065NOV2025.pdf,bill_to_address,invoice_field,True,street='99 BANKS ST' city='OTTAWA' province='ON' postal_code='K1P 6B9' country=None,0.868,high,CustomerAddress,False,Address,,,,
+ENB001 166574659065NOV2025.pdf,business_number,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,contract_id,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,currency,invoice_field,True,CAD,,none,Currency,False,str,,,,
+ENB001 166574659065NOV2025.pdf,customer_email,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,customer_fax,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,customer_id,invoice_field,True,91 00 28 08140 4,0.881,high,CustomerId,False,str,,,,
+ENB001 166574659065NOV2025.pdf,customer_name,invoice_field,True,CATSA,0.937,high,CustomerName,False,str,,,,
+ENB001 166574659065NOV2025.pdf,customer_phone,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,delivery_date,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,deposit_amount,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,discount_amount,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,due_date,invoice_field,True,2025-12-10,0.916,high,DueDate,False,date,,,,
+ENB001 166574659065NOV2025.pdf,entity,invoice_field,False,,,none,Entity,True,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,gst_amount,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,gst_number,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,gst_rate,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,handling_fee,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,hst_amount,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,hst_rate,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,invoice_date,invoice_field,True,2025-11-20,0.917,high,InvoiceDate,False,date,,,,
+ENB001 166574659065NOV2025.pdf,invoice_number,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,invoice_type,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,payment_due_upon,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,payment_method,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,payment_terms,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,period_end,invoice_field,True,2025-11-17,,none,ServiceEndDate,False,date,,,,
+ENB001 166574659065NOV2025.pdf,period_start,invoice_field,True,2025-10-21,,none,ServiceStartDate,False,date,,,,
+ENB001 166574659065NOV2025.pdf,po_number,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,pst_amount,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,pst_number,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,pst_rate,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,qst_amount,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,qst_number,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,qst_rate,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,reference_number,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,remit_to_address,invoice_field,True,street='PO Box 644' city='Scarborough' province='ON' postal_code='M1K 5H1' country=None,0.879,high,RemittanceAddress,False,Address,,,,
+ENB001 166574659065NOV2025.pdf,remit_to_name,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,shipping_amount,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,shipping_date,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,standing_offer_number,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,subtotal,invoice_field,True,486.37,0.802,high,SubTotal,False,Decimal,,,,
+ENB001 166574659065NOV2025.pdf,tax_amount,invoice_field,True,63.22,0.932,high,TotalTax,False,Decimal,,,,
+ENB001 166574659065NOV2025.pdf,tax_breakdown,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,tax_registration_number,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,total_amount,invoice_field,True,549.59,0.94,high,InvoiceTotal,False,Decimal,,,,
+ENB001 166574659065NOV2025.pdf,vendor_address,invoice_field,False,,0.0,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,vendor_email,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,vendor_fax,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,vendor_id,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,vendor_name,invoice_field,True,ENBRIDGE,0.958,high,VendorName,False,str,,,,
+ENB001 166574659065NOV2025.pdf,vendor_phone,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,vendor_website,invoice_field,False,,,none,,False,NoneType,,,,
+ENB001 166574659065NOV2025.pdf,line_item_1,line_item,True,"Line 1: [Nov 13, 2025]",0.304,low,Items,False,LineItem,1.0,,,
+ENB001 166574659065NOV2025.pdf,line_item_2,line_item,True,Line 2: Customer Charge,0.755,high,Items,False,LineItem,2.0,82.51,,
+ENB001 166574659065NOV2025.pdf,line_item_3,line_item,True,Line 3: Delivery to You,0.829,high,Items,False,LineItem,3.0,171.22,,
+ENB001 166574659065NOV2025.pdf,line_item_4,line_item,True,Line 4: Transportation to Enbridge,0.841,high,Items,False,LineItem,4.0,79.69,,
+ENB001 166574659065NOV2025.pdf,line_item_5,line_item,True,Line 5: Gas Supply Charge,0.803,high,Items,False,LineItem,5.0,186.72,,
+ENB001 166574659065NOV2025.pdf,line_item_6,line_item,True,Line 6: Cost Adjustment,0.671,medium,Items,False,LineItem,6.0,-33.77,,
+ENB001 166574659065NOV2025.pdf,line_item_7,line_item,True,Line 7: Balance,0.203,low,Items,False,LineItem,7.0,,,
+ENB001 166574659065NOV2025.pdf,line_item_8,line_item,True,"Line 8: [Nov 13, 2025]",0.28,low,Items,False,LineItem,8.0,,,
+ENB001 166574659065NOV2025.pdf,line_item_9,line_item,True,Line 9: Late,0.204,low,Items,False,LineItem,9.0,,,
+ENB001 166574659065NOV2025.pdf,line_item_10,line_item,True,Line 10: Customer Charge,0.499,low,Items,False,LineItem,10.0,82.51,,
+ENB001 166574659065NOV2025.pdf,line_item_11,line_item,True,Line 11: Delivery to You,0.57,medium,Items,False,LineItem,11.0,37.09,,
+ENB001 166574659065NOV2025.pdf,line_item_12,line_item,True,Line 12: Transportation to Enbridge,0.57,medium,Items,False,LineItem,12.0,14.96,,
+ENB001 166574659065NOV2025.pdf,line_item_13,line_item,True,Line 13: Gas Supply Charge,0.531,medium,Items,False,LineItem,13.0,35.06,,
+ENB001 166574659065NOV2025.pdf,line_item_14,line_item,True,Line 14: Cost Adjustment,0.536,medium,Items,False,LineItem,14.0,-6.33,,
