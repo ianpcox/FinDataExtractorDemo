@@ -1,0 +1,285 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/invoice.canonical.v1.schema.json",
+  "title": "Invoice Canonical v1",
+  "type": "object",
+  "additionalProperties": false,
+
+  "$defs": {
+    "decimalString": {
+      "type": "string",
+      "pattern": "^-?\\d+(\\.\\d+)?$",
+      "description": "Decimal encoded as a string (e.g., '1234.56')."
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0
+    },
+    "isoDate": {
+      "type": "string",
+      "format": "date"
+    },
+    "isoDateTime": {
+      "type": "string",
+      "format": "date-time"
+    },
+
+    "InvoiceSubtype": {
+      "type": "string",
+      "enum": ["STANDARD_INVOICE", "SHIFT_SERVICE_INVOICE", "PER_DIEM_TRAVEL_INVOICE"]
+    },
+
+    "Address": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "street": { "type": ["string", "null"] },
+        "city": { "type": ["string", "null"] },
+        "province": { "type": ["string", "null"] },
+        "postal_code": { "type": ["string", "null"] },
+        "country": { "type": ["string", "null"] }
+      }
+    },
+
+    "LineItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["line_number", "description", "amount", "confidence"],
+      "properties": {
+        "line_number": { "type": "integer", "minimum": 1 },
+        "description": { "type": "string" },
+        "quantity": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }] },
+        "unit_price": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }] },
+        "amount": { "$ref": "#/$defs/decimalString" },
+        "confidence": { "$ref": "#/$defs/confidence" },
+
+        "unit_of_measure": { "type": ["string", "null"] },
+        "tax_rate": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }] },
+        "tax_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }] },
+        "gst_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }] },
+        "pst_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }] },
+        "qst_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }] },
+        "combined_tax": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }] },
+
+        "project_code": { "type": ["string", "null"] },
+        "region_code": { "type": ["string", "null"] },
+        "airport_code": { "type": ["string", "null"] },
+        "cost_centre_code": { "type": ["string", "null"] }
+      }
+    },
+
+    "ShiftServiceExtension": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "service_location": { "type": ["string", "null"] },
+        "billing_period_start": { "anyOf": [{ "$ref": "#/$defs/isoDate" }, { "type": "null" }] },
+        "billing_period_end": { "anyOf": [{ "$ref": "#/$defs/isoDate" }, { "type": "null" }] },
+        "shift_rate": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }] },
+        "total_shifts_billed": { "type": ["integer", "null"], "minimum": 0 },
+        "min_shifts_per_period": { "type": ["integer", "null"], "minimum": 0 }
+      }
+    },
+
+    "TimesheetShift": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["date", "worker_name", "shift_number"],
+      "properties": {
+        "date": { "$ref": "#/$defs/isoDate" },
+        "worker_name": { "type": "string" },
+        "shift_number": { "type": "integer", "minimum": 1 },
+        "time_in": { "type": ["string", "null"] },
+        "time_out": { "type": ["string", "null"] }
+      }
+    },
+
+    "TimesheetData": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "representative_name": { "type": ["string", "null"] },
+        "signature_present": { "type": "boolean", "default": false },
+        "comments": { "type": ["string", "null"] },
+        "shifts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/TimesheetShift" },
+          "default": []
+        }
+      }
+    },
+
+    "PerDiemTravelExtension": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "traveller_id": { "type": ["string", "null"] },
+        "traveller_name": { "type": ["string", "null"] },
+        "programme_or_course_code": { "type": ["string", "null"] },
+        "work_location": { "type": ["string", "null"] },
+        "destination_location": { "type": ["string", "null"] },
+
+        "travel_from_date": { "anyOf": [{ "$ref": "#/$defs/isoDate" }, { "type": "null" }] },
+        "travel_to_date": { "anyOf": [{ "$ref": "#/$defs/isoDate" }, { "type": "null" }] },
+        "training_start_date": { "anyOf": [{ "$ref": "#/$defs/isoDate" }, { "type": "null" }] },
+        "training_end_date": { "anyOf": [{ "$ref": "#/$defs/isoDate" }, { "type": "null" }] },
+
+        "travel_days": { "type": ["integer", "null"], "minimum": 0 },
+        "daily_rate": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }] },
+        "line_total": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }] }
+      }
+    },
+
+    "InvoiceExtensions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "shift_service": { "anyOf": [{ "$ref": "#/$defs/ShiftServiceExtension" }, { "type": "null" }] },
+        "per_diem_travel": {
+          "anyOf": [
+            { "type": "array", "items": { "$ref": "#/$defs/PerDiemTravelExtension" } },
+            { "type": "null" }
+          ]
+        },
+        "timesheet_data": { "anyOf": [{ "$ref": "#/$defs/TimesheetData" }, { "type": "null" }] }
+      }
+    }
+  },
+
+  "required": ["file_path", "file_name", "upload_date", "status", "currency", "line_items", "extraction_confidence"],
+
+  "properties": {
+    "id": { "type": ["string", "null"] },
+
+    "file_path": { "type": "string" },
+    "file_name": { "type": "string" },
+    "upload_date": { "$ref": "#/$defs/isoDateTime" },
+    "status": {
+      "type": "string",
+      "enum": ["processing", "extracted", "validated", "in_review", "approved", "rejected"],
+      "default": "processing"
+    },
+
+    "invoice_number": { "type": ["string", "null"] },
+    "invoice_type": { "type": ["string", "null"], "description": "Type of invoice (e.g., Standard, Credit Note, Debit Note)" },
+    "reference_number": { "type": ["string", "null"], "description": "Additional reference or tracking number" },
+    "invoice_date": { "anyOf": [{ "$ref": "#/$defs/isoDate" }, { "type": "null" }] },
+    "due_date": { "anyOf": [{ "$ref": "#/$defs/isoDate" }, { "type": "null" }] },
+    "shipping_date": { "anyOf": [{ "$ref": "#/$defs/isoDate" }, { "type": "null" }], "description": "Date when goods/services were shipped" },
+    "delivery_date": { "anyOf": [{ "$ref": "#/$defs/isoDate" }, { "type": "null" }], "description": "Date when goods/services were delivered" },
+
+    "vendor_name": { "type": ["string", "null"] },
+    "vendor_id": { "type": ["string", "null"] },
+    "vendor_phone": { "type": ["string", "null"] },
+    "vendor_fax": { "type": ["string", "null"], "description": "Vendor fax number" },
+    "vendor_email": { "type": ["string", "null"], "description": "Vendor email address" },
+    "vendor_website": { "type": ["string", "null"], "description": "Vendor website URL" },
+
+    "vendor_address": { "anyOf": [{ "$ref": "#/$defs/Address" }, { "type": "null" }] },
+    "bill_to_address": { "anyOf": [{ "$ref": "#/$defs/Address" }, { "type": "null" }] },
+    "remit_to_address": { "anyOf": [{ "$ref": "#/$defs/Address" }, { "type": "null" }] },
+    "remit_to_name": { "type": ["string", "null"] },
+
+    "business_number": { "type": ["string", "null"], "description": "Canadian Business Number (BN)" },
+    "gst_number": { "type": ["string", "null"], "description": "GST Registration Number" },
+    "qst_number": { "type": ["string", "null"], "description": "QST Registration Number (Quebec)" },
+    "pst_number": { "type": ["string", "null"], "description": "PST Registration Number (Provincial)" },
+
+    "customer_name": { "type": ["string", "null"] },
+    "customer_id": { "type": ["string", "null"] },
+    "customer_phone": { "type": ["string", "null"], "description": "Customer phone number" },
+    "customer_email": { "type": ["string", "null"], "description": "Customer email address" },
+    "customer_fax": { "type": ["string", "null"], "description": "Customer fax number" },
+
+    "entity": { "type": ["string", "null"] },
+    "contract_id": { "type": ["string", "null"] },
+    "standing_offer_number": { "type": ["string", "null"] },
+    "po_number": { "type": ["string", "null"] },
+
+    "period_start": { "anyOf": [{ "$ref": "#/$defs/isoDate" }, { "type": "null" }] },
+    "period_end": { "anyOf": [{ "$ref": "#/$defs/isoDate" }, { "type": "null" }] },
+
+    "subtotal": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }] },
+    "discount_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "Total discount applied" },
+    "shipping_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "Shipping and freight charges" },
+    "handling_fee": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "Handling or processing fee" },
+    "deposit_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "Deposit or prepayment amount" },
+    
+    "gst_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "GST (Goods and Services Tax) amount" },
+    "gst_rate": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "GST rate as decimal (e.g., 0.05 for 5%)" },
+    "hst_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "HST (Harmonized Sales Tax) amount" },
+    "hst_rate": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "HST rate as decimal (e.g., 0.13 for 13%)" },
+    "qst_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "QST (Quebec Sales Tax) amount" },
+    "qst_rate": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "QST rate as decimal (e.g., 0.09975 for 9.975%)" },
+    "pst_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "PST (Provincial Sales Tax) amount" },
+    "pst_rate": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }], "description": "PST rate as decimal (e.g., 0.07 for 7%)" },
+    
+    "tax_breakdown": {
+      "anyOf": [
+        {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/decimalString" }
+        },
+        { "type": "null" }
+      ]
+    },
+    "tax_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }] },
+    "total_amount": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }] },
+
+    "acceptance_percentage": { "anyOf": [{ "$ref": "#/$defs/decimalString" }, { "type": "null" }] },
+    "tax_registration_number": { "type": ["string", "null"] },
+    "currency": { "type": "string", "default": "CAD" },
+    "payment_terms": { "type": ["string", "null"] },
+    "payment_method": { "type": ["string", "null"], "description": "Payment method (e.g., Check, Wire Transfer, Credit Card)" },
+    "payment_due_upon": { "type": ["string", "null"], "description": "Payment due condition (e.g., Receipt, Net 30, End of Month)" },
+
+    "line_items": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/LineItem" },
+      "default": []
+    },
+
+    "invoice_subtype": { "anyOf": [{ "$ref": "#/$defs/InvoiceSubtype" }, { "type": "null" }] },
+    "extensions": { "anyOf": [{ "$ref": "#/$defs/InvoiceExtensions" }, { "type": "null" }] },
+
+    "extraction_confidence": { "$ref": "#/$defs/confidence", "default": 0.0 },
+    "field_confidence": {
+      "anyOf": [
+        {
+          "type": "object",
+          "description": "Map of canonical_field_name -> confidence [0..1]",
+          "additionalProperties": { "$ref": "#/$defs/confidence" }
+        },
+        { "type": "null" }
+      ]
+    },
+    "extraction_timestamp": { "anyOf": [{ "$ref": "#/$defs/isoDateTime" }, { "type": "null" }] },
+
+    "review_status": { "type": ["string", "null"] },
+    "reviewer": { "type": ["string", "null"] },
+    "review_timestamp": { "anyOf": [{ "$ref": "#/$defs/isoDateTime" }, { "type": "null" }] },
+    "review_notes": { "type": ["string", "null"] },
+    "review_version": { "type": "integer", "default": 0, "description": "Optimistic locking version for concurrent edit protection" },
+
+    "processing_state": { 
+      "type": "string", 
+      "enum": ["PENDING", "PROCESSING", "EXTRACTED", "FAILED", "VALIDATED", "STAGED"],
+      "default": "PENDING",
+      "description": "State machine status for extraction and validation workflow"
+    },
+    "content_sha256": { "type": ["string", "null"], "description": "SHA256 hash of file content for idempotency and caching" },
+
+    "bv_approver": { "type": ["string", "null"] },
+    "bv_approval_date": { "anyOf": [{ "$ref": "#/$defs/isoDateTime" }, { "type": "null" }] },
+    "bv_approval_notes": { "type": ["string", "null"] },
+
+    "fa_approver": { "type": ["string", "null"] },
+    "fa_approval_date": { "anyOf": [{ "$ref": "#/$defs/isoDateTime" }, { "type": "null" }] },
+    "fa_approval_notes": { "type": ["string", "null"] },
+
+    "created_at": { "anyOf": [{ "$ref": "#/$defs/isoDateTime" }, { "type": "null" }], "description": "Immutable creation timestamp (auto-generated)" },
+    "updated_at": { "anyOf": [{ "$ref": "#/$defs/isoDateTime" }, { "type": "null" }], "description": "Last update timestamp (auto-updated)" }
+  }
+}
+

@@ -1,0 +1,55 @@
+field_name,value,confidence,extracted,extracted_by_di,extracted_by_llm,value_type
+bill_to_address,"street='99 Bank Street, 13th Floor' city='Ottawa' province='ON' postal_code='K1P 6B9' country='Canada'",0.9,True,True,True,Address
+business_number,,0.7,False,False,False,NoneType
+contract_id,,0.7,False,False,False,NoneType
+currency,,0.8,False,True,True,NoneType
+customer_email,,0.7,False,False,False,NoneType
+customer_fax,,0.7,False,False,False,NoneType
+customer_id,,0.7,False,False,False,NoneType
+customer_name,CATSA/ACTSA,0.957,True,True,False,str
+customer_phone,,0.7,False,False,False,NoneType
+delivery_date,,0.7,False,False,False,NoneType
+deposit_amount,0.00,0.9,True,True,True,str
+discount_amount,0.00,0.9,True,True,True,str
+due_date,2025-10-25,0.96,True,True,False,date
+entity,,0.7,False,False,False,NoneType
+gst_amount,2.84,0.9,True,True,True,str
+gst_number,139666721,0.9,True,True,True,str
+gst_rate,5.00,0.9,True,True,True,str
+handling_fee,,0.7,False,False,False,NoneType
+hst_amount,,0.7,False,False,False,NoneType
+hst_rate,,0.7,False,False,False,NoneType
+invoice_date,2025-09-25,0.96,True,True,False,date
+invoice_number,4202092525,0.96,True,True,False,str
+invoice_type,,0.7,False,False,False,NoneType
+payment_due_upon,,0.7,False,False,False,NoneType
+payment_method,,0.7,False,False,False,NoneType
+payment_terms,Net 30,0.941,True,True,False,str
+period_end,,0.7,False,False,False,NoneType
+period_start,2025-09-25,0.75,True,True,True,date
+po_number,1001401,0.957,True,True,False,str
+pst_amount,3.97,0.9,True,True,True,str
+pst_number,1001401,0.9,True,True,True,str
+pst_rate,7.00,0.9,True,True,True,str
+qst_amount,,0.7,False,False,False,NoneType
+qst_number,,0.7,False,False,False,NoneType
+qst_rate,,0.7,False,False,False,NoneType
+reference_number,4202092525,0.9,True,True,True,str
+remit_to_address,street='Unit A - 111 Cole Avenue' city='Winnipeg' province='MB' postal_code='R2L 1J3' country='Canada',0.9,True,True,True,Address
+remit_to_name,Accurate Fire & Safety Ltd.,0.9,True,True,True,str
+shipping_amount,0.00,0.9,True,True,True,str
+shipping_date,,0.7,False,False,False,NoneType
+standing_offer_number,,0.7,False,False,False,NoneType
+subtotal,56.75,0.949,True,True,False,Decimal
+tax_amount,6.81,0.949,True,True,False,Decimal
+tax_breakdown,,,False,False,False,NoneType
+tax_registration_number,139666721,0.9,True,True,True,str
+total_amount,63.56,0.95,True,True,False,Decimal
+vendor_address,street='Unit A - 111 Cole Avenue' city='Winnipeg' province='MB' postal_code='R2L 1J3' country='Canada',0.9,True,True,True,Address
+vendor_email,info@accuratefire.ca,0.9,True,True,True,str
+vendor_fax,(204) 667-1483,0.9,True,True,True,str
+vendor_id,,0.7,False,False,False,NoneType
+vendor_name,"ACCURATE
+fire & safety ltd.",0.876,True,True,False,str
+vendor_phone,(204) 668-9930,0.9,True,True,True,str
+vendor_website,,0.7,False,False,False,NoneType

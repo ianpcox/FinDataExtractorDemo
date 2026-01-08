@@ -1,7 +1,8 @@
 """Simplified API routes for invoice data extraction"""
 
-from fastapi import APIRouter, HTTPException, Depends, Path
+from fastapi import APIRouter, HTTPException, Depends, Path, Query
 from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
 import logging
 
 from src.extraction.extraction_service import ExtractionService
@@ -26,8 +27,8 @@ def get_extraction_service() -> ExtractionService:
 @router.post("/extraction/extract/{invoice_id}")
 async def extract_invoice(
     invoice_id: str = Path(..., description="Invoice ID to extract"),
-    file_identifier: str = None,
-    file_name: str = None,
+    file_identifier: str = Query(None, description="File path (local) or blob name (Azure)"),
+    file_name: str = Query(None, description="Original file name"),
     extraction_service: ExtractionService = Depends(get_extraction_service)
 ):
     """
@@ -76,17 +77,46 @@ async def extract_invoice(
                     "errors": result.get("errors", [])
                 }
             )
+
+        if result["status"] == "upstream_error":
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "message": "Upstream service unavailable",
+                    "errors": result.get("errors", [])
+                }
+            )
+
+        if result["status"] == "conflict":
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "Invoice is already processing",
+                    "errors": result.get("errors", [])
+                }
+            )
         
+        # Ensure all fields are JSON serializable
+        invoice_payload = jsonable_encoder(result.get("invoice"))
+        extraction_ts = result.get("extraction_timestamp")
+        if extraction_ts and not isinstance(extraction_ts, str):
+            extraction_ts = extraction_ts.isoformat()
+
+        content = {
+            "message": "Extraction completed successfully",
+            "invoice_id": result.get("invoice_id"),
+            "status": result.get("status"),
+            "invoice": invoice_payload,
+            "confidence": result.get("confidence"),
+            "field_confidence": result.get("field_confidence"),
+            "low_confidence_fields": result.get("low_confidence_fields", []),
+            "low_confidence_triggered": result.get("low_confidence_triggered", False),
+            "extraction_timestamp": extraction_ts
+        }
+
         return JSONResponse(
             status_code=200,
-            content={
-                "message": "Extraction completed successfully",
-                "invoice_id": result["invoice_id"],
-                "status": result["status"],
-                "invoice": result["invoice"],
-                "confidence": result["confidence"],
-                "extraction_timestamp": result["extraction_timestamp"].isoformat()
-            }
+            content=jsonable_encoder(content)
         )
         
     except HTTPException:
@@ -119,3 +149,57 @@ async def get_extraction_result(
         detail="Not implemented - would query database for extraction result"
     )
 
+
+@router.post("/extraction/ai-extract/{invoice_id}")
+async def run_ai_extraction(
+    invoice_id: str = Path(..., description="Invoice ID to improve"),
+    confidence_threshold: float = 0.7,
+    extraction_service: ExtractionService = Depends(get_extraction_service)
+):
+    """
+    Manually trigger AI extraction to improve low-confidence fields
+    
+    This endpoint runs LLM-based extraction on fields that scored below
+    the confidence threshold during the initial Document Intelligence extraction.
+    
+    Args:
+        invoice_id: Invoice ID to improve
+        confidence_threshold: Minimum confidence threshold (0.0-1.0)
+        
+    Returns:
+        AI extraction result with improved fields
+    """
+    try:
+        if not 0.0 <= confidence_threshold <= 1.0:
+            raise HTTPException(
+                status_code=400,
+                detail="confidence_threshold must be between 0.0 and 1.0"
+            )
+        
+        result = await extraction_service.run_ai_extraction(
+            invoice_id=invoice_id,
+            confidence_threshold=confidence_threshold
+        )
+        
+        if result["status"] == "error":
+            raise HTTPException(
+                status_code=500,
+                detail={
+                    "message": "AI extraction error",
+                    "errors": result.get("errors", [])
+                }
+            )
+        
+        return JSONResponse(
+            status_code=200,
+            content=jsonable_encoder(result)
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in AI extraction: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Internal server error: {str(e)}"
+        )

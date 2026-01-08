@@ -1,0 +1,158 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/invoice.hitl_view.v1.schema.json",
+  "title": "Invoice HITL View v1",
+  "type": "object",
+  "additionalProperties": false,
+
+  "$defs": {
+    "confidence": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "isoDateTime": { "type": "string", "format": "date-time" },
+    "decimalString": {
+      "type": ["string", "null"],
+      "description": "Decimal value represented as string (not float) to preserve precision. Example: '123.45'"
+    },
+    "InvoiceSubtype": {
+      "type": "string",
+      "enum": ["STANDARD_INVOICE", "SHIFT_SERVICE_INVOICE", "PER_DIEM_TRAVEL_INVOICE"]
+    },
+
+    "FieldSource": {
+      "type": "string",
+      "enum": ["DI", "LLM", "HITL", "MATCHER", "RULES"]
+    },
+
+    "FieldView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value"],
+      "properties": {
+        "value": {},
+        "confidence": { "anyOf": [{ "$ref": "#/$defs/confidence" }, { "type": "null" }] },
+        "source": { "anyOf": [{ "$ref": "#/$defs/FieldSource" }, { "type": "null" }] },
+        "updated_at": { "anyOf": [{ "$ref": "#/$defs/isoDateTime" }, { "type": "null" }] }
+      }
+    },
+
+    "Address": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "street": { "type": ["string", "null"] },
+        "city": { "type": ["string", "null"] },
+        "province": { "type": ["string", "null"] },
+        "postal_code": { "type": ["string", "null"] },
+        "country": { "type": ["string", "null"] }
+      }
+    },
+
+    "AddressFieldView": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value"],
+      "properties": {
+        "value": { "$ref": "#/$defs/Address" },
+        "confidence": { "anyOf": [{ "$ref": "#/$defs/confidence" }, { "type": "null" }] },
+        "source": { "anyOf": [{ "$ref": "#/$defs/FieldSource" }, { "type": "null" }] },
+        "updated_at": { "anyOf": [{ "$ref": "#/$defs/isoDateTime" }, { "type": "null" }] }
+      }
+    },
+
+    "Region": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["page_index", "polygon", "coordinate_space"],
+      "properties": {
+        "page_index": { "type": "integer", "minimum": 0 },
+        "polygon": {
+          "type": "array",
+          "minItems": 8,
+          "maxItems": 8,
+          "items": { "type": "number" },
+          "description": "x1,y1,x2,y2,x3,y3,x4,y4; recommended normalized coordinates."
+        },
+        "coordinate_space": { "type": "string", "enum": ["normalized", "pixel"] }
+      }
+    },
+
+    "LineItemView": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "v1: Line item with decimal fields as strings for wire contract stability.",
+      "properties": {
+        "line_number": { "type": ["integer", "null"] },
+        "description": { "type": ["string", "null"] },
+        "quantity": { "$ref": "#/$defs/decimalString" },
+        "unit_price": { "$ref": "#/$defs/decimalString" },
+        "amount": { "$ref": "#/$defs/decimalString" },
+        "tax_rate": { "$ref": "#/$defs/decimalString" },
+        "tax_amount": { "$ref": "#/$defs/decimalString" },
+        "gst_amount": { "$ref": "#/$defs/decimalString" },
+        "pst_amount": { "$ref": "#/$defs/decimalString" },
+        "qst_amount": { "$ref": "#/$defs/decimalString" },
+        "combined_tax": { "$ref": "#/$defs/decimalString" },
+        "confidence": { "anyOf": [{ "$ref": "#/$defs/confidence" }, { "type": "null" }] },
+        "unit_of_measure": { "type": ["string", "null"] },
+        "project_code": { "type": ["string", "null"] },
+        "cost_centre_code": { "type": ["string", "null"] },
+        "airport_code": { "type": ["string", "null"] },
+        "validated": { "type": "boolean" }
+      }
+    }
+  },
+
+  "required": ["invoice_id", "file_name", "upload_date", "status", "fields", "line_items"],
+
+  "properties": {
+    "invoice_id": { "type": "string" },
+    "file_name": { "type": "string" },
+    "upload_date": { "$ref": "#/$defs/isoDateTime" },
+    "status": { "type": "string" },
+    "invoice_subtype": { "anyOf": [{ "$ref": "#/$defs/InvoiceSubtype" }, { "type": "null" }] },
+    "extraction_confidence": { "anyOf": [{ "$ref": "#/$defs/confidence" }, { "type": "null" }] },
+
+    "low_confidence_triggered": { "type": "boolean" },
+    "low_confidence_fields": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": []
+    },
+
+    "fields": {
+      "type": "object",
+      "description": "canonical_field_name -> FieldView",
+      "additionalProperties": { "$ref": "#/$defs/FieldView" }
+    },
+
+    "addresses": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "vendor_address": { "anyOf": [{ "$ref": "#/$defs/AddressFieldView" }, { "type": "null" }] },
+        "bill_to_address": { "anyOf": [{ "$ref": "#/$defs/AddressFieldView" }, { "type": "null" }] },
+        "remit_to_address": { "anyOf": [{ "$ref": "#/$defs/AddressFieldView" }, { "type": "null" }] }
+      }
+    },
+
+    "line_items": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/LineItemView" },
+      "default": []
+    },
+
+    "extensions": {
+      "description": "Optional pass-through for subtype tabs; can embed canonical extensions object.",
+      "anyOf": [{ "type": "object" }, { "type": "null" }]
+    },
+
+    "field_locations": {
+      "type": "object",
+      "description": "canonical_field_name -> array of Regions (overlay support)",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "$ref": "#/$defs/Region" }
+      }
+    }
+  }
+}
+
