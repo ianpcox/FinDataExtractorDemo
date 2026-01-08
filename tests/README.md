@@ -1,164 +1,143 @@
-# Test Suite for FinDataExtractorVanilla
+# Test Organization
 
-## Overview
+Tests are organized by **environment** (DEMO/DEV/PROD) and **test pyramid** (unit/integration/e2e).
 
-Comprehensive test suite for the vanilla invoice processing system. Tests are organized into unit tests and integration tests, with mocks for external dependencies.
-
-## Running Tests
-
-### Run All Tests
-```bash
-pytest
-```
-
-### Run Unit Tests Only
-```bash
-pytest tests/unit -v
-```
-
-### Run Integration Tests Only
-```bash
-pytest tests/integration -v
-```
-
-### Run with Coverage
-```bash
-pytest --cov=src --cov-report=html --cov-report=term
-```
-
-Coverage report will be generated in:
-- HTML: `htmlcov/index.html`
-- Terminal: displayed in console
-- JSON: `coverage.json`
-
-### Run Specific Test File
-```bash
-pytest tests/unit/test_ingestion_service.py -v
-```
-
-### Run Tests in Parallel
-```bash
-pytest -n auto
-```
-
-(Requires `pytest-xdist`: `pip install pytest-xdist`)
-
-## Test Organization
+## Structure
 
 ```
 tests/
-├── conftest.py              # Shared fixtures and configuration
-├── unit/                    # Unit tests (fast, mocked)
-│   ├── test_ingestion_service.py
-│   ├── test_extraction_service.py
-│   ├── test_field_extractor.py
-│   ├── test_db_service.py
-│   ├── test_matching_service.py
-│   └── test_erp_staging.py
-└── integration/             # Integration tests
-    ├── test_api_routes.py
-    └── test_end_to_end.py
+├── demo/          # Quick, standalone tests for demos
+│   ├── unit/      # (empty - for future demo unit tests)
+│   ├── integration/ # Standalone extraction tests (no DB) - 8 files
+│   └── e2e/       # Simple end-to-end scripts - 1 file
+│
+├── dev/           # Development tests with mocks
+│   ├── unit/      # Fast, isolated unit tests - 30 files
+│   ├── integration/ # Integration tests with mocked services - 9 files
+│   └── e2e/       # End-to-end tests with mocks - 1 file
+│
+├── prod/          # Production tests with real services
+│   ├── unit/      # (empty - for future prod unit tests)
+│   ├── integration/ # Real service integration tests - 13 files
+│   └── e2e/       # Performance and scalability tests - 2 files
+│
+├── reports/       # Test reports and results
+│   ├── di_ocr/    # DI OCR test reports - 4 files
+│   ├── llm/       # Base LLM test reports - 4 files
+│   ├── multimodal_llm/ # Multimodal LLM test reports - 4 files
+│   ├── confusion_matrices/ # Confusion matrix reports - 4 files
+│   └── metrics/   # Comprehensive metrics reports - 7 files
+│
+├── scripts/       # Test runner scripts - 4 files
+└── utils/         # Test utility scripts - 7 files
+```
+
+## Test Categories
+
+### DEMO Tests
+- **Purpose**: Quick, standalone tests for demonstrations
+- **Characteristics**: 
+  - No database dependencies
+  - Simple script-style tests
+  - Can run without full environment setup
+- **Examples**: Standalone extraction tests, simple real extraction scripts
+
+### DEV Tests
+- **Purpose**: Development and CI/CD testing
+- **Characteristics**:
+  - Use mocks for external services
+  - Fast execution
+  - No real Azure service calls
+  - Isolated test databases
+- **Examples**: Unit tests, integration tests with mocks, HITL tests
+
+### PROD Tests
+- **Purpose**: Production validation and performance testing
+- **Characteristics**:
+  - Real Azure service calls (DI, LLM, Blob Storage)
+  - Comprehensive integration tests
+  - Performance benchmarks
+  - May require credentials and incur costs
+- **Examples**: Real extraction tests, performance tests, migration tests
+
+## Running Tests
+
+### Run all tests
+```bash
+pytest tests/
+```
+
+### Run by environment
+```bash
+# Demo tests only
+pytest tests/demo/
+
+# Dev tests only (fast, with mocks)
+pytest tests/dev/
+
+# Prod tests only (requires Azure credentials)
+pytest tests/prod/
+```
+
+### Run by test pyramid level
+```bash
+# Unit tests only
+pytest tests/*/unit/
+
+# Integration tests only
+pytest tests/*/integration/
+
+# E2E tests only
+pytest tests/*/e2e/
+```
+
+### Run specific category
+```bash
+# Fast dev unit tests
+pytest tests/dev/unit/
+
+# Real service integration tests
+pytest tests/prod/integration/
 ```
 
 ## Test Markers
 
-Tests are categorized using pytest markers:
+Tests are marked with pytest markers:
+- `@pytest.mark.integration` - Integration tests
+- `@pytest.mark.slow` - Slow tests (real services)
+- `@pytest.mark.asyncio` - Async tests
 
-- `@pytest.mark.unit` - Unit tests (use mocks, fast)
-- `@pytest.mark.integration` - Integration tests (use test database)
-- `@pytest.mark.api` - API endpoint tests
-- `@pytest.mark.slow` - Slow running tests (> 5 seconds)
-- `@pytest.mark.requires_db` - Tests requiring database
-- `@pytest.mark.requires_azure` - Tests requiring Azure services (will skip if not available)
+## Test Reports
 
-### Filter by Marker
-```bash
-# Run only unit tests
-pytest -m unit
+Test reports are organized in `tests/reports/` by test type:
+- **di_ocr/** - Document Intelligence OCR test reports
+- **llm/** - Base LLM extraction test reports
+- **multimodal_llm/** - Multimodal LLM extraction test reports
+- **confusion_matrices/** - Confusion matrix analysis
+- **metrics/** - Comprehensive metrics reports
 
-# Run only fast tests (exclude slow)
-pytest -m "not slow"
+## Test Scripts
 
-# Run integration tests
-pytest -m integration
-```
+Test runner scripts are in `tests/scripts/`:
+- `run_di_ocr_with_false_negative_detection.py`
+- `run_llm_extraction_with_false_negative_detection.py`
+- `run_multimodal_llm_extraction_with_false_negative_detection.py`
+- `run_comprehensive_extraction_tests.py`
 
-## Test Fixtures
+## Test Utilities
 
-### Database Fixtures
-- `db_session` - Async database session (SQLite in-memory)
-- Creates fresh database for each test
-- Automatically cleaned up after test
-
-### Mock Fixtures
-- `mock_file_handler` - Mocked FileHandler
-- `mock_document_intelligence_client` - Mocked Document Intelligence
-- `mock_pdf_processor` - Mocked PDFProcessor
-
-### Data Fixtures
-- `sample_invoice` - Sample Invoice Pydantic model
-- `sample_pdf_content` - Sample PDF bytes
-- `sample_document_intelligence_data` - Sample DI response
-- `sample_po_data` - Sample PO data for matching
-
-## Coverage Goals
-
-- **Target**: 70% minimum code coverage
-- **Critical Paths**: 90%+ coverage
-- **Current**: Run `pytest --cov=src --cov-report=term` to see current coverage
-
-## Writing New Tests
-
-### Unit Test Example
-```python
-@pytest.mark.unit
-class TestMyService:
-    """Test MyService"""
-    
-    @pytest.mark.asyncio
-    async def test_my_method(self, mock_dependency):
-        """Test my method"""
-        service = MyService(dependency=mock_dependency)
-        result = await service.my_method()
-        assert result is not None
-```
-
-### Integration Test Example
-```python
-@pytest.mark.integration
-@pytest.mark.requires_db
-class TestMyIntegration:
-    """Test integration"""
-    
-    @pytest.mark.asyncio
-    async def test_integration(self, db_session):
-        """Test integration"""
-        # Use real database session
-        result = await my_function(db=db_session)
-        assert result is not None
-```
-
-## Test Data
-
-Test data is created using fixtures in `conftest.py`. For file-based test data, create:
-```
-tests/
-└── fixtures/
-    ├── sample_invoices/
-    └── sample_pos/
-```
-
-## Continuous Integration
-
-Tests should run automatically in CI/CD pipeline:
-- On every commit
-- Before merging PRs
-- Coverage reports published
+Utility scripts for test analysis are in `tests/utils/`:
+- `enhanced_false_negative_detector.py`
+- `false_negatives_detector.py`
+- `generate_confusion_matrices.py`
+- `generate_per_field_metrics.py`
+- `diagnose_*.py` - Diagnostic scripts
 
 ## Notes
 
-- All tests use mocks for Azure services by default
-- Database tests use in-memory SQLite (no external DB required)
-- Integration tests may require test database setup
-- Azure connection tests are optional and will skip if credentials not available
-
+- **DEMO tests** are simple scripts that can run standalone
+- **DEV tests** use mocks and are suitable for CI/CD
+- **PROD tests** require Azure credentials and may incur costs
+- Duplicate tests have been merged or removed
+- All tests follow the test pyramid principle (many unit, some integration, few e2e)
+- All test reports and scripts are organized within the `tests/` directory

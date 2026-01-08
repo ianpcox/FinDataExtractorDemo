@@ -23,6 +23,7 @@ from src.ingestion.file_handler import FileHandler
 from src.models.invoice import Invoice
 from src.services.db_service import DatabaseService
 from src.services.validation_service import ValidationService
+from src.validation.aggregation_validator import AggregationValidator
 from src.models.db_utils import address_to_dict, line_items_to_json, _sanitize_tax_breakdown
 from src.services.progress_tracker import progress_tracker, ProcessingStep
 from src.config import settings
@@ -338,6 +339,23 @@ class ExtractionService:
             invoice.id = invoice_id
             invoice.status = "extracted"
             
+            # Validate aggregation consistency (invoice totals = sum of line items)
+            aggregation_validation = None
+            if invoice.line_items:
+                aggregation_validation = AggregationValidator.get_validation_summary(invoice)
+                if not aggregation_validation["all_valid"]:
+                    logger.warning(
+                        f"Aggregation validation failed for invoice {invoice_id}: "
+                        f"{aggregation_validation['failed_validations']} validation(s) failed"
+                    )
+                    for error in aggregation_validation["errors"]:
+                        logger.warning(f"  - {error}")
+                else:
+                    logger.info(
+                        f"Aggregation validation passed for invoice {invoice_id}: "
+                        f"all {aggregation_validation['total_validations']} validations passed"
+                    )
+            
             await progress_tracker.update(invoice_id, 70, "Fields mapped, saving to database...")
             
             # Step 5: Save to database
@@ -589,6 +607,22 @@ class ExtractionService:
                 ok2 = await DatabaseService.set_extraction_result(invoice_id, patch, expected_processing_state="EXTRACTED", db=db)
                 if not ok2:
                     raise ValueError("Failed to persist post-LLM extraction result; state mismatch")
+                
+                # Re-run aggregation validation after LLM changes (in case line items or totals were modified)
+                if invoice.line_items:
+                    aggregation_validation = AggregationValidator.get_validation_summary(invoice)
+                    if not aggregation_validation["all_valid"]:
+                        logger.warning(
+                            f"Aggregation validation failed after LLM processing for invoice {invoice_id}: "
+                            f"{aggregation_validation['failed_validations']} validation(s) failed"
+                        )
+                        for error in aggregation_validation["errors"]:
+                            logger.warning(f"  - {error}")
+                    else:
+                        logger.info(
+                            f"Aggregation validation passed after LLM processing for invoice {invoice_id}: "
+                            f"all {aggregation_validation['total_validations']} validations passed"
+                        )
             else:
                 logger.info("Skipping post-LLM save; no LLM changes detected.")
             invoice_dict = invoice.model_dump(mode="json")
@@ -609,7 +643,8 @@ class ExtractionService:
                 "errors": [],
                 "low_confidence_fields": low_conf_fields,
                 "low_confidence_triggered": bool(low_conf_fields),
-                "validation": validation_result
+                "validation": validation_result,
+                "aggregation_validation": aggregation_validation
             }
             
             logger.info(f"Extraction completed successfully for invoice: {invoice_id}")
@@ -2194,9 +2229,17 @@ class ExtractionService:
                 # Allow explicit null to clear a low-confidence field
                 if value is None:
                     setattr(invoice, target_field, None)
-                elif target_field in ["subtotal", "tax_amount", "total_amount"]:
+                # Handle decimal fields - convert string values to Decimal
+                elif target_field in [
+                    "subtotal", "tax_amount", "total_amount", "discount_amount",
+                    "shipping_amount", "handling_fee", "deposit_amount",
+                    "gst_amount", "gst_rate", "hst_amount", "hst_rate",
+                    "qst_amount", "qst_rate", "pst_amount", "pst_rate",
+                    "acceptance_percentage"
+                ]:
                     parsed = self.field_extractor._parse_decimal(value)
                     setattr(invoice, target_field, parsed)
+                # Handle date fields
                 elif target_field in [
                     "invoice_date",
                     "due_date",
@@ -2208,6 +2251,7 @@ class ExtractionService:
                     from dateutil.parser import parse
 
                     setattr(invoice, target_field, parse(value).date())
+                # Handle address fields
                 elif target_field in ["vendor_address", "bill_to_address", "remit_to_address"]:
                     if isinstance(value, dict):
                         from src.models.invoice import Address
@@ -2215,6 +2259,7 @@ class ExtractionService:
                         setattr(invoice, target_field, Address(**value))
                     else:
                         setattr(invoice, target_field, None)
+                # Handle all other fields (strings, etc.)
                 else:
                     setattr(invoice, target_field, value)
 

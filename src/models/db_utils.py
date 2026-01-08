@@ -8,6 +8,7 @@ import logging
 
 from .invoice import Invoice as InvoicePydantic, LineItem as LineItemPydantic, Address, InvoiceSubtype
 from .db_models import Invoice as InvoiceDB
+from .line_item_db_models import LineItem as LineItemDB
 from .decimal_wire import decimal_to_wire, wire_to_decimal
 
 logger = logging.getLogger(__name__)
@@ -116,6 +117,55 @@ def json_to_line_items(data: Optional[dict]) -> list:
     ]
 
 
+def _get_line_items_from_db(invoice_db: InvoiceDB) -> list:
+    """
+    Get line items from database, checking table first, then falling back to JSON.
+    
+    This supports the migration period where line items may be in either location.
+    Priority: line_items table > JSON column
+    """
+    # Try to get line items from table (relationship)
+    # The relationship should be loaded via selectinload in DatabaseService.get_invoice
+    try:
+        if hasattr(invoice_db, 'line_items_relationship'):
+            # Check if relationship is loaded and has items
+            relationship_items = getattr(invoice_db, 'line_items_relationship', None)
+            if relationship_items is not None:
+                # Check if it's a list/collection with items
+                if hasattr(relationship_items, '__iter__') and not isinstance(relationship_items, str):
+                    items_list = list(relationship_items)
+                    if items_list:  # Only return if we have items from table
+                        # Convert from DB models to Pydantic models
+                        return [
+                            LineItemPydantic(
+                                line_number=item.line_number,
+                                description=item.description,
+                                quantity=item.quantity,
+                                unit_price=item.unit_price,
+                                amount=item.amount or Decimal("0"),
+                                confidence=item.confidence or 0.0,
+                                unit_of_measure=item.unit_of_measure,
+                                tax_rate=item.tax_rate,
+                                tax_amount=item.tax_amount,
+                                gst_amount=item.gst_amount,
+                                pst_amount=item.pst_amount,
+                                qst_amount=item.qst_amount,
+                                combined_tax=item.combined_tax,
+                                acceptance_percentage=item.acceptance_percentage,
+                                project_code=item.project_code,
+                                region_code=item.region_code,
+                                airport_code=item.airport_code,
+                                cost_centre_code=item.cost_centre_code,
+                            )
+                            for item in items_list
+                        ]
+    except Exception as e:
+        logger.debug(f"Could not load line items from relationship: {e}")
+    
+    # Fall back to JSON column (for backward compatibility during migration)
+    return json_to_line_items(invoice_db.line_items)
+
+
 def pydantic_to_db_invoice(invoice_pydantic: InvoicePydantic) -> InvoiceDB:
     """Convert Pydantic Invoice to SQLAlchemy Invoice (simplified)"""
     if not invoice_pydantic.id:
@@ -154,12 +204,24 @@ def pydantic_to_db_invoice(invoice_pydantic: InvoicePydantic) -> InvoiceDB:
         invoice_number=invoice_pydantic.invoice_number,
         invoice_date=invoice_pydantic.invoice_date,
         due_date=invoice_pydantic.due_date,
+        invoice_type=invoice_pydantic.invoice_type,
+        reference_number=invoice_pydantic.reference_number,
         vendor_name=invoice_pydantic.vendor_name,
         vendor_id=invoice_pydantic.vendor_id,
         vendor_phone=invoice_pydantic.vendor_phone,
+        vendor_fax=invoice_pydantic.vendor_fax,
+        vendor_email=invoice_pydantic.vendor_email,
+        vendor_website=invoice_pydantic.vendor_website,
         vendor_address=address_to_dict(invoice_pydantic.vendor_address),
+        gst_number=invoice_pydantic.gst_number,
+        qst_number=invoice_pydantic.qst_number,
+        pst_number=invoice_pydantic.pst_number,
+        business_number=invoice_pydantic.business_number,
         customer_name=invoice_pydantic.customer_name,
         customer_id=invoice_pydantic.customer_id,
+        customer_phone=invoice_pydantic.customer_phone,
+        customer_email=invoice_pydantic.customer_email,
+        customer_fax=invoice_pydantic.customer_fax,
         entity=invoice_pydantic.entity,
         bill_to_address=address_to_dict(invoice_pydantic.bill_to_address),
         remit_to_address=address_to_dict(invoice_pydantic.remit_to_address),
@@ -169,7 +231,22 @@ def pydantic_to_db_invoice(invoice_pydantic: InvoicePydantic) -> InvoiceDB:
         po_number=invoice_pydantic.po_number,
         period_start=invoice_pydantic.period_start,
         period_end=invoice_pydantic.period_end,
+        shipping_date=invoice_pydantic.shipping_date,
+        delivery_date=invoice_pydantic.delivery_date,
         subtotal=invoice_pydantic.subtotal,
+        discount_amount=invoice_pydantic.discount_amount,
+        shipping_amount=invoice_pydantic.shipping_amount,
+        handling_fee=invoice_pydantic.handling_fee,
+        deposit_amount=invoice_pydantic.deposit_amount,
+        # Canadian Tax Fields
+        gst_amount=invoice_pydantic.gst_amount,
+        gst_rate=invoice_pydantic.gst_rate,
+        hst_amount=invoice_pydantic.hst_amount,
+        hst_rate=invoice_pydantic.hst_rate,
+        qst_amount=invoice_pydantic.qst_amount,
+        qst_rate=invoice_pydantic.qst_rate,
+        pst_amount=invoice_pydantic.pst_amount,
+        pst_rate=invoice_pydantic.pst_rate,
         tax_breakdown=_sanitize_tax_breakdown(invoice_pydantic.tax_breakdown),
         tax_amount=invoice_pydantic.tax_amount,
         total_amount=invoice_pydantic.total_amount,
@@ -177,6 +254,8 @@ def pydantic_to_db_invoice(invoice_pydantic: InvoicePydantic) -> InvoiceDB:
         acceptance_percentage=invoice_pydantic.acceptance_percentage,
         tax_registration_number=invoice_pydantic.tax_registration_number,
         payment_terms=invoice_pydantic.payment_terms,
+        payment_method=invoice_pydantic.payment_method,
+        payment_due_upon=invoice_pydantic.payment_due_upon,
         line_items=line_items_to_json(invoice_pydantic.line_items),
         invoice_subtype=subtype_str,
         extensions=invoice_pydantic.extensions.dict() if invoice_pydantic.extensions else None,
@@ -224,19 +303,48 @@ def db_to_pydantic_invoice(invoice_db: InvoiceDB) -> InvoicePydantic:
         invoice_number=invoice_db.invoice_number,
         invoice_date=invoice_db.invoice_date,
         due_date=invoice_db.due_date,
+        invoice_type=invoice_db.invoice_type,
+        reference_number=invoice_db.reference_number,
         vendor_name=invoice_db.vendor_name,
         vendor_id=invoice_db.vendor_id,
         vendor_phone=invoice_db.vendor_phone,
+        vendor_fax=invoice_db.vendor_fax,
+        vendor_email=invoice_db.vendor_email,
+        vendor_website=invoice_db.vendor_website,
         vendor_address=dict_to_address(invoice_db.vendor_address),
+        gst_number=invoice_db.gst_number,
+        qst_number=invoice_db.qst_number,
+        pst_number=invoice_db.pst_number,
+        business_number=invoice_db.business_number,
         customer_name=invoice_db.customer_name,
         customer_id=invoice_db.customer_id,
+        customer_phone=invoice_db.customer_phone,
+        customer_email=invoice_db.customer_email,
+        customer_fax=invoice_db.customer_fax,
         entity=invoice_db.entity,
         bill_to_address=dict_to_address(invoice_db.bill_to_address),
         remit_to_address=dict_to_address(invoice_db.remit_to_address),
         remit_to_name=invoice_db.remit_to_name,
         contract_id=invoice_db.contract_id,
         standing_offer_number=invoice_db.standing_offer_number,
+        period_start=invoice_db.period_start,
+        period_end=invoice_db.period_end,
+        shipping_date=invoice_db.shipping_date,
+        delivery_date=invoice_db.delivery_date,
         subtotal=invoice_db.subtotal,
+        discount_amount=invoice_db.discount_amount,
+        shipping_amount=invoice_db.shipping_amount,
+        handling_fee=invoice_db.handling_fee,
+        deposit_amount=invoice_db.deposit_amount,
+        # Canadian Tax Fields
+        gst_amount=invoice_db.gst_amount,
+        gst_rate=invoice_db.gst_rate,
+        hst_amount=invoice_db.hst_amount,
+        hst_rate=invoice_db.hst_rate,
+        qst_amount=invoice_db.qst_amount,
+        qst_rate=invoice_db.qst_rate,
+        pst_amount=invoice_db.pst_amount,
+        pst_rate=invoice_db.pst_rate,
         tax_breakdown=invoice_db.tax_breakdown,
         tax_amount=invoice_db.tax_amount,
         total_amount=invoice_db.total_amount,
@@ -244,8 +352,10 @@ def db_to_pydantic_invoice(invoice_db: InvoiceDB) -> InvoicePydantic:
         acceptance_percentage=invoice_db.acceptance_percentage,
         tax_registration_number=invoice_db.tax_registration_number,
         payment_terms=invoice_db.payment_terms,
+        payment_method=invoice_db.payment_method,
+        payment_due_upon=invoice_db.payment_due_upon,
         po_number=invoice_db.po_number,
-        line_items=json_to_line_items(invoice_db.line_items),
+        line_items=_get_line_items_from_db(invoice_db),
         extraction_confidence=invoice_db.extraction_confidence or 0.0,
         extraction_timestamp=invoice_db.extraction_timestamp,
         field_confidence=invoice_db.field_confidence or {},

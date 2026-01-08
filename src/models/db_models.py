@@ -1,6 +1,7 @@
 """Simplified SQLAlchemy ORM models"""
 
 from sqlalchemy import Column, String, Integer, Float, DateTime, Date, Numeric, Text, JSON, Index
+from sqlalchemy.orm import relationship
 from datetime import datetime, date
 from decimal import Decimal
 import uuid
@@ -129,6 +130,14 @@ class Invoice(Base):
     # Timestamps
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relationship to LineItems (when migrated from JSON)
+    line_items_relationship = relationship(
+        "LineItem",
+        back_populates="invoice",
+        cascade="all, delete-orphan",
+        lazy="selectin"  # Eager load line items by default
+    )
     
     # Indexes
     __table_args__ = (

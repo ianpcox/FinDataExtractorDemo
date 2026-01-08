@@ -16,6 +16,7 @@ from src.models.db_utils import (
     line_items_to_json,
     _sanitize_tax_breakdown,
 )
+from src.models.db_utils_line_items import save_line_items_to_table
 from src.models.invoice import InvoiceState
 
 logger = logging.getLogger(__name__)
@@ -103,6 +104,10 @@ class DatabaseService:
                 logger.info(f"Creating new invoice: {invoice.id}")
                 db_invoice = pydantic_to_db_invoice(invoice)
                 session.add(db_invoice)
+            
+            # Save line items to table (if line_items field is set)
+            if hasattr(invoice, 'line_items') and 'line_items' in _get_fields_set(invoice):
+                await save_line_items_to_table(session, invoice.id, invoice.line_items)
             
             await session.commit()
             await session.refresh(db_invoice)
@@ -341,6 +346,15 @@ class DatabaseService:
             rowcount = result.rowcount or 0
             
             if rowcount > 0:
+                # If line_items was updated, also save to line_items table
+                if "line_items" in patch:
+                    # Convert JSON back to Pydantic models for table save
+                    from src.models.db_utils import json_to_line_items
+                    line_items_json = patch["line_items"]
+                    line_items_pydantic = json_to_line_items(line_items_json)
+                    await save_line_items_to_table(session, invoice_id, line_items_pydantic)
+                    logger.info(f"Saved {len(line_items_pydantic) if line_items_pydantic else 0} line items to table for invoice {invoice_id}")
+                
                 # Flush before commit to ensure changes are written
                 await session.flush()
                 await session.commit()
@@ -381,8 +395,11 @@ class DatabaseService:
             should_close = True
         
         try:
+            from sqlalchemy.orm import selectinload
             result = await session.execute(
-                select(InvoiceDB).where(InvoiceDB.id == invoice_id)
+                select(InvoiceDB)
+                .options(selectinload(InvoiceDB.line_items_relationship))
+                .where(InvoiceDB.id == invoice_id)
             )
             db_invoice = result.scalar_one_or_none()
             
@@ -424,7 +441,8 @@ class DatabaseService:
             should_close = True
         
         try:
-            query = select(InvoiceDB)
+            from sqlalchemy.orm import selectinload
+            query = select(InvoiceDB).options(selectinload(InvoiceDB.line_items_relationship))
             
             if status:
                 query = query.where(InvoiceDB.status == status)

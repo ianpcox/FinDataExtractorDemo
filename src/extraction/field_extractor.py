@@ -171,7 +171,12 @@ class FieldExtractor:
         
         # Extract field-level confidence
         field_confidence = canonical_data.get("field_confidence", {})
-        invoice.field_confidence = field_confidence
+        # Initialize field_confidence dict
+        invoice.field_confidence = {}
+        
+        # Copy all field confidences, but we'll handle addresses separately
+        for key, value in field_confidence.items():
+            invoice.field_confidence[key] = value
         
         # Map Document Intelligence fields to Invoice model - Header
         invoice.invoice_number = self._get_field_value(
@@ -220,7 +225,17 @@ class FieldExtractor:
         )
         vendor_address = canonical_data.get("vendor_address")
         if vendor_address:
-            invoice.vendor_address = self._map_address(vendor_address)
+            mapped_address = self._map_address(vendor_address)
+            if mapped_address:
+                invoice.vendor_address = mapped_address
+                # Keep confidence if it was set and address was successfully mapped
+                # (confidence should only be set if DI found actual address content)
+            else:
+                # Address data exists but couldn't be mapped - clear confidence
+                invoice.field_confidence["vendor_address"] = 0.0
+        else:
+            # No address data at all - clear any confidence that might have been set
+            invoice.field_confidence["vendor_address"] = 0.0
         
         # Vendor tax IDs
         invoice.business_number = self._get_field_value(
@@ -257,7 +272,16 @@ class FieldExtractor:
         )
         customer_address = canonical_data.get("bill_to_address")
         if customer_address:
-            invoice.bill_to_address = self._map_address(customer_address)
+            mapped_address = self._map_address(customer_address)
+            if mapped_address:
+                invoice.bill_to_address = mapped_address
+                # Keep confidence if it was set and address was successfully mapped
+            else:
+                # Address data exists but couldn't be mapped - clear confidence
+                invoice.field_confidence["bill_to_address"] = 0.0
+        else:
+            # No address data at all - clear any confidence that might have been set
+            invoice.field_confidence["bill_to_address"] = 0.0
         
         # Contract and PO
         invoice.contract_id = self._get_field_value(
@@ -365,9 +389,15 @@ class FieldExtractor:
             if invoice.subtotal is None:
                 invoice.subtotal = line_sum
             if invoice.total_amount is None and invoice.subtotal is not None:
-                invoice.total_amount = invoice.subtotal + (invoice.tax_amount or Decimal("0.00"))
+                # Ensure both are Decimal before calculation
+                subtotal = invoice.subtotal if isinstance(invoice.subtotal, Decimal) else Decimal(str(invoice.subtotal))
+                tax = invoice.tax_amount if isinstance(invoice.tax_amount, Decimal) else (Decimal(str(invoice.tax_amount)) if invoice.tax_amount else Decimal("0.00"))
+                invoice.total_amount = subtotal + tax
             if invoice.tax_amount is None and invoice.total_amount is not None and invoice.subtotal is not None:
-                invoice.tax_amount = invoice.total_amount - invoice.subtotal
+                # Ensure both are Decimal before subtraction
+                total = invoice.total_amount if isinstance(invoice.total_amount, Decimal) else Decimal(str(invoice.total_amount))
+                subtotal = invoice.subtotal if isinstance(invoice.subtotal, Decimal) else Decimal(str(invoice.subtotal))
+                invoice.tax_amount = total - subtotal
         invoice.tax_registration_number = self._get_field_value(
             canonical_data.get("tax_registration_number"), field_confidence.get("tax_registration_number")
         )
@@ -376,7 +406,16 @@ class FieldExtractor:
         )
         remit_addr = canonical_data.get("remit_to_address")
         if remit_addr:
-            invoice.remit_to_address = self._map_address(remit_addr)
+            mapped_address = self._map_address(remit_addr)
+            if mapped_address:
+                invoice.remit_to_address = mapped_address
+                # Keep confidence if it was set and address was successfully mapped
+            else:
+                # Address data exists but couldn't be mapped - clear confidence
+                invoice.field_confidence["remit_to_address"] = 0.0
+        else:
+            # No address data at all - clear any confidence that might have been set
+            invoice.field_confidence["remit_to_address"] = 0.0
         invoice.remit_to_name = self._get_field_value(
             canonical_data.get("remit_to_name"), field_confidence.get("remit_to_name")
         )
@@ -478,16 +517,21 @@ class FieldExtractor:
         
         return None
     
-    def _map_address(self, address_data: Dict) -> Address:
+    def _map_address(self, address_data: Dict) -> Optional[Address]:
         """Map Document Intelligence address to Address model"""
         if not address_data:
-            return Address()
+            return None
         
         # Handle different address formats
         if isinstance(address_data, str):
-            # Try to parse string address
-            return Address()
+            # Try to parse string address - for now return None if it's just a string
+            # Could be enhanced with address parsing library
+            if not address_data.strip():
+                return None
+            # Return minimal address with street containing the full string
+            return Address(street=address_data.strip())
         
+        # Extract street address components
         street = (
             address_data.get("street_address") or
             address_data.get("road") or
@@ -497,14 +541,26 @@ class FieldExtractor:
         # Combine house number and road if separate
         if address_data.get("house_number") and address_data.get("road"):
             street = f"{address_data.get('house_number')} {address_data.get('road')}"
+        elif address_data.get("house_number") and not street:
+            street = str(address_data.get("house_number"))
         
-        return Address(
-            street=street,
-            city=address_data.get("city"),
-            province=address_data.get("state") or address_data.get("province"),
-            postal_code=address_data.get("postal_code"),
-            country=address_data.get("country_region") or address_data.get("country")
-        )
+        # Extract other components
+        city = address_data.get("city")
+        province = address_data.get("state") or address_data.get("province")
+        postal_code = address_data.get("postal_code") or address_data.get("postalCode")
+        country = address_data.get("country_region") or address_data.get("country") or address_data.get("countryRegion")
+        
+        # Only return Address if at least one field has a value
+        if street or city or province or postal_code or country:
+            return Address(
+                street=street if street else None,
+                city=city if city else None,
+                province=province if province else None,
+                postal_code=postal_code if postal_code else None,
+                country=country if country else None
+            )
+        
+        return None
     
     def _extract_tax_breakdown(self, di_data: Dict[str, Any]) -> Optional[Dict[str, Decimal]]:
         """Extract tax breakdown by tax type"""
@@ -744,7 +800,11 @@ class FieldExtractor:
             "VendorAddress": "vendor_address",
             "CustomerName": "customer_name",
             "CustomerId": "customer_id",
+            "BillingAddress": "bill_to_address",  # DI uses BillingAddress, not CustomerAddress
             "CustomerAddress": "bill_to_address",
+            "BillToAddress": "bill_to_address",
+            "RemittanceAddress": "remit_to_address",  # DI uses RemittanceAddress
+            "RemitToAddress": "remit_to_address",
             "BillToAddress": "bill_to_address",
             "RemitToAddress": "remit_to_address",
             "RemittanceAddress": "remit_to_address",

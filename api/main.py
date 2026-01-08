@@ -29,6 +29,9 @@ app.add_middleware(
 async def _init_database() -> None:
     """Ensure database tables exist (demo-friendly)."""
     from src.models.database import Base, engine
+    # Import all models to ensure they're registered with Base
+    from src.models.db_models import Invoice  # noqa: F401
+    from src.models.line_item_db_models import LineItem  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
