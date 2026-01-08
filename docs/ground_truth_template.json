@@ -1,0 +1,48 @@
+{
+  "ACC012 4202092525.pdf": {
+    "invoice_number": "4202092525",
+    "invoice_date": "2025-09-25",
+    "vendor_name": "ACME Corporation",
+    "total_amount": 1234.56,
+    "subtotal": 1100.00,
+    "tax_amount": 134.56,
+    "currency": "CAD",
+    "due_date": "2025-10-25",
+    "customer_name": "CATSA",
+    "po_number": "PO-12345",
+    "payment_terms": "Net 30",
+    "vendor_address": {
+      "street": "123 Main St",
+      "city": "Ottawa",
+      "province": "ON",
+      "postal_code": "K1A 0B1",
+      "country": "Canada"
+    },
+    "bill_to_address": {
+      "street": "456 Government Way",
+      "city": "Ottawa",
+      "province": "ON",
+      "postal_code": "K1A 0B2",
+      "country": "Canada"
+    },
+    "remit_to_address": {
+      "street": "789 Payment Blvd",
+      "city": "Ottawa",
+      "province": "ON",
+      "postal_code": "K1A 0B3",
+      "country": "Canada"
+    },
+    "gst_number": "123456789RT0001",
+    "gst_amount": 55.00,
+    "gst_rate": 0.05
+  },
+  "ANA005 90443097.pdf": {
+    "invoice_number": "90443097",
+    "invoice_date": "2025-10-15",
+    "vendor_name": "Another Vendor Inc",
+    "total_amount": 5678.90,
+    "subtotal": 5000.00,
+    "tax_amount": 678.90,
+    "currency": "CAD"
+  }
+}

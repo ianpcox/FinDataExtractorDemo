@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 # Import your models' Base
 from src.models.database import Base
 from src.models.db_models import Invoice
+from src.models.line_item_db_models import LineItem
 
 # this is the Alembic Config object
 config = context.config

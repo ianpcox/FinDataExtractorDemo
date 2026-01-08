@@ -16,6 +16,7 @@ from src.models.db_utils import (
     line_items_to_json,
     _sanitize_tax_breakdown,
 )
+from src.models.db_utils_line_items import save_line_items_to_table
 from src.models.invoice import InvoiceState
 
 logger = logging.getLogger(__name__)
@@ -103,6 +104,10 @@ class DatabaseService:
                 logger.info(f"Creating new invoice: {invoice.id}")
                 db_invoice = pydantic_to_db_invoice(invoice)
                 session.add(db_invoice)
+            
+            # Save line items to table (if line_items field is set)
+            if hasattr(invoice, 'line_items') and 'line_items' in _get_fields_set(invoice):
+                await save_line_items_to_table(session, invoice.id, invoice.line_items)
             
             await session.commit()
             await session.refresh(db_invoice)

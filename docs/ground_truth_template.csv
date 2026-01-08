@@ -1,0 +1,21 @@
+pdf_name,field_name,value,exists
+ACC012 4202092525.pdf,invoice_number,4202092525,true
+ACC012 4202092525.pdf,invoice_date,2025-09-25,true
+ACC012 4202092525.pdf,vendor_name,ACME Corporation,true
+ACC012 4202092525.pdf,total_amount,1234.56,true
+ACC012 4202092525.pdf,subtotal,1100.00,true
+ACC012 4202092525.pdf,tax_amount,134.56,true
+ACC012 4202092525.pdf,currency,CAD,true
+ACC012 4202092525.pdf,due_date,2025-10-25,true
+ACC012 4202092525.pdf,customer_name,CATSA,true
+ACC012 4202092525.pdf,po_number,PO-12345,true
+ACC012 4202092525.pdf,payment_terms,Net 30,true
+ACC012 4202092525.pdf,vendor_address,"123 Main St, Ottawa, ON, K1A 0B1, Canada",true
+ACC012 4202092525.pdf,bill_to_address,"456 Government Way, Ottawa, ON, K1A 0B2, Canada",true
+ACC012 4202092525.pdf,remit_to_address,"789 Payment Blvd, Ottawa, ON, K1A 0B3, Canada",true
+ACC012 4202092525.pdf,gst_number,123456789RT0001,true
+ACC012 4202092525.pdf,gst_amount,55.00,true
+ACC012 4202092525.pdf,gst_rate,0.05,true
+ACC012 4202092525.pdf,qst_number,,false
+ACC012 4202092525.pdf,qst_amount,,false
+ACC012 4202092525.pdf,qst_rate,,false

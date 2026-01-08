@@ -8,6 +8,7 @@ import logging
 
 from .invoice import Invoice as InvoicePydantic, LineItem as LineItemPydantic, Address, InvoiceSubtype
 from .db_models import Invoice as InvoiceDB
+from .line_item_db_models import LineItem as LineItemDB
 from .decimal_wire import decimal_to_wire, wire_to_decimal
 
 logger = logging.getLogger(__name__)
@@ -114,6 +115,50 @@ def json_to_line_items(data: Optional[dict]) -> list:
         )
         for i, item in enumerate(data)
     ]
+
+
+def _get_line_items_from_db(invoice_db: InvoiceDB) -> list:
+    """
+    Get line items from database, checking table first, then falling back to JSON.
+    
+    This supports the migration period where line items may be in either location.
+    """
+    # Try to get line items from table (relationship)
+    # Note: relationship might not be loaded if using selectinload or similar
+    try:
+        if hasattr(invoice_db, 'line_items_relationship'):
+            # Check if relationship is loaded and has items
+            relationship_items = getattr(invoice_db, 'line_items_relationship', None)
+            if relationship_items is not None:
+                # Convert from DB models to Pydantic models
+                return [
+                    LineItemPydantic(
+                        line_number=item.line_number,
+                        description=item.description,
+                        quantity=item.quantity,
+                        unit_price=item.unit_price,
+                        amount=item.amount or Decimal("0"),
+                        confidence=item.confidence or 0.0,
+                        unit_of_measure=item.unit_of_measure,
+                        tax_rate=item.tax_rate,
+                        tax_amount=item.tax_amount,
+                        gst_amount=item.gst_amount,
+                        pst_amount=item.pst_amount,
+                        qst_amount=item.qst_amount,
+                        combined_tax=item.combined_tax,
+                        acceptance_percentage=item.acceptance_percentage,
+                        project_code=item.project_code,
+                        region_code=item.region_code,
+                        airport_code=item.airport_code,
+                        cost_centre_code=item.cost_centre_code,
+                    )
+                    for item in relationship_items
+                ]
+    except Exception as e:
+        logger.debug(f"Could not load line items from relationship: {e}")
+    
+    # Fall back to JSON column
+    return json_to_line_items(invoice_db.line_items)
 
 
 def pydantic_to_db_invoice(invoice_pydantic: InvoicePydantic) -> InvoiceDB:
@@ -245,7 +290,7 @@ def db_to_pydantic_invoice(invoice_db: InvoiceDB) -> InvoicePydantic:
         tax_registration_number=invoice_db.tax_registration_number,
         payment_terms=invoice_db.payment_terms,
         po_number=invoice_db.po_number,
-        line_items=json_to_line_items(invoice_db.line_items),
+        line_items=_get_line_items_from_db(invoice_db),
         extraction_confidence=invoice_db.extraction_confidence or 0.0,
         extraction_timestamp=invoice_db.extraction_timestamp,
         field_confidence=invoice_db.field_confidence or {},

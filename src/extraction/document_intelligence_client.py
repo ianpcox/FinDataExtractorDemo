@@ -190,10 +190,10 @@ class DocumentIntelligenceClient:
             "customer_phone": self._get_field_value(fields, "CustomerPhone"),
             "customer_email": self._get_field_value(fields, "CustomerEmail"),
             "customer_fax": self._get_field_value(fields, "CustomerFax"),
-            "bill_to_address": self._get_address(fields, "CustomerAddress") or self._get_address(fields, "BillToAddress"),
+            "bill_to_address": self._get_address(fields, "BillingAddress") or self._get_address(fields, "CustomerAddress") or self._get_address(fields, "BillToAddress"),
             
             # Remit-To Fields
-            "remit_to_address": self._get_address(fields, "RemitToAddress") or self._get_address(fields, "RemittanceAddress"),
+            "remit_to_address": self._get_address(fields, "RemittanceAddress") or self._get_address(fields, "RemitToAddress"),
             "remit_to_name": self._get_field_value(fields, "RemitToName"),
             
             # Contract Fields
@@ -257,16 +257,77 @@ class DocumentIntelligenceClient:
             return None
         
         address_value = field.value
+        if not address_value:
+            return None
+        
+        # Handle AddressValue objects from Azure SDK
+        # AddressValue has attributes: house_number, po_box, road, city, state, postal_code,
+        # country_region, street_address, unit, city_district, state_district, suburb, house, level
+        if hasattr(address_value, 'street_address') or hasattr(address_value, 'city'):
+            # This is an AddressValue object from Azure SDK
+            address_dict = {
+                "street_address": getattr(address_value, 'street_address', None),
+                "city": getattr(address_value, 'city', None),
+                "state": getattr(address_value, 'state', None),
+                "postal_code": getattr(address_value, 'postal_code', None),
+                "country_region": getattr(address_value, 'country_region', None),
+                "house_number": getattr(address_value, 'house_number', None),
+                "road": getattr(address_value, 'road', None),
+                "po_box": getattr(address_value, 'po_box', None),
+                "unit": getattr(address_value, 'unit', None),
+                "level": getattr(address_value, 'level', None),
+                "province": getattr(address_value, 'state', None),  # Use state as province
+                "country": getattr(address_value, 'country_region', None),
+            }
+            
+            # Build street address from components if street_address is not available
+            if not address_dict["street_address"]:
+                street_parts = []
+                if address_dict["house_number"]:
+                    street_parts.append(str(address_dict["house_number"]))
+                if address_dict["road"]:
+                    street_parts.append(address_dict["road"])
+                if address_dict["unit"]:
+                    street_parts.append(f"Unit {address_dict['unit']}")
+                if address_dict["level"]:
+                    street_parts.append(f"{address_dict['level']}")
+                if street_parts:
+                    address_dict["street_address"] = " ".join(street_parts)
+            
+            # Use po_box as street_address if no street_address
+            if not address_dict["street_address"] and address_dict["po_box"]:
+                address_dict["street_address"] = address_dict["po_box"]
+            
+            # Only return address dict if it has at least one non-empty value
+            if any(v for v in address_dict.values() if v):
+                return address_dict
+            return None
+        
+        # Handle dict format (structured address)
         if isinstance(address_value, dict):
-            return {
-                "street_address": address_value.get("streetAddress"),
+            address_dict = {
+                "street_address": address_value.get("streetAddress") or address_value.get("street_address"),
                 "city": address_value.get("city"),
                 "state": address_value.get("state"),
-                "postal_code": address_value.get("postalCode"),
-                "country_region": address_value.get("countryRegion"),
-                "house_number": address_value.get("houseNumber"),
+                "postal_code": address_value.get("postalCode") or address_value.get("postal_code"),
+                "country_region": address_value.get("countryRegion") or address_value.get("country_region"),
+                "house_number": address_value.get("houseNumber") or address_value.get("house_number"),
                 "road": address_value.get("road"),
+                "province": address_value.get("province") or address_value.get("state"),
+                "country": address_value.get("country") or address_value.get("countryRegion") or address_value.get("country_region"),
             }
+            
+            # Only return address dict if it has at least one non-empty value
+            if any(v for v in address_dict.values() if v):
+                return address_dict
+            return None
+        
+        # Handle string format (try to parse)
+        if isinstance(address_value, str) and address_value.strip():
+            # Return as a simple dict with street_address containing the full string
+            # The FieldExtractor can parse it further if needed
+            return {"street_address": address_value.strip()}
+        
         return None
     
     def _extract_items(self, items_field) -> list:
@@ -305,6 +366,39 @@ class DocumentIntelligenceClient:
         confidences = {}
         for field_name, field in fields.items():
             if hasattr(field, 'confidence'):
-                confidences[field_name] = field.confidence or 0.0
+                # For address fields, only include confidence if the address has actual content
+                address_field_names = (
+                    "VendorAddress", "CustomerAddress", "BillToAddress", "RemitToAddress", 
+                    "RemittanceAddress", "BillingAddress", "ShippingAddress"
+                )
+                if field_name in address_field_names:
+                    # Check if address field has a value with content
+                    if hasattr(field, 'value') and field.value:
+                        has_content = False
+                        
+                        # Handle AddressValue objects from Azure SDK
+                        if hasattr(field.value, 'street_address') or hasattr(field.value, 'city'):
+                            # AddressValue object - check if it has any non-empty attributes
+                            attrs_to_check = ['street_address', 'city', 'state', 'postal_code', 
+                                             'country_region', 'house_number', 'road', 'po_box']
+                            has_content = any(
+                                getattr(field.value, attr, None) 
+                                for attr in attrs_to_check
+                                if getattr(field.value, attr, None) is not None
+                                and (not isinstance(getattr(field.value, attr), str) or getattr(field.value, attr).strip())
+                            )
+                        elif isinstance(field.value, dict):
+                            # Check if dict has any non-empty values
+                            has_content = any(v for v in field.value.values() if v)
+                        elif isinstance(field.value, str) and field.value.strip():
+                            has_content = True
+                        
+                        if has_content:
+                            confidences[field_name] = field.confidence or 0.0
+                    # If address field is empty, don't include confidence (or set to 0)
+                else:
+                    # For non-address fields, include confidence if field has a value
+                    if hasattr(field, 'value') and field.value is not None:
+                        confidences[field_name] = field.confidence or 0.0
         return confidences
 
