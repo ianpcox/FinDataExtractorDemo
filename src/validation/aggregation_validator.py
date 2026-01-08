@@ -17,6 +17,23 @@ class AggregationValidator:
     TOLERANCE = Decimal("0.01")  # Allow 1 cent rounding differences
     
     @staticmethod
+    def _to_decimal(value) -> Optional[Decimal]:
+        """Convert value to Decimal, handling strings, floats, and None"""
+        if value is None:
+            return None
+        if isinstance(value, Decimal):
+            return value
+        if isinstance(value, str):
+            try:
+                return Decimal(value)
+            except (ValueError, TypeError):
+                logger.warning(f"Could not convert string to Decimal: {value}")
+                return None
+        if isinstance(value, (int, float)):
+            return Decimal(str(value))
+        return None
+    
+    @staticmethod
     def validate_subtotal(invoice: Invoice) -> tuple[bool, Optional[str]]:
         """
         Validate: invoice.subtotal == sum(line_item.amount)
@@ -30,12 +47,17 @@ class AggregationValidator:
         if not invoice.line_items:
             return True, None  # No line items to sum
         
+        # Convert to Decimal to handle string values from LLM
+        subtotal_decimal = AggregationValidator._to_decimal(invoice.subtotal)
+        if subtotal_decimal is None:
+            return True, None  # Can't validate if subtotal is not a valid number
+        
         sum_line_amounts = sum(item.amount for item in invoice.line_items)
-        difference = abs(invoice.subtotal - sum_line_amounts)
+        difference = abs(subtotal_decimal - sum_line_amounts)
         
         if difference > AggregationValidator.TOLERANCE:
             return False, (
-                f"Subtotal mismatch: invoice.subtotal={invoice.subtotal} != "
+                f"Subtotal mismatch: invoice.subtotal={subtotal_decimal} != "
                 f"sum(line_item.amount)={sum_line_amounts}, difference={difference}"
             )
         
@@ -55,12 +77,17 @@ class AggregationValidator:
         if not invoice.line_items:
             return True, None  # No line items to sum
         
+        # Convert to Decimal to handle string values from LLM
+        gst_amount_decimal = AggregationValidator._to_decimal(invoice.gst_amount)
+        if gst_amount_decimal is None:
+            return True, None  # Can't validate if gst_amount is not a valid number
+        
         sum_line_gst = sum(item.gst_amount or Decimal("0") for item in invoice.line_items)
-        difference = abs(invoice.gst_amount - sum_line_gst)
+        difference = abs(gst_amount_decimal - sum_line_gst)
         
         if difference > AggregationValidator.TOLERANCE:
             return False, (
-                f"GST amount mismatch: invoice.gst_amount={invoice.gst_amount} != "
+                f"GST amount mismatch: invoice.gst_amount={gst_amount_decimal} != "
                 f"sum(line_item.gst_amount)={sum_line_gst}, difference={difference}"
             )
         
@@ -80,12 +107,17 @@ class AggregationValidator:
         if not invoice.line_items:
             return True, None  # No line items to sum
         
+        # Convert to Decimal to handle string values from LLM
+        pst_amount_decimal = AggregationValidator._to_decimal(invoice.pst_amount)
+        if pst_amount_decimal is None:
+            return True, None  # Can't validate if pst_amount is not a valid number
+        
         sum_line_pst = sum(item.pst_amount or Decimal("0") for item in invoice.line_items)
-        difference = abs(invoice.pst_amount - sum_line_pst)
+        difference = abs(pst_amount_decimal - sum_line_pst)
         
         if difference > AggregationValidator.TOLERANCE:
             return False, (
-                f"PST amount mismatch: invoice.pst_amount={invoice.pst_amount} != "
+                f"PST amount mismatch: invoice.pst_amount={pst_amount_decimal} != "
                 f"sum(line_item.pst_amount)={sum_line_pst}, difference={difference}"
             )
         
@@ -105,12 +137,17 @@ class AggregationValidator:
         if not invoice.line_items:
             return True, None  # No line items to sum
         
+        # Convert to Decimal to handle string values from LLM
+        qst_amount_decimal = AggregationValidator._to_decimal(invoice.qst_amount)
+        if qst_amount_decimal is None:
+            return True, None  # Can't validate if qst_amount is not a valid number
+        
         sum_line_qst = sum(item.qst_amount or Decimal("0") for item in invoice.line_items)
-        difference = abs(invoice.qst_amount - sum_line_qst)
+        difference = abs(qst_amount_decimal - sum_line_qst)
         
         if difference > AggregationValidator.TOLERANCE:
             return False, (
-                f"QST amount mismatch: invoice.qst_amount={invoice.qst_amount} != "
+                f"QST amount mismatch: invoice.qst_amount={qst_amount_decimal} != "
                 f"sum(line_item.qst_amount)={sum_line_qst}, difference={difference}"
             )
         
@@ -130,9 +167,14 @@ class AggregationValidator:
         if not invoice.line_items:
             return True, None  # No line items to sum
         
+        # Convert to Decimal to handle string values from LLM
+        tax_amount_decimal = AggregationValidator._to_decimal(invoice.tax_amount)
+        if tax_amount_decimal is None:
+            return True, None  # Can't validate if tax_amount is not a valid number
+        
         # Try sum of line_item.tax_amount first
         sum_line_tax = sum(item.tax_amount or Decimal("0") for item in invoice.line_items)
-        difference = abs(invoice.tax_amount - sum_line_tax)
+        difference = abs(tax_amount_decimal - sum_line_tax)
         
         if difference <= AggregationValidator.TOLERANCE:
             return True, None  # Matched using tax_amount
@@ -144,11 +186,11 @@ class AggregationValidator:
             (item.qst_amount or Decimal("0"))
             for item in invoice.line_items
         )
-        difference = abs(invoice.tax_amount - sum_individual_taxes)
+        difference = abs(tax_amount_decimal - sum_individual_taxes)
         
         if difference > AggregationValidator.TOLERANCE:
             return False, (
-                f"Tax amount mismatch: invoice.tax_amount={invoice.tax_amount} != "
+                f"Tax amount mismatch: invoice.tax_amount={tax_amount_decimal} != "
                 f"sum(line_item.tax_amount)={sum_line_tax} and != "
                 f"sum(gst+pst+qst)={sum_individual_taxes}, difference={difference}"
             )
@@ -166,18 +208,29 @@ class AggregationValidator:
         if invoice.total_amount is None:
             return True, None  # No total to validate
         
+        # Convert all values to Decimal to handle string values from LLM
+        total_amount_decimal = AggregationValidator._to_decimal(invoice.total_amount)
+        if total_amount_decimal is None:
+            return True, None  # Can't validate if total_amount is not a valid number
+        
+        subtotal_decimal = AggregationValidator._to_decimal(invoice.subtotal) or Decimal("0")
+        tax_amount_decimal = AggregationValidator._to_decimal(invoice.tax_amount) or Decimal("0")
+        shipping_decimal = AggregationValidator._to_decimal(invoice.shipping_amount) or Decimal("0")
+        handling_decimal = AggregationValidator._to_decimal(invoice.handling_fee) or Decimal("0")
+        discount_decimal = AggregationValidator._to_decimal(invoice.discount_amount) or Decimal("0")
+        
         calculated_total = (
-            (invoice.subtotal or Decimal("0")) +
-            (invoice.tax_amount or Decimal("0")) +
-            (invoice.shipping_amount or Decimal("0")) +
-            (invoice.handling_fee or Decimal("0")) -
-            (invoice.discount_amount or Decimal("0"))
+            subtotal_decimal +
+            tax_amount_decimal +
+            shipping_decimal +
+            handling_decimal -
+            discount_decimal
         )
-        difference = abs(invoice.total_amount - calculated_total)
+        difference = abs(total_amount_decimal - calculated_total)
         
         if difference > AggregationValidator.TOLERANCE:
             return False, (
-                f"Total amount mismatch: invoice.total_amount={invoice.total_amount} != "
+                f"Total amount mismatch: invoice.total_amount={total_amount_decimal} != "
                 f"calculated (subtotal + tax + shipping + handling - discount)={calculated_total}, "
                 f"difference={difference}"
             )

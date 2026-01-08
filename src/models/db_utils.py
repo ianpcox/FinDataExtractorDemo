@@ -122,42 +122,47 @@ def _get_line_items_from_db(invoice_db: InvoiceDB) -> list:
     Get line items from database, checking table first, then falling back to JSON.
     
     This supports the migration period where line items may be in either location.
+    Priority: line_items table > JSON column
     """
     # Try to get line items from table (relationship)
-    # Note: relationship might not be loaded if using selectinload or similar
+    # The relationship should be loaded via selectinload in DatabaseService.get_invoice
     try:
         if hasattr(invoice_db, 'line_items_relationship'):
             # Check if relationship is loaded and has items
             relationship_items = getattr(invoice_db, 'line_items_relationship', None)
             if relationship_items is not None:
-                # Convert from DB models to Pydantic models
-                return [
-                    LineItemPydantic(
-                        line_number=item.line_number,
-                        description=item.description,
-                        quantity=item.quantity,
-                        unit_price=item.unit_price,
-                        amount=item.amount or Decimal("0"),
-                        confidence=item.confidence or 0.0,
-                        unit_of_measure=item.unit_of_measure,
-                        tax_rate=item.tax_rate,
-                        tax_amount=item.tax_amount,
-                        gst_amount=item.gst_amount,
-                        pst_amount=item.pst_amount,
-                        qst_amount=item.qst_amount,
-                        combined_tax=item.combined_tax,
-                        acceptance_percentage=item.acceptance_percentage,
-                        project_code=item.project_code,
-                        region_code=item.region_code,
-                        airport_code=item.airport_code,
-                        cost_centre_code=item.cost_centre_code,
-                    )
-                    for item in relationship_items
-                ]
+                # Check if it's a list/collection with items
+                if hasattr(relationship_items, '__iter__') and not isinstance(relationship_items, str):
+                    items_list = list(relationship_items)
+                    if items_list:  # Only return if we have items from table
+                        # Convert from DB models to Pydantic models
+                        return [
+                            LineItemPydantic(
+                                line_number=item.line_number,
+                                description=item.description,
+                                quantity=item.quantity,
+                                unit_price=item.unit_price,
+                                amount=item.amount or Decimal("0"),
+                                confidence=item.confidence or 0.0,
+                                unit_of_measure=item.unit_of_measure,
+                                tax_rate=item.tax_rate,
+                                tax_amount=item.tax_amount,
+                                gst_amount=item.gst_amount,
+                                pst_amount=item.pst_amount,
+                                qst_amount=item.qst_amount,
+                                combined_tax=item.combined_tax,
+                                acceptance_percentage=item.acceptance_percentage,
+                                project_code=item.project_code,
+                                region_code=item.region_code,
+                                airport_code=item.airport_code,
+                                cost_centre_code=item.cost_centre_code,
+                            )
+                            for item in items_list
+                        ]
     except Exception as e:
         logger.debug(f"Could not load line items from relationship: {e}")
     
-    # Fall back to JSON column
+    # Fall back to JSON column (for backward compatibility during migration)
     return json_to_line_items(invoice_db.line_items)
 
 

@@ -47,7 +47,7 @@ class LineItem(Base):
     cost_centre_code = Column(String(50), nullable=True)
     
     # Relationship
-    invoice = relationship("Invoice", back_populates="line_items")
+    invoice = relationship("Invoice", back_populates="line_items_relationship")
     
     # Indexes
     __table_args__ = (

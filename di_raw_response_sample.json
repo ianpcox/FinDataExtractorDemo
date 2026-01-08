@@ -1,0 +1,84 @@
+{
+  "document_confidence": 1.0,
+  "all_fields": [
+    "BillingAddress",
+    "BillingAddressRecipient",
+    "CustomerId",
+    "CustomerName",
+    "InvoiceDate",
+    "InvoiceId",
+    "InvoiceTotal",
+    "Items",
+    "PaymentTerm",
+    "PurchaseOrder",
+    "RemittanceAddress",
+    "RemittanceAddressRecipient",
+    "ShippingAddress",
+    "ShippingAddressRecipient",
+    "SubTotal",
+    "TaxDetails",
+    "TotalTax",
+    "VendorAddress",
+    "VendorAddressRecipient",
+    "VendorName",
+    "VendorTaxId"
+  ],
+  "address_fields": {
+    "BillingAddress": {
+      "has_value": true,
+      "has_confidence": true,
+      "value": "AddressValue(house_number=99, po_box=None, road=Bank St., city=OTTAWA, state=None, postal_code=K1P 6B9, country_region=CANADA, street_address=99 Bank St., unit=None, city_district=None, state_district=None, suburb=None, house=None, level=13th Floor)",
+      "value_type": "AddressValue",
+      "confidence": 0.878
+    },
+    "BillingAddressRecipient": {
+      "has_value": true,
+      "has_confidence": true,
+      "value": "CATSA / ACTSA",
+      "value_type": "str",
+      "confidence": 0.916
+    },
+    "RemittanceAddress": {
+      "has_value": true,
+      "has_confidence": true,
+      "value": "AddressValue(house_number=None, po_box=P.O. Box 32026, road=None, city=New York, state=NY, postal_code=10087-2026, country_region=None, street_address=P.O. Box 32026, unit=None, city_district=None, state_district=None, suburb=None, house=None, level=None)",
+      "value_type": "AddressValue",
+      "confidence": 0.886
+    },
+    "RemittanceAddressRecipient": {
+      "has_value": true,
+      "has_confidence": true,
+      "value": "Analogic Corporation",
+      "value_type": "str",
+      "confidence": 0.937
+    },
+    "ShippingAddress": {
+      "has_value": true,
+      "has_confidence": true,
+      "value": "AddressValue(house_number=3880, po_box=None, road=Grant McConachie Way, city=RICHMOND, state=BC, postal_code=V7B 0A5, country_region=CANADA, street_address=3880 Grant McConachie Way, unit=None, city_district=None, state_district=None, suburb=None, house=None, level=None)",
+      "value_type": "AddressValue",
+      "confidence": 0.871
+    },
+    "ShippingAddressRecipient": {
+      "has_value": true,
+      "has_confidence": true,
+      "value": "CATSA, Vancouver International Airport\nDomestic Terminal Building 4111",
+      "value_type": "str",
+      "confidence": 0.88
+    },
+    "VendorAddress": {
+      "has_value": true,
+      "has_confidence": true,
+      "value": "AddressValue(house_number=8, po_box=None, road=Centennial Drive, city=PEABODY, state=MA, postal_code=01960, country_region=USA, street_address=8 Centennial Drive, unit=None, city_district=None, state_district=None, suburb=None, house=None, level=None)",
+      "value_type": "AddressValue",
+      "confidence": 0.886
+    },
+    "VendorAddressRecipient": {
+      "has_value": true,
+      "has_confidence": true,
+      "value": "Analogic Corporation",
+      "value_type": "str",
+      "confidence": 0.937
+    }
+  }
+}

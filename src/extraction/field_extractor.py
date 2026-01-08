@@ -389,9 +389,15 @@ class FieldExtractor:
             if invoice.subtotal is None:
                 invoice.subtotal = line_sum
             if invoice.total_amount is None and invoice.subtotal is not None:
-                invoice.total_amount = invoice.subtotal + (invoice.tax_amount or Decimal("0.00"))
+                # Ensure both are Decimal before calculation
+                subtotal = invoice.subtotal if isinstance(invoice.subtotal, Decimal) else Decimal(str(invoice.subtotal))
+                tax = invoice.tax_amount if isinstance(invoice.tax_amount, Decimal) else (Decimal(str(invoice.tax_amount)) if invoice.tax_amount else Decimal("0.00"))
+                invoice.total_amount = subtotal + tax
             if invoice.tax_amount is None and invoice.total_amount is not None and invoice.subtotal is not None:
-                invoice.tax_amount = invoice.total_amount - invoice.subtotal
+                # Ensure both are Decimal before subtraction
+                total = invoice.total_amount if isinstance(invoice.total_amount, Decimal) else Decimal(str(invoice.total_amount))
+                subtotal = invoice.subtotal if isinstance(invoice.subtotal, Decimal) else Decimal(str(invoice.subtotal))
+                invoice.tax_amount = total - subtotal
         invoice.tax_registration_number = self._get_field_value(
             canonical_data.get("tax_registration_number"), field_confidence.get("tax_registration_number")
         )

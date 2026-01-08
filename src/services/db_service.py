@@ -346,6 +346,15 @@ class DatabaseService:
             rowcount = result.rowcount or 0
             
             if rowcount > 0:
+                # If line_items was updated, also save to line_items table
+                if "line_items" in patch:
+                    # Convert JSON back to Pydantic models for table save
+                    from src.models.db_utils import json_to_line_items
+                    line_items_json = patch["line_items"]
+                    line_items_pydantic = json_to_line_items(line_items_json)
+                    await save_line_items_to_table(session, invoice_id, line_items_pydantic)
+                    logger.info(f"Saved {len(line_items_pydantic) if line_items_pydantic else 0} line items to table for invoice {invoice_id}")
+                
                 # Flush before commit to ensure changes are written
                 await session.flush()
                 await session.commit()
@@ -386,8 +395,11 @@ class DatabaseService:
             should_close = True
         
         try:
+            from sqlalchemy.orm import selectinload
             result = await session.execute(
-                select(InvoiceDB).where(InvoiceDB.id == invoice_id)
+                select(InvoiceDB)
+                .options(selectinload(InvoiceDB.line_items_relationship))
+                .where(InvoiceDB.id == invoice_id)
             )
             db_invoice = result.scalar_one_or_none()
             
@@ -429,7 +441,8 @@ class DatabaseService:
             should_close = True
         
         try:
-            query = select(InvoiceDB)
+            from sqlalchemy.orm import selectinload
+            query = select(InvoiceDB).options(selectinload(InvoiceDB.line_items_relationship))
             
             if status:
                 query = query.where(InvoiceDB.status == status)

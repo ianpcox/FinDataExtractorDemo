@@ -1,0 +1,2 @@
+total_documents,mean_extraction_rate,median_extraction_rate,mean_precision,mean_recall,mean_f1,mean_accuracy,hard_pass_count,hard_pass_rate,mean_confidence,mean_business_impact_score,mean_weighted_f1
+5,0.20754716981132076,0.20754716981132076,0.0,0.0,0.0,0.0,0,0.0,0.9057607142857143,0.8372413793103448,0.8914546432691612

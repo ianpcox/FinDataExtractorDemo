@@ -209,7 +209,7 @@ class StandaloneLLMExtractor:
             "canonical_fields_coverage": {}
         }
         
-        # Collect extracted field values
+        # Collect extracted field values (higher-level invoice fields)
         for field_name in sorted(CANONICAL_FIELDS):
             field_value = getattr(invoice, field_name, None)
             confidence = field_confidence.get(field_name, None)
@@ -244,6 +244,33 @@ class StandaloneLLMExtractor:
                 "extracted_by_di": confidence is not None and confidence >= low_conf_threshold if confidence is not None else False,
                 "extracted_by_llm": field_name in results.get("llm_improved_fields", []) if "llm_improved_fields" in results else False
             }
+        
+        # Add line items (new table structure)
+        line_items_value = []
+        if invoice.line_items:
+            for item in invoice.line_items:
+                line_items_value.append({
+                    "line_number": item.line_number,
+                    "description": item.description,
+                    "quantity": float(item.quantity) if item.quantity else None,
+                    "unit_price": float(item.unit_price) if item.unit_price else None,
+                    "amount": float(item.amount) if item.amount else None,
+                    "tax_amount": float(item.tax_amount) if item.tax_amount else None,
+                    "gst_amount": float(item.gst_amount) if item.gst_amount else None,
+                    "pst_amount": float(item.pst_amount) if item.pst_amount else None,
+                    "qst_amount": float(item.qst_amount) if item.qst_amount else None,
+                    "confidence": item.confidence or 0.0
+                })
+        
+        # Add line_items to extracted_fields
+        line_items_confidence = field_confidence.get("line_items")
+        results["extracted_fields"]["line_items"] = {
+            "value": line_items_value,
+            "confidence": line_items_confidence,
+            "extracted": len(line_items_value) > 0,
+            "extracted_by_di": line_items_confidence is not None and line_items_confidence >= low_conf_threshold if line_items_confidence is not None else False,
+            "extracted_by_llm": False  # Line items typically come from DI
+        }
         
         # Calculate coverage statistics
         total_fields = len(CANONICAL_FIELDS)

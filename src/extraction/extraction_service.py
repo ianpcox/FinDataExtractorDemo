@@ -2229,9 +2229,17 @@ class ExtractionService:
                 # Allow explicit null to clear a low-confidence field
                 if value is None:
                     setattr(invoice, target_field, None)
-                elif target_field in ["subtotal", "tax_amount", "total_amount"]:
+                # Handle decimal fields - convert string values to Decimal
+                elif target_field in [
+                    "subtotal", "tax_amount", "total_amount", "discount_amount",
+                    "shipping_amount", "handling_fee", "deposit_amount",
+                    "gst_amount", "gst_rate", "hst_amount", "hst_rate",
+                    "qst_amount", "qst_rate", "pst_amount", "pst_rate",
+                    "acceptance_percentage"
+                ]:
                     parsed = self.field_extractor._parse_decimal(value)
                     setattr(invoice, target_field, parsed)
+                # Handle date fields
                 elif target_field in [
                     "invoice_date",
                     "due_date",
@@ -2243,6 +2251,7 @@ class ExtractionService:
                     from dateutil.parser import parse
 
                     setattr(invoice, target_field, parse(value).date())
+                # Handle address fields
                 elif target_field in ["vendor_address", "bill_to_address", "remit_to_address"]:
                     if isinstance(value, dict):
                         from src.models.invoice import Address
@@ -2250,6 +2259,7 @@ class ExtractionService:
                         setattr(invoice, target_field, Address(**value))
                     else:
                         setattr(invoice, target_field, None)
+                # Handle all other fields (strings, etc.)
                 else:
                     setattr(invoice, target_field, value)
 

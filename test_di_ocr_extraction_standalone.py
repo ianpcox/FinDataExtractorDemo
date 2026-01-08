@@ -155,7 +155,7 @@ class StandaloneDIOCRExtractor:
             "di_raw_fields": {}  # Store raw DI field names for mapping analysis
         }
         
-        # Collect extracted field values and map DI field names
+        # Collect extracted field values and map DI field names (higher-level invoice fields)
         for field_name in sorted(CANONICAL_FIELDS):
             field_value = getattr(invoice, field_name, None)
             confidence = field_confidence.get(field_name, None)
@@ -163,12 +163,17 @@ class StandaloneDIOCRExtractor:
             # Determine if field was extracted
             is_extracted = False
             if field_value is not None:
-                if isinstance(field_value, str):
+                # Handle Address objects (Pydantic models)
+                if hasattr(field_value, 'model_dump'):
+                    # Check if Address has any non-None values
+                    address_dict = field_value.model_dump()
+                    is_extracted = any(v for v in address_dict.values() if v is not None and (not isinstance(v, str) or v.strip() != ""))
+                elif isinstance(field_value, str):
                     is_extracted = field_value.strip() != ""
                 elif isinstance(field_value, (int, float, Decimal)):
                     is_extracted = field_value != 0
                 elif isinstance(field_value, dict):
-                    is_extracted = len(field_value) > 0
+                    is_extracted = len(field_value) > 0 and any(v for v in field_value.values() if v is not None and (not isinstance(v, str) or v.strip() != ""))
                 elif isinstance(field_value, list):
                     is_extracted = len(field_value) > 0
                 else:
@@ -197,6 +202,43 @@ class StandaloneDIOCRExtractor:
                     "none"
                 )
             }
+        
+        # Add line items (new table structure)
+        line_items_value = []
+        if invoice.line_items:
+            for item in invoice.line_items:
+                line_items_value.append({
+                    "line_number": item.line_number,
+                    "description": item.description,
+                    "quantity": float(item.quantity) if item.quantity else None,
+                    "unit_price": float(item.unit_price) if item.unit_price else None,
+                    "amount": float(item.amount) if item.amount else None,
+                    "tax_amount": float(item.tax_amount) if item.tax_amount else None,
+                    "gst_amount": float(item.gst_amount) if item.gst_amount else None,
+                    "pst_amount": float(item.pst_amount) if item.pst_amount else None,
+                    "qst_amount": float(item.qst_amount) if item.qst_amount else None,
+                    "confidence": item.confidence or 0.0
+                })
+        
+        # Add line_items to extracted_fields
+        line_items_confidence = field_confidence.get("line_items")
+        # Check DI result for Items field
+        di_field_sources = []
+        if di_result and "Items" in str(di_result):
+            di_field_sources = ["Items"]
+        
+        results["extracted_fields"]["line_items"] = {
+            "value": line_items_value,
+            "confidence": line_items_confidence,
+            "extracted": len(line_items_value) > 0,
+            "di_field_sources": di_field_sources,
+            "confidence_category": (
+                "high" if line_items_confidence is not None and line_items_confidence >= 0.75 else
+                "medium" if line_items_confidence is not None and line_items_confidence >= 0.50 else
+                "low" if line_items_confidence is not None and line_items_confidence > 0 else
+                "none"
+            )
+        }
         
         # Calculate coverage statistics
         total_fields = len(CANONICAL_FIELDS)
