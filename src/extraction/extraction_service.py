@@ -163,7 +163,7 @@ CANONICAL_FIELDS = {
     "tax_amount", "total_amount", "currency", "tax_breakdown",
     # Payment
     "payment_terms", "payment_method", "payment_due_upon", 
-    "tax_registration_number",
+    "acceptance_percentage", "tax_registration_number",
 }
 
 LLM_SYSTEM_PROMPT = """
@@ -194,7 +194,7 @@ Dates: period_start, period_end, shipping_date, delivery_date
 Financial: subtotal, discount_amount, shipping_amount, handling_fee, deposit_amount
 Canadian Taxes: gst_amount, gst_rate, hst_amount, hst_rate, qst_amount, qst_rate, pst_amount, pst_rate
 Total: tax_amount, total_amount, currency
-Payment: payment_terms, payment_method, payment_due_upon, tax_registration_number
+Payment: payment_terms, payment_method, payment_due_upon, acceptance_percentage, tax_registration_number
 
 Formatting rules:
 - Dates must be ISO 8601 date strings: "YYYY-MM-DD".

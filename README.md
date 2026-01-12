@@ -35,6 +35,118 @@ This is a **simplified fork** of the main [FinDataExtractor](../FinDataExtractor
 - You need complex workflow orchestration
 - You want advanced error handling patterns
 
+## System at a Glance
+
+### Capability Summary
+
+| **Capability** | **Details** |
+|----------------|-------------|
+| **Ingestion Sources** | Direct upload (API/Streamlit), Azure Blob Storage (optional) |
+| **Processing States** | PENDING → PROCESSING → EXTRACTED → VALIDATED → STAGED |
+| **Invoice Subtypes** | Standard Invoice, Shift Service Invoice, Per Diem Travel Invoice |
+| **ERP Payload Formats** | JSON, CSV, XML, Dynamics GP (XML) |
+| **LLM Fallback** | Text-based LLM for text PDFs, Multimodal LLM for scanned PDFs |
+| **Extraction Coverage** | 80 canonical fields with field-level confidence scores |
+
+### API Surface
+
+- **33 total routes** across **9 modules**:
+  - **Ingestion** (6): Upload, batch upload, blob listing, Azure import
+  - **Extraction** (3): Extract invoice, get extraction status, progress tracking
+  - **HITL** (9): Invoice list, detail, validation, field updates
+  - **Matching** (2): Match invoice to PO, get matches
+  - **Staging** (4): Stage invoice, batch stage, get staged invoices
+  - **Azure Import** (4): Container/blob listing, extraction triggers
+  - **Batch** (3): Batch processing, status tracking
+  - **Progress** (1): Real-time progress tracking
+  - **Overlay** (1): PDF overlay generation
+
+### Schema & Contracts
+
+- **80 canonical fields** (invoice.canonical.v1.schema.json)
+- **13 HITL view fields** (invoice.hitl_view.v1.schema.json)
+- **3 schema variants**: Canonical, HITL View, Contract
+- **Field-level confidence scores** for all extracted fields
+- **Multimodal LLM support** for scanned/image-based PDFs
+
+### Quality Posture
+
+- **66 test files**:
+  - **33 unit tests** (fast, isolated, mocked)
+  - **29 integration tests** (database integration, API flows, real PDF processing)
+  - **4 E2E tests** (end-to-end workflows, performance testing)
+  - Test pyramid compliant (~2:1:0.1 ratio)
+- **Coverage Target**: 75% minimum (run `pytest --cov=src` to see current coverage)
+- **Static Analysis**: Python type hints, Pydantic validation
+- **Test Organization**: Comprehensive fixtures, isolated test databases, async support, real PDF test data
+
+### Operational Hardening
+
+- ✅ **Progress Tracking**: Real-time progress tracking for preprocessing, ingestion, extraction, and LLM evaluation
+- ✅ **Retry Logic**: Exponential backoff for Azure service calls
+- ✅ **Rate Limit Handling**: Intelligent handling of 429 errors with backoff
+- ✅ **TTL Caching**: LRU cache with TTL for LLM responses and rendered PDF images
+- ✅ **Partial Success Tracking**: LLM fallback operations track partial success
+- ✅ **Error Handling**: Comprehensive error handling with graceful degradation
+- ✅ **Async Processing**: Async/await throughout for non-blocking operations
+- ✅ **Multimodal Support**: Automatic detection and handling of scanned vs text-based PDFs
+- ✅ **Batch Processing**: Batch operations for ingestion, extraction, and staging
+
+### Code Organization
+
+- **9 major modules** under `src/`: `erp`, `extraction`, `ingestion`, `matching`, `metrics`, `models`, `services`, `utils`, `validation`
+- **9 API route modules** organized by feature domain
+- **6 database migrations** (Alembic) tracking schema evolution
+- **Streamlit HITL UI**: Web-based interface for invoice review and validation
+
+### Dependencies
+
+- **32 direct Python dependencies** (see `requirements.txt`)
+- **Key technologies**: 
+  - Backend: FastAPI, SQLAlchemy (async), Azure SDKs, Pydantic v2
+  - UI: Streamlit
+  - PDF Processing: PyMuPDF, pdfplumber, PyPDF2
+  - LLM: Azure OpenAI (text and multimodal GPT-4 Vision)
+- **Optional dependencies**: Azure services (DI, OpenAI, Blob Storage), Azure SQL for production
+
+### Evaluation & Metrics Capabilities
+
+The system includes evaluation tools for extraction performance assessment:
+
+- **Field-level metrics**: Precision, recall, F1 score, accuracy per field
+- **Document-level metrics**: Extraction rate, hard pass evaluation
+- **Line item metrics**: Line item count accuracy, aggregation validation
+- **Confidence calibration**: Confidence score calibration analysis
+- **Ground truth support**: Ground truth data loading and comparison utilities
+
+*To compute evaluation metrics, use the metrics module tools (see `src/metrics/`)*
+
+### Repository Health
+
+*Stats generated automatically - run `python scripts/generate_project_stats.py --markdown` for current metrics*
+
+**Current Metrics** (as of last update):
+- **33 API routes** across 9 modules
+- **80 canonical fields** in invoice schema (7 required)
+- **66 test files** (33 unit, 29 integration, 4 e2e)
+- **6 database migrations** tracking schema evolution
+- **9 major source modules** with clear separation of concerns
+- **32 direct Python dependencies**
+
+**To update metrics:**
+```bash
+# Generate current project statistics
+python scripts/generate_project_stats.py --markdown
+
+# Run test coverage report
+pytest --cov=src --cov-report=term --cov-report=html
+
+# Check for dependency updates
+python -m pip list --outdated
+```
+
+> **Tip**: Add `python scripts/generate_project_stats.py --markdown > docs/current_stats.md` to your CI/CD pipeline to automatically keep these metrics current.
+
 ## Quick Start
 
 ### Prerequisites

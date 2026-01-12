@@ -1,0 +1,52 @@
+Field Name,Type,Required,Nullable,Description,DI Field Names,Legacy Field Names,Parsers,Match Role,Overlay Role,Confidence Required,Important Field
+acceptance_percentage,decimal_string,No,Yes,,AcceptancePercentage,,parse_decimal_currency,non_matchable,header_field,No,No
+bill_to_address,object,No,Yes,,"CustomerAddress, BillToAddress",,identity,secondary_key,address_field,No,No
+business_number,string,No,Yes,,BusinessNumber,,"strip, normalize_whitespace",non_matchable,header_field,No,No
+contract_id,string,No,Yes,,ContractId,,strip,reference_key,header_field,No,No
+currency,string,Yes,Yes,,"CurrencyCode, Currency",,strip,non_matchable,header_field,No,No
+customer_email,string,No,Yes,,CustomerEmail,,"strip, normalize_whitespace",secondary_key,header_field,No,No
+customer_fax,string,No,Yes,,CustomerFax,,"strip, normalize_whitespace",secondary_key,header_field,No,No
+customer_id,string,No,Yes,,CustomerId,,strip,secondary_key,header_field,No,No
+customer_name,string,No,Yes,,CustomerName,,"strip, normalize_whitespace",secondary_key,header_field,No,No
+customer_phone,string,No,Yes,,CustomerPhone,,"strip, normalize_whitespace",secondary_key,header_field,No,No
+deposit_amount,decimal_string,No,Yes,,DepositAmount,,parse_decimal_currency,amount_key,header_field,No,No
+discount_amount,decimal_string,No,Yes,,DiscountAmount,,parse_decimal_currency,amount_key,header_field,No,No
+due_date,date,No,Yes,,DueDate,,parse_date_iso,date_key,header_field,No,No
+entity,string,No,Yes,,Entity,,"strip, normalize_whitespace",non_matchable,header_field,No,No
+gst_amount,decimal_string,No,Yes,,GSTAmount,,parse_decimal_currency,amount_key,header_field,No,No
+gst_number,string,No,Yes,,GSTNumber,,"strip, normalize_whitespace",non_matchable,header_field,No,No
+gst_rate,decimal_string,No,Yes,,GSTRate,,parse_decimal_currency,amount_key,header_field,No,No
+handling_fee,string,No,Yes,,HandlingFee,,"strip, normalize_whitespace",non_matchable,header_field,No,No
+hst_amount,decimal_string,No,Yes,,HSTAmount,,parse_decimal_currency,amount_key,header_field,No,No
+hst_rate,decimal_string,No,Yes,,HSTRate,,parse_decimal_currency,amount_key,header_field,No,No
+invoice_date,date,Yes,Yes,,InvoiceDate,,parse_date_iso,date_key,header_field,Yes,Yes
+invoice_number,string,Yes,Yes,Vendor invoice identifier (not database id).,InvoiceId,invoice_id,"strip, normalize_whitespace",primary_key,header_field,Yes,Yes
+invoice_type,string,No,Yes,,InvoiceType,,"strip, normalize_whitespace",non_matchable,header_field,No,No
+payment_due_upon,string,No,Yes,,PaymentDueUpon,,"strip, normalize_whitespace",non_matchable,header_field,No,No
+payment_method,string,No,Yes,,PaymentMethod,,"strip, normalize_whitespace",non_matchable,header_field,No,No
+payment_terms,string,No,Yes,,"PaymentTerm, PaymentTerms",payment_term,"strip, normalize_whitespace",non_matchable,header_field,No,No
+period_end,date,No,Yes,,ServiceEndDate,,parse_date_iso,date_key,header_field,No,No
+period_start,date,No,Yes,,ServiceStartDate,,parse_date_iso,date_key,header_field,No,No
+po_number,string,No,Yes,,"PurchaseOrder, PONumber",purchase_order,"strip, normalize_whitespace",reference_key,header_field,No,No
+pst_amount,decimal_string,No,Yes,,PSTAmount,,parse_decimal_currency,amount_key,header_field,No,No
+pst_number,string,No,Yes,,PSTNumber,,"strip, normalize_whitespace",non_matchable,header_field,No,No
+pst_rate,decimal_string,No,Yes,,PSTRate,,parse_decimal_currency,amount_key,header_field,No,No
+qst_amount,decimal_string,No,Yes,,QSTAmount,,parse_decimal_currency,amount_key,header_field,No,No
+qst_number,string,No,Yes,,QSTNumber,,"strip, normalize_whitespace",non_matchable,header_field,No,No
+qst_rate,decimal_string,No,Yes,,QSTRate,,parse_decimal_currency,amount_key,header_field,No,No
+reference_number,string,No,Yes,,ReferenceNumber,,"strip, normalize_whitespace",non_matchable,header_field,No,No
+remit_to_address,object,No,Yes,,"RemitToAddress, RemittanceAddress",,identity,vendor_key,address_field,No,No
+remit_to_name,string,No,Yes,,RemitToName,,"strip, normalize_whitespace",vendor_key,header_field,No,No
+shipping_amount,decimal_string,No,Yes,,ShippingAmount,,parse_decimal_currency,amount_key,header_field,No,No
+standing_offer_number,string,No,Yes,,StandingOfferNumber,standing_offer_number,"strip, normalize_whitespace",reference_key,header_field,No,No
+subtotal,decimal_string,No,Yes,,SubTotal,,parse_decimal_currency,amount_key,header_field,No,Yes
+tax_amount,decimal_string,No,Yes,,TotalTax,total_tax,parse_decimal_currency,amount_key,header_field,No,Yes
+tax_registration_number,string,No,Yes,,"TaxRegistrationNumber, SalesTaxNumber",,"strip, normalize_whitespace",vendor_key,header_field,No,No
+total_amount,decimal_string,Yes,Yes,,InvoiceTotal,invoice_total,parse_decimal_currency,amount_key,header_field,Yes,Yes
+vendor_address,object,No,Yes,,VendorAddress,,identity,vendor_key,address_field,No,No
+vendor_email,string,No,Yes,,VendorEmail,,"strip, normalize_whitespace",vendor_key,header_field,No,No
+vendor_fax,string,No,Yes,,"VendorFax, VendorFaxNumber",,"strip, normalize_whitespace",vendor_key,header_field,No,No
+vendor_id,string,No,Yes,,VendorId,,strip,vendor_key,header_field,No,No
+vendor_name,string,Yes,Yes,,VendorName,,"strip, normalize_whitespace",vendor_key,header_field,Yes,Yes
+vendor_phone,string,No,Yes,,"VendorPhoneNumber, VendorPhone",,"strip, normalize_whitespace",vendor_key,header_field,No,No
+vendor_website,string,No,Yes,,VendorWebsite,,"strip, normalize_whitespace",vendor_key,header_field,No,No

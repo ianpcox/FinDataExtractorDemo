@@ -1,2 +1,2 @@
-"""Test suite for FinDataExtractorVanilla"""
+"""Test suite for FinDataExtractorDEMO"""
 

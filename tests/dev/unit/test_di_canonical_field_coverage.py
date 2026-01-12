@@ -839,6 +839,20 @@ class TestDICanonicalFieldCoverage:
         )
         assert invoice.payment_due_upon == "Receipt"
     
+    def test_acceptance_percentage_extraction(self, mock_di_client, field_extractor):
+        """Test acceptance_percentage extraction"""
+        result = self.create_di_result({
+            "AcceptancePercentage": {"value": 0.85, "confidence": 0.92}
+        })
+        di_data = mock_di_client._extract_invoice_fields(result)
+        invoice = field_extractor.extract_invoice(
+            doc_intelligence_data=di_data,
+            file_path="test.pdf",
+            file_name="test.pdf",
+            upload_date=datetime.utcnow()
+        )
+        assert invoice.acceptance_percentage == Decimal("0.85")
+    
     def test_tax_registration_number_extraction(self, mock_di_client, field_extractor):
         """Test tax_registration_number extraction"""
         result = self.create_di_result({

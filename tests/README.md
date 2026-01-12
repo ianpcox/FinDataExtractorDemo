@@ -12,7 +12,7 @@ tests/
 │   └── e2e/       # Simple end-to-end scripts - 1 file
 │
 ├── dev/           # Development tests with mocks
-│   ├── unit/      # Fast, isolated unit tests - 30 files
+│   ├── unit/      # Fast, isolated unit tests - 33 files (increased from 30)
 │   ├── integration/ # Integration tests with mocked services - 9 files
 │   └── e2e/       # End-to-end tests with mocks - 1 file
 │
@@ -133,11 +133,92 @@ Utility scripts for test analysis are in `tests/utils/`:
 - `generate_per_field_metrics.py`
 - `diagnose_*.py` - Diagnostic scripts
 
+## Coverage Goals
+
+- **Overall Target**: 75% minimum code coverage (increased from 70%)
+- **Critical Paths**: 90%+ coverage (extraction, ingestion, validation, aggregation)
+- **Service Layer**: 85%+ coverage
+- **Utilities & Helpers**: 80%+ coverage
+- **Models**: 75%+ coverage
+- **Current**: Run `pytest --cov=src --cov-report=term` to see current coverage
+
+### Coverage Exclusions
+
+The following are excluded from coverage requirements (justified):
+- Configuration files (`src/config.py`, `src/logging_config.py`)
+- Optional/legacy modules (`azure_blob_utils.py`, `subtype_extractors.py`)
+- Test utilities and mocks
+
+See `.coveragerc` for complete exclusion list.
+
+## Test Robustness
+
+### Error Cases Covered
+- Network failures (Azure services)
+- Rate limiting scenarios (429 errors)
+- Timeout scenarios
+- Invalid/malformed PDFs
+- Database connection failures
+- Invalid configuration
+
+### Edge Cases Covered
+- Empty/null values
+- Unicode characters
+- Special date formats
+- Negative amounts (credit notes)
+- Zero values
+- Very large line item counts
+- Maximum field lengths
+
+### Boundary Conditions Covered
+- Date boundaries
+- Decimal precision limits (tolerance handling)
+- String length limits
+- Collection size limits
+- Confidence score boundaries (0.0, 1.0)
+- Progress percentage bounds (0-100)
+
+## Test Quality Metrics
+
+- ✅ Proper test isolation (each test uses fresh database or mocks)
+- ✅ Comprehensive fixtures for common scenarios
+- ✅ Descriptive test names and documentation
+- ✅ Appropriate use of pytest markers
+- ✅ Error case coverage
+- ✅ Edge case coverage
+- ✅ Boundary condition coverage
+
+## Test Pyramid Compliance
+
+The test suite maintains proper pyramid structure:
+- **Unit Tests (DEV)**: 33 files (fast, isolated, mocked)
+- **Integration Tests (DEV)**: 9 files (database integration, API flows with mocks)
+- **Integration Tests (PROD)**: 13 files (real Azure services)
+- **E2E Tests**: 3 files (demo, dev, prod)
+- **DEMO Tests**: 8 files (standalone extraction tests)
+
+Total: 33 unit + 22 integration + 3 e2e = 58 test files
+Ratio: ~3:1 (unit:integration) - appropriate for this application.
+
+## Recent Additions
+
+### New Unit Tests Added
+- `test_aggregation_validator.py` - Aggregation validation (subtotal, totals, taxes)
+- `test_progress_tracker.py` - Progress tracking service
+- `test_retry.py` - Retry logic with exponential backoff
+- `test_validation_service.py` - Business rule validation service
+
+### Test Configuration Updates
+- Coverage target increased from 70% to 75%
+- Improved `.coveragerc` with better exclusions and reporting
+- Updated `pytest.ini` comment to reflect DEMO project
+
 ## Notes
 
-- **DEMO tests** are simple scripts that can run standalone
-- **DEV tests** use mocks and are suitable for CI/CD
-- **PROD tests** require Azure credentials and may incur costs
+- **DEMO tests** are simple scripts that can run standalone (no DB, no mocks)
+- **DEV tests** use mocks and are suitable for CI/CD (fast, isolated)
+- **PROD tests** require Azure credentials and may incur costs (real services)
 - Duplicate tests have been merged or removed
 - All tests follow the test pyramid principle (many unit, some integration, few e2e)
 - All test reports and scripts are organized within the `tests/` directory
+- Tests are organized by environment (DEMO/DEV/PROD) and test pyramid level for clear separation

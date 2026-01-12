@@ -22,7 +22,12 @@ logger = logging.getLogger(__name__)
 
 
 class FieldExtractor:
-    """Extracts and maps fields from Document Intelligence to Invoice model"""
+    """
+    Field extractor for Document Intelligence data.
+    
+    IMPORTANT: This class's DI_TO_CANONICAL dictionary is the SOURCE OF TRUTH
+    for DI field mappings. The contract schema (invoice.contract.v1.json) and
+    other mappings should match this dictionary exactly.Extracts and maps fields from Document Intelligence to Invoice model"""
 
     DI_TO_CANONICAL = {
         "InvoiceId": "invoice_number",

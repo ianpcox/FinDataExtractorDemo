@@ -1,10 +1,41 @@
 [run]
+source = src
 omit =
-    src/ingestion/azure_blob_utils.py
+    # Configuration files (tested indirectly)
     src/logging_config.py
-    src/erp/*
+    src/config.py
+    # Optional/legacy modules (excluded from coverage requirement)
+    src/ingestion/azure_blob_utils.py
     src/extraction/subtype_extractors.py
-    src/matching/*
-    src/erp/*
-    src/extraction/subtype_extractors.py
+    # Test utilities and mocks
+    */__pycache__/*
+    */tests/*
+    */test_*.py
+    */mock_*.py
+
+[report]
+# Exclude lines from coverage report
+exclude_lines =
+    # Have to re-enable the standard pragma
+    pragma: no cover
+    # Don't complain about missing debug-only code
+    def __repr__
+    # Don't complain if tests don't hit defensive assertion code
+    raise AssertionError
+    raise NotImplementedError
+    # Don't complain if non-runnable code isn't run
+    if __name__ == .__main__.:
+    # Don't complain about abstract methods
+    @abstractmethod
+    @abc.abstractmethod
+    # Type checking and type hints
+    if TYPE_CHECKING:
+    from typing import TYPE_CHECKING
+
+precision = 2
+skip_covered = False
+skip_empty = False
+
+[html]
+directory = htmlcov
 

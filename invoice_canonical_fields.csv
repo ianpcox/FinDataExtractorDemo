@@ -1,0 +1,113 @@
+Field Name,Type,Required,Nullable,Description,Category
+acceptance_percentage,decimal_string,No,Yes,,Invoice Header
+bill_to_address,address_object,No,Yes,,Customer Information
+business_number,"string, null",No,Yes,Canadian Business Number (BN),Tax Registration
+bv_approval_date,date,No,Yes,,System
+bv_approval_notes,"string, null",No,Yes,,System
+bv_approver,"string, null",No,Yes,,System
+content_sha256,"string, null",No,Yes,SHA256 hash of file content for idempotency and caching,System
+contract_id,"string, null",No,Yes,,Contract/PO
+created_at,date,No,Yes,Immutable creation timestamp (auto-generated),System
+currency,string,Yes,No,,Invoice Header
+customer_email,"string, null",No,Yes,Customer email address,Customer Information
+customer_fax,"string, null",No,Yes,Customer fax number,Customer Information
+customer_id,"string, null",No,Yes,,Customer Information
+customer_name,"string, null",No,Yes,,Customer Information
+customer_phone,"string, null",No,Yes,Customer phone number,Customer Information
+delivery_date,date,No,Yes,Date when goods/services were delivered,Invoice Header
+deposit_amount,decimal_string,No,Yes,Deposit or prepayment amount,Amounts & Totals
+discount_amount,decimal_string,No,Yes,Total discount applied,Amounts & Totals
+due_date,date,No,Yes,,Invoice Header
+entity,"string, null",No,Yes,,Contract/PO
+extensions,null,No,Yes,,Extensions
+extraction_confidence,unknown,Yes,No,,System
+extraction_timestamp,date,No,Yes,,System
+fa_approval_date,date,No,Yes,,System
+fa_approval_notes,"string, null",No,Yes,,System
+fa_approver,"string, null",No,Yes,,System
+field_confidence,object,No,Yes,,System
+file_name,string,Yes,No,,System
+file_path,string,Yes,No,,System
+gst_amount,decimal_string,No,Yes,GST (Goods and Services Tax) amount,Amounts & Totals
+gst_number,"string, null",No,Yes,GST Registration Number,Tax Registration
+gst_rate,decimal_string,No,Yes,"GST rate as decimal (e.g., 0.05 for 5%)",Amounts & Totals
+handling_fee,decimal_string,No,Yes,Handling or processing fee,Amounts & Totals
+hst_amount,decimal_string,No,Yes,HST (Harmonized Sales Tax) amount,Amounts & Totals
+hst_rate,decimal_string,No,Yes,"HST rate as decimal (e.g., 0.13 for 13%)",Amounts & Totals
+id,"string, null",No,Yes,,System
+invoice_date,date,No,Yes,,Invoice Header
+invoice_number,"string, null",No,Yes,,Invoice Header
+invoice_subtype,null,No,Yes,,Invoice Header
+invoice_type,"string, null",No,Yes,"Type of invoice (e.g., Standard, Credit Note, Debit Note)",Invoice Header
+line_items,array,Yes,No,,Line Items
+payment_due_upon,"string, null",No,Yes,"Payment due condition (e.g., Receipt, Net 30, End of Month)",Invoice Header
+payment_method,"string, null",No,Yes,"Payment method (e.g., Check, Wire Transfer, Credit Card)",Invoice Header
+payment_terms,"string, null",No,Yes,,Invoice Header
+period_end,date,No,Yes,,Service Period
+period_start,date,No,Yes,,Service Period
+po_number,"string, null",No,Yes,,Contract/PO
+processing_state,string,No,No,State machine status for extraction and validation workflow,System
+pst_amount,decimal_string,No,Yes,PST (Provincial Sales Tax) amount,Amounts & Totals
+pst_number,"string, null",No,Yes,PST Registration Number (Provincial),Tax Registration
+pst_rate,decimal_string,No,Yes,"PST rate as decimal (e.g., 0.07 for 7%)",Amounts & Totals
+qst_amount,decimal_string,No,Yes,QST (Quebec Sales Tax) amount,Amounts & Totals
+qst_number,"string, null",No,Yes,QST Registration Number (Quebec),Tax Registration
+qst_rate,decimal_string,No,Yes,"QST rate as decimal (e.g., 0.09975 for 9.975%)",Amounts & Totals
+reference_number,"string, null",No,Yes,Additional reference or tracking number,Invoice Header
+remit_to_address,address_object,No,Yes,,Remit-To Information
+remit_to_name,"string, null",No,Yes,,Remit-To Information
+review_notes,"string, null",No,Yes,,System
+review_status,"string, null",No,Yes,,System
+review_timestamp,date,No,Yes,,System
+review_version,integer,No,No,Optimistic locking version for concurrent edit protection,System
+reviewer,"string, null",No,Yes,,System
+shipping_amount,decimal_string,No,Yes,Shipping and freight charges,Amounts & Totals
+shipping_date,date,No,Yes,Date when goods/services were shipped,Invoice Header
+standing_offer_number,"string, null",No,Yes,,Contract/PO
+status,string,Yes,No,,System
+subtotal,decimal_string,No,Yes,,Amounts & Totals
+tax_amount,decimal_string,No,Yes,,Amounts & Totals
+tax_breakdown,object,No,Yes,,Amounts & Totals
+tax_registration_number,"string, null",No,Yes,,Tax Registration
+total_amount,decimal_string,No,Yes,,Amounts & Totals
+updated_at,date,No,Yes,Last update timestamp (auto-updated),System
+upload_date,date,Yes,No,,System
+vendor_address,address_object,No,Yes,,Vendor Information
+vendor_email,"string, null",No,Yes,Vendor email address,Vendor Information
+vendor_fax,"string, null",No,Yes,Vendor fax number,Vendor Information
+vendor_id,"string, null",No,Yes,,Vendor Information
+vendor_name,"string, null",No,Yes,,Vendor Information
+vendor_phone,"string, null",No,Yes,,Vendor Information
+vendor_website,"string, null",No,Yes,Vendor website URL,Vendor Information
+line_items[].airport_code,"string, null",No,Yes,Airport code,Line Items
+line_items[].amount,decimal_string,Yes,No,Line item total amount,Line Items
+line_items[].combined_tax,decimal_string,No,Yes,Combined tax amount,Line Items
+line_items[].confidence,unknown,Yes,No,Extraction confidence (0-1),Line Items
+line_items[].cost_centre_code,"string, null",No,Yes,Cost centre code,Line Items
+line_items[].description,string,Yes,No,Line item description,Line Items
+line_items[].gst_amount,decimal_string,No,Yes,GST amount for this line item,Line Items
+line_items[].line_number,integer,Yes,No,Line item number (1-based),Line Items
+line_items[].project_code,"string, null",No,Yes,Project code,Line Items
+line_items[].pst_amount,decimal_string,No,Yes,PST amount for this line item,Line Items
+line_items[].qst_amount,decimal_string,No,Yes,QST amount for this line item,Line Items
+line_items[].quantity,decimal_string,No,Yes,Quantity,Line Items
+line_items[].region_code,"string, null",No,Yes,Region code,Line Items
+line_items[].tax_amount,decimal_string,No,Yes,Tax amount for this line item,Line Items
+line_items[].tax_rate,decimal_string,No,Yes,Tax rate for this line item,Line Items
+line_items[].unit_of_measure,"string, null",No,Yes,"Unit of measure (e.g., 'each', 'hours')",Line Items
+line_items[].unit_price,decimal_string,No,Yes,Unit price,Line Items
+vendor_address.city,"string, null",No,Yes,City (for Vendor Address),Vendor Information
+bill_to_address.city,"string, null",No,Yes,City (for Bill To Address),Customer Information
+remit_to_address.city,"string, null",No,Yes,City (for Remit To Address),Remit-To Information
+vendor_address.country,"string, null",No,Yes,Country (for Vendor Address),Vendor Information
+bill_to_address.country,"string, null",No,Yes,Country (for Bill To Address),Customer Information
+remit_to_address.country,"string, null",No,Yes,Country (for Remit To Address),Remit-To Information
+vendor_address.postal_code,"string, null",No,Yes,Postal/ZIP code (for Vendor Address),Vendor Information
+bill_to_address.postal_code,"string, null",No,Yes,Postal/ZIP code (for Bill To Address),Customer Information
+remit_to_address.postal_code,"string, null",No,Yes,Postal/ZIP code (for Remit To Address),Remit-To Information
+vendor_address.province,"string, null",No,Yes,Province/State (for Vendor Address),Vendor Information
+bill_to_address.province,"string, null",No,Yes,Province/State (for Bill To Address),Customer Information
+remit_to_address.province,"string, null",No,Yes,Province/State (for Remit To Address),Remit-To Information
+vendor_address.street,"string, null",No,Yes,Street address (for Vendor Address),Vendor Information
+bill_to_address.street,"string, null",No,Yes,Street address (for Bill To Address),Customer Information
+remit_to_address.street,"string, null",No,Yes,Street address (for Remit To Address),Remit-To Information
